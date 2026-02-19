@@ -1,0 +1,19 @@
+# Quest planning (local only)
+.planning/
+
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# OS
+.DS_Store
+
+# Wallet state (sensitive)
+.aibtc/
