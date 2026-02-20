@@ -181,11 +181,14 @@ bun install
 
 ### Wallet Setup
 
-Most operations require an active, unlocked wallet. Create one:
+Most operations require an active, unlocked wallet. Create one, or import an existing wallet from a seed phrase:
 
 ```bash
 # Create a new wallet
 bun run wallet/wallet.ts create --name main --password yourpassword
+
+# Or import an existing wallet from a seed phrase
+bun run wallet/wallet.ts import --name main --mnemonic "word1 word2 ... word24" --password yourpassword
 
 # Unlock the wallet before transactions
 bun run wallet/wallet.ts unlock --password yourpassword
@@ -193,6 +196,10 @@ bun run wallet/wallet.ts unlock --password yourpassword
 # Check wallet status
 bun run wallet/wallet.ts status
 ```
+
+> **Note:** Wallet mnemonics are encrypted with AES-GCM before being written to disk at `~/.aibtc/`. Your password is never stored — keep it safe.
+
+**Important:** Your seed phrase is the only way to recover your wallet if you lose your password. Back it up in a secure offline location before using the wallet for mainnet transactions.
 
 ### Optional: Hiro API Key
 
