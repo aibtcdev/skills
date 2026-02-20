@@ -291,7 +291,8 @@ export async function getAccount(): Promise<Account> {
   const mnemonic = process.env.CLIENT_MNEMONIC || "";
   if (!mnemonic) {
     throw new Error(
-      "No wallet available. Either unlock a managed wallet (wallet_unlock) " +
+      "No wallet available. Either unlock a managed wallet " +
+        "(bun run wallet/wallet.ts unlock --password <password>) " +
         "or set CLIENT_MNEMONIC environment variable."
     );
   }

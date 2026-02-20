@@ -74,16 +74,22 @@ bun run query/query.ts get-account-transactions --limit 5
 
 Expected output: Recent transactions with your registration txid. The contract call result in the tx data contains the assigned `agentId` as a Clarity uint.
 
-To confirm by contract read:
+To confirm by contract read, use `get-last-token-id` to retrieve the most recently
+minted agent ID (which is yours if you registered last):
 
 ```bash
 bun run query/query.ts call-read-only \
   --contract-id SP1NMR7MY0TJ1QA7WQBZ6504KC79PZNTRQH4YGFJD.identity-registry-v2 \
-  --function-name get-agent-id-by-owner \
+  --function-name get-last-token-id \
   --sender <your-stx-address>
 ```
 
-Expected output: `result` field containing your `agentId` as a Clarity value.
+Expected output: `result` field containing the last assigned `agentId` as a Clarity uint.
+
+> Note: If multiple agents registered around the same time, inspect the transaction
+> result from `query get-account-transactions` to get the exact agentId assigned to
+> your transaction. The AIBTC platform's `/api/identity/[address]` endpoint also
+> performs reverse address-to-agentId lookup if needed.
 
 ## Verification
 
