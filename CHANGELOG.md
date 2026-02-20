@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/aibtcdev/skills/compare/skills-v0.3.0...skills-v0.4.0) (2026-02-20)
+
+
+### Features
+
+* skill metadata manifest and agent experience improvements ([#10](https://github.com/aibtcdev/skills/issues/10)) ([235c7cf](https://github.com/aibtcdev/skills/commit/235c7cfe7939711f3fbd832457baf2bb802a23b9))
+
 ## [0.3.0](https://github.com/aibtcdev/skills/compare/skills-v0.2.0...skills-v0.3.0) (2026-02-20)
 
 
