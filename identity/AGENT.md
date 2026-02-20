@@ -11,7 +11,7 @@ This agent manages ERC-8004 on-chain agent identities using the AIBTC identity r
 ## Capabilities
 
 - Register a new agent identity on-chain, returning a sequential agent ID and transaction ID
-- Query identity info by agent ID or Stacks address
+- Query identity info by agent ID
 - Submit reputation feedback for another agent
 - Retrieve reputation scores and feedback history for an agent
 - Request third-party validation for an agent identity
@@ -36,9 +36,9 @@ Delegate to this agent when the workflow needs to:
 # Register a new on-chain agent identity with a metadata URI
 bun run identity/identity.ts register --uri https://myagent.example.com/metadata.json
 
-# Look up an agent's identity by Stacks address
-bun run identity/identity.ts get --address SP2...
+# Look up an agent's identity by agent ID
+bun run identity/identity.ts get --agent-id 42
 
-# Check reputation for an agent
-bun run identity/identity.ts get-reputation --address SP2...
+# Check reputation for an agent by agent ID
+bun run identity/identity.ts get-reputation --agent-id 42
 ```
