@@ -3,7 +3,7 @@
  * Credentials skill CLI
  * AES-256-GCM encrypted credential storage at ~/.aibtc/credentials.json
  *
- * Usage: bun run credentials/cli.ts <subcommand> [options]
+ * Usage: bun run credentials/credentials.ts <subcommand> [options]
  */
 
 import { Command } from "commander";

@@ -1,6 +1,6 @@
 {
   "version": "0.3.0",
-  "generated": "2026-02-20T16:44:00.075Z",
+  "generated": "2026-02-20T16:55:19.993Z",
   "skills": [
     {
       "name": "bitflow",
@@ -82,7 +82,7 @@
     {
       "name": "credentials",
       "description": "Encrypted credential store — add, retrieve, list, and delete named secrets (API keys, tokens, passwords) stored AES-256-GCM encrypted at ~/.aibtc/credentials.json. Each write operation requires the master password; listing metadata does not.",
-      "entry": "credentials/cli.ts",
+      "entry": "credentials/credentials.ts",
       "arguments": [
         "add",
         "get",

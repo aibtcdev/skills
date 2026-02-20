@@ -3,7 +3,7 @@ name: credentials
 description: Encrypted credential store — add, retrieve, list, and delete named secrets (API keys, tokens, passwords) stored AES-256-GCM encrypted at ~/.aibtc/credentials.json. Each write operation requires the master password; listing metadata does not.
 user-invocable: false
 arguments: add | get | list | delete | rotate-password
-entry: credentials/cli.ts
+entry: credentials/credentials.ts
 requires: []
 tags: [infrastructure, sensitive]
 ---
@@ -15,7 +15,7 @@ Manages arbitrary named secrets — API keys, tokens, passwords, URLs — encryp
 ## Usage
 
 ```
-bun run credentials/cli.ts <subcommand> [options]
+bun run credentials/credentials.ts <subcommand> [options]
 ```
 
 ## Subcommands
@@ -25,7 +25,7 @@ bun run credentials/cli.ts <subcommand> [options]
 Add a new credential or update an existing one. The value is encrypted with AES-256-GCM using a key derived from the master password via PBKDF2 (100,000 iterations, per-credential salt).
 
 ```
-bun run credentials/cli.ts add --id <id> --value <value> --password <pass> [--label <text>] [--category <cat>]
+bun run credentials/credentials.ts add --id <id> --value <value> --password <pass> [--label <text>] [--category <cat>]
 ```
 
 Options:
@@ -52,7 +52,7 @@ Output:
 Decrypt and return a credential value. The plaintext value appears in the output — handle with care.
 
 ```
-bun run credentials/cli.ts get --id <id> --password <pass>
+bun run credentials/credentials.ts get --id <id> --password <pass>
 ```
 
 Options:
@@ -71,14 +71,14 @@ Output:
 }
 ```
 
-> Tip: Extract the value in scripts with `$(bun run credentials/cli.ts get --id hiro-api-key --password $CRED_PASS | jq -r .value)`
+> Tip: Extract the value in scripts with `$(bun run credentials/credentials.ts get --id hiro-api-key --password $CRED_PASS | jq -r .value)`
 
 ### list
 
 List all credential identifiers and metadata. No decryption is performed and no secret values are returned.
 
 ```
-bun run credentials/cli.ts list
+bun run credentials/credentials.ts list
 ```
 
 Output:
@@ -102,7 +102,7 @@ Output:
 Permanently delete a credential. Requires the master password (to verify ownership) and an explicit confirmation string.
 
 ```
-bun run credentials/cli.ts delete --id <id> --password <pass> --confirm DELETE
+bun run credentials/credentials.ts delete --id <id> --password <pass> --confirm DELETE
 ```
 
 Options:
@@ -124,7 +124,7 @@ Output:
 Change the master password by atomically re-encrypting all credentials. Decrypts every credential with the old password and re-encrypts with the new one. If any credential fails to decrypt, the operation is aborted before any changes are written.
 
 ```
-bun run credentials/cli.ts rotate-password --old-password <pass> --new-password <pass>
+bun run credentials/credentials.ts rotate-password --old-password <pass> --new-password <pass>
 ```
 
 Options:
