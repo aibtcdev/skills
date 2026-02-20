@@ -28,9 +28,10 @@ const SkillFrontmatterSchema = z.object({
     .regex(/^(true|false)$/, 'user-invocable must be "true" or "false"'),
   arguments: z.string().min(1, "arguments is required"),
   entry: z.string().min(1, "entry is required"),
-  requires: z
-    .string()
-    .regex(/^\[.*\]$/, 'requires must be a bracket-list like [] or [wallet]'),
+  requires: z.string().regex(
+    /^\[.*\]$/,
+    'requires must be a bracket-list like [] or [wallet]'
+  ),
   tags: z
     .string()
     .regex(/^\[.*\]$/, "tags must be a bracket-list like [l2, read-only]"),
@@ -98,9 +99,16 @@ interface FileResult {
 
 const results: FileResult[] = [];
 
-// Validate all SKILL.md files
+// First pass: collect all skill names for referential integrity
+const knownSkills = new Set<string>();
 const skillGlob = new Glob("*/SKILL.md");
 for await (const file of skillGlob.scan({ cwd: repoRoot })) {
+  knownSkills.add(file.split("/")[0]);
+}
+
+// Second pass: validate all SKILL.md files
+const skillGlob2 = new Glob("*/SKILL.md");
+for await (const file of skillGlob2.scan({ cwd: repoRoot })) {
   const filePath = join(repoRoot, file);
   const content = await Bun.file(filePath).text();
   const fields = extractFrontmatter(content);
@@ -124,6 +132,16 @@ for await (const file of skillGlob.scan({ cwd: repoRoot })) {
     if (invalidTags.length > 0) {
       errors.push(
         `tags: invalid values [${invalidTags.join(", ")}] — allowed: ${VALID_TAGS.join(", ")}`
+      );
+    }
+
+    // Validate requires references exist as known skill directories
+    const rawRequires = fields["requires"] ?? "[]";
+    const requiresList = parseBracketList(rawRequires);
+    const unknownRequires = requiresList.filter((r) => !knownSkills.has(r));
+    if (unknownRequires.length > 0) {
+      errors.push(
+        `requires: unknown skills [${unknownRequires.join(", ")}] — must reference existing skill directories`
       );
     }
   }

@@ -5,7 +5,7 @@ import { join, dirname } from "node:path";
 interface SkillEntry {
   name: string;
   description: string;
-  entry: string;
+  entry: string | string[];
   arguments: string[];
   requires: string[];
   tags: string[];
@@ -91,10 +91,17 @@ function parseFrontmatter(content: string, skillName: string): SkillEntry {
   // Parse userInvocable
   const userInvocable = (fields["user-invocable"] ?? "false").trim() !== "false";
 
+  // Parse entry: bracket-list for multi-entry skills, plain string otherwise
+  const rawEntry = fields["entry"]?.trim() ?? "";
+  const entry =
+    rawEntry.startsWith("[") && rawEntry.endsWith("]")
+      ? parseBracketList(rawEntry)
+      : rawEntry;
+
   return {
     name: fields["name"]?.trim() ?? skillName,
     description: fields["description"]?.trim() ?? "",
-    entry: fields["entry"]?.trim() ?? "",
+    entry,
     arguments: parsedArgs,
     requires: parsedRequires,
     tags: parsedTags,

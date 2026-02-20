@@ -1,6 +1,6 @@
 {
   "version": "0.3.0",
-  "generated": "2026-02-20T17:00:47.176Z",
+  "generated": "2026-02-20T17:41:05.419Z",
   "skills": [
     {
       "name": "bitflow",
@@ -193,7 +193,10 @@
     {
       "name": "pillar",
       "description": "Pillar smart wallet operations in two modes — browser-handoff (pillar.ts) opens the Pillar frontend for user signing, and agent-signed direct (pillar-direct.ts) signs locally with a secp256k1 keypair and submits directly to the Pillar API (no browser required, gas sponsored). Supports sBTC send/supply/boost/unwind, DCA programs, stacking, key management, wallet creation, and position queries.",
-      "entry": "pillar/pillar.ts, pillar/pillar-direct.ts",
+      "entry": [
+        "pillar/pillar.ts",
+        "pillar/pillar-direct.ts"
+      ],
       "arguments": [
         "connect",
         "disconnect",
