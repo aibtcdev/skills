@@ -3,7 +3,7 @@
  * Credentials skill CLI
  * AES-256-GCM encrypted credential storage at ~/.aibtc/credentials.json
  *
- * Usage: bun run credentials/cli.ts <subcommand> [options]
+ * Usage: bun run credentials/credentials.ts <subcommand> [options]
  */
 
 import { Command } from "commander";
@@ -14,20 +14,7 @@ import {
   deleteCredential,
   rotatePassword,
 } from "./store.js";
-
-// ---------------------------------------------------------------------------
-// Output helpers
-// ---------------------------------------------------------------------------
-
-function printJson(data: unknown): void {
-  console.log(JSON.stringify(data, null, 2));
-}
-
-function handleError(error: unknown): never {
-  const message = error instanceof Error ? error.message : String(error);
-  printJson({ error: message });
-  process.exit(1);
-}
+import { printJson, handleError } from "../src/lib/utils/cli.js";
 
 // ---------------------------------------------------------------------------
 // Program

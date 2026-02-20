@@ -34,11 +34,11 @@ Delegate to this agent when the workflow needs to:
 
 ```bash
 # Store a Hiro API key encrypted with the master password
-bun run credentials/cli.ts add --id hiro-api-key --value "hiro_abc123" --password $CRED_PASS --label "Hiro API Key" --category api-key
+bun run credentials/credentials.ts add --id hiro-api-key --value "hiro_abc123" --password $CRED_PASS --label "Hiro API Key" --category api-key
 
 # Retrieve and print the decrypted value
-bun run credentials/cli.ts get --id hiro-api-key --password $CRED_PASS
+bun run credentials/credentials.ts get --id hiro-api-key --password $CRED_PASS
 
 # List all stored credential IDs (no decryption)
-bun run credentials/cli.ts list
+bun run credentials/credentials.ts list
 ```

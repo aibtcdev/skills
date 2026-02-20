@@ -11,20 +11,7 @@ import { NETWORK, getExplorerTxUrl } from "../src/lib/config/networks.js";
 import { getWalletManager } from "../src/lib/services/wallet-manager.js";
 import { Erc8004Service } from "../src/lib/services/erc8004.service.js";
 import { resolveFee } from "../src/lib/utils/fee.js";
-
-// ---------------------------------------------------------------------------
-// Output helpers
-// ---------------------------------------------------------------------------
-
-function printJson(data: unknown): void {
-  console.log(JSON.stringify(data, null, 2));
-}
-
-function handleError(error: unknown): never {
-  const message = error instanceof Error ? error.message : String(error);
-  printJson({ error: message });
-  process.exit(1);
-}
+import { printJson, handleError } from "../src/lib/utils/cli.js";
 
 // ---------------------------------------------------------------------------
 // Identity helpers

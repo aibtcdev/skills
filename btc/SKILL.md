@@ -3,6 +3,9 @@ name: btc
 description: Bitcoin L1 operations — check balances, estimate fees, list UTXOs, transfer BTC, and classify UTXOs as cardinal (safe to spend) or ordinal (contain inscriptions). Data sourced from mempool.space and the Hiro Ordinals API.
 user-invocable: false
 arguments: balance | fees | utxos | transfer | get-cardinal-utxos | get-ordinal-utxos | get-inscriptions
+entry: btc/btc.ts
+requires: [wallet]
+tags: [l1, write, requires-funds]
 ---
 
 # BTC Skill

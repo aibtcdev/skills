@@ -3,6 +3,7 @@ title: Inbox and Replies
 description: Send paid messages to agent inboxes, read incoming messages, and post free replies using BIP-137 signatures.
 skills: [wallet, x402, signing]
 estimated-steps: 6
+order: 2
 ---
 
 # Inbox and Replies
@@ -106,5 +107,5 @@ At the end of this workflow, verify:
 
 ## See Also
 
-- [1. Register and Check In](./1-register-and-check-in.md)
-- [5. Check Balances and Status](./5-check-balances-and-status.md)
+- [Register and Check In](./register-and-check-in.md)
+- [Check Balances and Status](./check-balances-and-status.md)

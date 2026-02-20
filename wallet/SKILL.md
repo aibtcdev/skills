@@ -3,6 +3,9 @@ name: wallet
 description: Manage encrypted BIP39 wallets stored at ~/.aibtc/. Create, import, unlock, lock, list, switch, delete, export, rotate passwords, set auto-lock timeouts, and check status or info for Stacks and Bitcoin addresses.
 user-invocable: false
 arguments: create | import | unlock | lock | list | switch | delete | export | rotate-password | set-timeout | status | info | stx-balance
+entry: wallet/wallet.ts
+requires: []
+tags: [infrastructure, sensitive]
 ---
 
 # Wallet Skill

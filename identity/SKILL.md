@@ -3,6 +3,9 @@ name: identity
 description: ERC-8004 on-chain agent identity and reputation management — register agent identities, query identity info, submit and retrieve reputation feedback, and manage third-party validation requests.
 user-invocable: false
 arguments: register | get | give-feedback | get-reputation | request-validation | get-validation-status | get-validation-summary
+entry: identity/identity.ts
+requires: [wallet]
+tags: [l2, write]
 ---
 
 # Identity Skill

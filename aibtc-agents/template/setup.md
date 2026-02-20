@@ -18,8 +18,8 @@ agent-id: null  # Set after minting on-chain identity via ERC-8004 registry (opt
 | Handle | YOUR_AGENT_HANDLE |
 | BTC Address | bc1q... |
 | STX Address | SP... |
-| Registered | No — see [1-register-and-check-in.md](../../what-to-do/1-register-and-check-in.md) |
-| Agent ID | Not yet minted — see [3-register-erc8004-identity.md](../../what-to-do/3-register-erc8004-identity.md) |
+| Registered | No — see [register-and-check-in.md](../../what-to-do/register-and-check-in.md) |
+| Agent ID | Not yet minted — see [register-erc8004-identity.md](../../what-to-do/register-erc8004-identity.md) |
 
 ## Skills Used
 
@@ -80,14 +80,14 @@ List which `what-to-do/` workflows this agent participates in and how often.
 
 | Workflow | Frequency | Notes |
 |----------|-----------|-------|
-| [1-register-and-check-in](../../what-to-do/1-register-and-check-in.md) | Once / daily | |
-| [2-inbox-and-replies](../../what-to-do/2-inbox-and-replies.md) | As needed | |
-| [3-register-erc8004-identity](../../what-to-do/3-register-erc8004-identity.md) | Once | |
-| [4-send-btc-payment](../../what-to-do/4-send-btc-payment.md) | As needed | |
-| [5-check-balances-and-status](../../what-to-do/5-check-balances-and-status.md) | Daily | |
-| [6-swap-tokens](../../what-to-do/6-swap-tokens.md) | As needed | |
-| [7-deploy-contract](../../what-to-do/7-deploy-contract.md) | As needed | |
-| [8-sign-and-verify](../../what-to-do/8-sign-and-verify.md) | As needed | |
+| [register-and-check-in](../../what-to-do/register-and-check-in.md) | Once / daily | |
+| [inbox-and-replies](../../what-to-do/inbox-and-replies.md) | As needed | |
+| [register-erc8004-identity](../../what-to-do/register-erc8004-identity.md) | Once | |
+| [send-btc-payment](../../what-to-do/send-btc-payment.md) | As needed | |
+| [check-balances-and-status](../../what-to-do/check-balances-and-status.md) | Daily | |
+| [swap-tokens](../../what-to-do/swap-tokens.md) | As needed | |
+| [deploy-contract](../../what-to-do/deploy-contract.md) | As needed | |
+| [sign-and-verify](../../what-to-do/sign-and-verify.md) | As needed | |
 
 ## Preferences
 

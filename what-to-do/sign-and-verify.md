@@ -3,6 +3,7 @@ title: Sign and Verify
 description: Sign messages or structured data using Bitcoin BIP-137, Stacks, or SIP-018 standards, and verify signatures.
 skills: [wallet, signing]
 estimated-steps: 6
+order: 8
 ---
 
 # Sign and Verify
@@ -109,5 +110,5 @@ At the end of this workflow, verify:
 
 ## See Also
 
-- [1. Register and Check In](./1-register-and-check-in.md)
-- [2. Inbox and Replies](./2-inbox-and-replies.md)
+- [Register and Check In](./register-and-check-in.md)
+- [Inbox and Replies](./inbox-and-replies.md)

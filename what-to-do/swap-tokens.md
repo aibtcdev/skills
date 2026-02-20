@@ -3,6 +3,7 @@ title: Swap Tokens
 description: Swap tokens on Bitflow DEX with a quote preview, price impact check, and slippage protection.
 skills: [wallet, bitflow]
 estimated-steps: 5
+order: 6
 ---
 
 # Swap Tokens
@@ -94,5 +95,5 @@ At the end of this workflow, verify:
 
 ## See Also
 
-- [5. Check Balances and Status](./5-check-balances-and-status.md)
-- [7. Deploy Contract](./7-deploy-contract.md)
+- [Check Balances and Status](./check-balances-and-status.md)
+- [Deploy Contract](./deploy-contract.md)

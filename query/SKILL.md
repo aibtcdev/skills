@@ -3,6 +3,9 @@ name: query
 description: Stacks network and blockchain query operations — get STX fees, account info, transaction history, block info, mempool transactions, contract info and events, network status, and call read-only contract functions. All queries use the Hiro API.
 user-invocable: false
 arguments: get-stx-fees | get-account-info | get-account-transactions | get-block-info | get-mempool-info | get-contract-info | get-contract-events | get-network-status | call-read-only
+entry: query/query.ts
+requires: []
+tags: [l2, read-only]
 ---
 
 # Query Skill

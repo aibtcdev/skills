@@ -3,6 +3,7 @@ title: Deploy Contract
 description: Deploy a Clarity smart contract to Stacks, monitor the transaction, and verify the contract is live.
 skills: [wallet, stx, query]
 estimated-steps: 5
+order: 7
 ---
 
 # Deploy Contract
@@ -106,5 +107,5 @@ At the end of this workflow, verify:
 
 ## See Also
 
-- [3. Register ERC-8004 Identity](./3-register-erc8004-identity.md)
-- [8. Sign and Verify](./8-sign-and-verify.md)
+- [Register ERC-8004 Identity](./register-erc8004-identity.md)
+- [Sign and Verify](./sign-and-verify.md)

@@ -23,20 +23,7 @@ import {
   type AIEndpointConfig,
 } from "../src/lib/services/scaffold.service.js";
 import path from "path";
-
-// ---------------------------------------------------------------------------
-// Output helpers
-// ---------------------------------------------------------------------------
-
-function printJson(data: unknown): void {
-  console.log(JSON.stringify(data, null, 2));
-}
-
-function handleError(error: unknown): never {
-  const message = error instanceof Error ? error.message : String(error);
-  printJson({ error: message });
-  process.exit(1);
-}
+import { printJson, handleError } from "../src/lib/utils/cli.js";
 
 // ---------------------------------------------------------------------------
 // URL parsing helper

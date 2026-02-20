@@ -3,6 +3,7 @@ title: Set Up Credential Store
 description: Initialize the encrypted credential store and add the first secrets needed by other AIBTC skills.
 skills: [credentials]
 estimated-steps: 5
+order: 9
 ---
 
 # Set Up Credential Store
@@ -23,7 +24,7 @@ This workflow does not require a wallet — the credential store is independent 
 Check that no credentials exist yet (or review what is already stored).
 
 ```bash
-bun run credentials/cli.ts list
+bun run credentials/credentials.ts list
 ```
 
 Expected output: `count: 0, credentials: []` on a fresh install. If credentials already exist, review before adding duplicates.
@@ -33,7 +34,7 @@ Expected output: `count: 0, credentials: []` on a fresh install. If credentials 
 Store the Hiro API key for use by the `query`, `stx`, and other network skills.
 
 ```bash
-bun run credentials/cli.ts add \
+bun run credentials/credentials.ts add \
   --id hiro-api-key \
   --value "your_hiro_api_key_here" \
   --password $CRED_PASS \
@@ -50,7 +51,7 @@ Expected output: `success: true`, `id: "hiro-api-key"`, `category: "api-key"`.
 Confirm the credential is retrievable by decrypting it.
 
 ```bash
-bun run credentials/cli.ts get --id hiro-api-key --password $CRED_PASS
+bun run credentials/credentials.ts get --id hiro-api-key --password $CRED_PASS
 ```
 
 Expected output: JSON with `value` equal to the API key you stored. If decryption fails, the password was wrong or the value was not stored.
@@ -60,7 +61,7 @@ Expected output: JSON with `value` equal to the API key you stored. If decryptio
 Review the credential inventory (metadata only — no decrypted values shown).
 
 ```bash
-bun run credentials/cli.ts list
+bun run credentials/credentials.ts list
 ```
 
 Expected output: `count: 1` (or more if you added additional credentials), with each entry showing `id`, `label`, `category`, and timestamps.
@@ -71,7 +72,7 @@ Repeat the `add` command for each additional secret your workflows need.
 
 ```bash
 # Example: store an OpenRouter token
-bun run credentials/cli.ts add \
+bun run credentials/credentials.ts add \
   --id openrouter-token \
   --value "sk-or-..." \
   --password $CRED_PASS \
@@ -81,7 +82,7 @@ bun run credentials/cli.ts add \
 
 Expected output: `success: true` for each credential added.
 
-> Note: To rotate the master password later, use `bun run credentials/cli.ts rotate-password --old-password $OLD_PASS --new-password $NEW_PASS`.
+> Note: To rotate the master password later, use `bun run credentials/credentials.ts rotate-password --old-password $OLD_PASS --new-password $NEW_PASS`.
 
 ## Verification
 
@@ -98,5 +99,5 @@ At the end of this workflow, verify:
 
 ## See Also
 
-- [1. Register and Check In](./1-register-and-check-in.md)
-- [5. Check Balances and Status](./5-check-balances-and-status.md)
+- [Register and Check In](./register-and-check-in.md)
+- [Check Balances and Status](./check-balances-and-status.md)

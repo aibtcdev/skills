@@ -18,22 +18,9 @@ import {
   initializeStorage,
 } from "../src/lib/utils/storage.js";
 import { getApiBaseUrl, NETWORK } from "../src/lib/config/networks.js";
+import { printJson, handleError } from "../src/lib/utils/cli.js";
 
 const require = createRequire(import.meta.url);
-
-// ---------------------------------------------------------------------------
-// Output helpers
-// ---------------------------------------------------------------------------
-
-function printJson(data: unknown): void {
-  console.log(JSON.stringify(data, null, 2));
-}
-
-function handleError(error: unknown): never {
-  const message = error instanceof Error ? error.message : String(error);
-  printJson({ error: message });
-  process.exit(1);
-}
 
 // ---------------------------------------------------------------------------
 // Program

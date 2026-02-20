@@ -14,20 +14,7 @@ import { getSbtcService } from "../src/lib/services/sbtc.service.js";
 import { getSbtcDepositService } from "../src/lib/services/sbtc-deposit.service.js";
 import { MempoolApi, getMempoolTxUrl } from "../src/lib/services/mempool-api.js";
 import { resolveFee } from "../src/lib/utils/fee.js";
-
-// ---------------------------------------------------------------------------
-// Output helpers
-// ---------------------------------------------------------------------------
-
-function printJson(data: unknown): void {
-  console.log(JSON.stringify(data, null, 2));
-}
-
-function handleError(error: unknown): never {
-  const message = error instanceof Error ? error.message : String(error);
-  printJson({ error: message });
-  process.exit(1);
-}
+import { printJson, handleError } from "../src/lib/utils/cli.js";
 
 // ---------------------------------------------------------------------------
 // Program
