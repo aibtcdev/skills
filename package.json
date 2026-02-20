@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "build": "bun build src/lib/index.ts --outdir dist",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "manifest": "bun run scripts/generate-manifest.ts"
   },
   "keywords": [
     "claude",

@@ -1,0 +1,470 @@
+{
+  "version": "0.3.0",
+  "generated": "2026-02-20T16:44:00.075Z",
+  "skills": [
+    {
+      "name": "bitflow",
+      "description": "Bitflow DEX on Stacks — token swaps with aggregated liquidity, market ticker data, swap routing, price impact analysis, and Keeper automation for scheduled orders. All operations are mainnet-only. No API key required (500 req/min public rate limit). Write operations require an unlocked wallet.",
+      "entry": "bitflow/bitflow.ts",
+      "arguments": [
+        "get-ticker",
+        "get-tokens",
+        "get-swap-targets",
+        "get-quote",
+        "get-routes",
+        "swap",
+        "get-keeper-contract",
+        "create-order",
+        "get-order",
+        "cancel-order",
+        "get-keeper-user"
+      ],
+      "requires": [
+        "wallet"
+      ],
+      "tags": [
+        "l2",
+        "defi",
+        "write",
+        "mainnet-only",
+        "requires-funds"
+      ],
+      "userInvocable": false
+    },
+    {
+      "name": "bns",
+      "description": "Bitcoin Name System (BNS) operations — lookup names, reverse-lookup addresses, check availability, get pricing, list domains, and register new .btc names using single-transaction claim or two-step preorder/register flow.",
+      "entry": "bns/bns.ts",
+      "arguments": [
+        "lookup",
+        "reverse-lookup",
+        "get-info",
+        "check-availability",
+        "get-price",
+        "list-user-domains",
+        "claim-fast",
+        "preorder",
+        "register"
+      ],
+      "requires": [
+        "wallet"
+      ],
+      "tags": [
+        "l2",
+        "write",
+        "requires-funds"
+      ],
+      "userInvocable": false
+    },
+    {
+      "name": "btc",
+      "description": "Bitcoin L1 operations — check balances, estimate fees, list UTXOs, transfer BTC, and classify UTXOs as cardinal (safe to spend) or ordinal (contain inscriptions). Data sourced from mempool.space and the Hiro Ordinals API.",
+      "entry": "btc/btc.ts",
+      "arguments": [
+        "balance",
+        "fees",
+        "utxos",
+        "transfer",
+        "get-cardinal-utxos",
+        "get-ordinal-utxos",
+        "get-inscriptions"
+      ],
+      "requires": [
+        "wallet"
+      ],
+      "tags": [
+        "l1",
+        "write",
+        "requires-funds"
+      ],
+      "userInvocable": false
+    },
+    {
+      "name": "credentials",
+      "description": "Encrypted credential store — add, retrieve, list, and delete named secrets (API keys, tokens, passwords) stored AES-256-GCM encrypted at ~/.aibtc/credentials.json. Each write operation requires the master password; listing metadata does not.",
+      "entry": "credentials/cli.ts",
+      "arguments": [
+        "add",
+        "get",
+        "list",
+        "delete",
+        "rotate-password"
+      ],
+      "requires": [],
+      "tags": [
+        "infrastructure",
+        "sensitive"
+      ],
+      "userInvocable": false
+    },
+    {
+      "name": "defi",
+      "description": "DeFi operations on Stacks — ALEX DEX token swaps and liquidity pool queries, plus Zest Protocol lending (supply, withdraw, borrow, repay, claim rewards). All operations are mainnet-only. Write operations require an unlocked wallet.",
+      "entry": "defi/defi.ts",
+      "arguments": [
+        "alex-get-swap-quote",
+        "alex-swap",
+        "alex-get-pool-info",
+        "alex-list-pools",
+        "zest-list-assets",
+        "zest-get-position",
+        "zest-supply",
+        "zest-withdraw",
+        "zest-borrow",
+        "zest-repay",
+        "zest-claim-rewards"
+      ],
+      "requires": [
+        "wallet"
+      ],
+      "tags": [
+        "l2",
+        "defi",
+        "write",
+        "mainnet-only",
+        "requires-funds"
+      ],
+      "userInvocable": false
+    },
+    {
+      "name": "identity",
+      "description": "ERC-8004 on-chain agent identity and reputation management — register agent identities, query identity info, submit and retrieve reputation feedback, and manage third-party validation requests.",
+      "entry": "identity/identity.ts",
+      "arguments": [
+        "register",
+        "get",
+        "give-feedback",
+        "get-reputation",
+        "request-validation",
+        "get-validation-status",
+        "get-validation-summary"
+      ],
+      "requires": [
+        "wallet"
+      ],
+      "tags": [
+        "l2",
+        "write"
+      ],
+      "userInvocable": false
+    },
+    {
+      "name": "nft",
+      "description": "SIP-009 NFT operations on Stacks L2 — list NFT holdings, get token metadata, transfer NFTs, get token owner, get collection information, and get transfer history. Transfer operations require an unlocked wallet.",
+      "entry": "nft/nft.ts",
+      "arguments": [
+        "get-holdings",
+        "get-metadata",
+        "transfer",
+        "get-owner",
+        "get-collection-info",
+        "get-history"
+      ],
+      "requires": [
+        "wallet"
+      ],
+      "tags": [
+        "l2",
+        "write"
+      ],
+      "userInvocable": false
+    },
+    {
+      "name": "ordinals",
+      "description": "Bitcoin ordinals operations — get the Taproot receive address, estimate inscription fees, create inscriptions via the two-step commit/reveal pattern, and fetch existing inscription content from reveal transactions.",
+      "entry": "ordinals/ordinals.ts",
+      "arguments": [
+        "get-taproot-address",
+        "estimate-fee",
+        "inscribe",
+        "inscribe-reveal",
+        "get-inscription"
+      ],
+      "requires": [
+        "wallet"
+      ],
+      "tags": [
+        "l1",
+        "write",
+        "requires-funds"
+      ],
+      "userInvocable": false
+    },
+    {
+      "name": "pillar",
+      "description": "Pillar smart wallet operations in two modes — browser-handoff (pillar.ts) opens the Pillar frontend for user signing, and agent-signed direct (pillar-direct.ts) signs locally with a secp256k1 keypair and submits directly to the Pillar API (no browser required, gas sponsored). Supports sBTC send/supply/boost/unwind, DCA programs, stacking, key management, wallet creation, and position queries.",
+      "entry": "pillar/pillar.ts, pillar/pillar-direct.ts",
+      "arguments": [
+        "connect",
+        "disconnect",
+        "status",
+        "send",
+        "fund",
+        "add-admin",
+        "supply",
+        "auto-compound",
+        "unwind",
+        "boost",
+        "position",
+        "create-wallet",
+        "invite",
+        "dca-invite",
+        "dca-partners",
+        "dca-leaderboard",
+        "dca-status",
+        "key-generate",
+        "key-unlock",
+        "key-lock",
+        "key-info",
+        "direct-boost",
+        "direct-unwind",
+        "direct-supply",
+        "direct-send",
+        "direct-auto-compound",
+        "direct-position",
+        "direct-withdraw-collateral",
+        "direct-add-admin",
+        "direct-create-wallet",
+        "direct-dca-invite",
+        "direct-dca-partners",
+        "direct-dca-leaderboard",
+        "direct-dca-status",
+        "direct-quote",
+        "direct-resolve-recipient",
+        "direct-stack-stx",
+        "direct-revoke-fast-pool",
+        "direct-stacking-status"
+      ],
+      "requires": [
+        "wallet"
+      ],
+      "tags": [
+        "l2",
+        "defi",
+        "write",
+        "mainnet-only"
+      ],
+      "userInvocable": false
+    },
+    {
+      "name": "query",
+      "description": "Stacks network and blockchain query operations — get STX fees, account info, transaction history, block info, mempool transactions, contract info and events, network status, and call read-only contract functions. All queries use the Hiro API.",
+      "entry": "query/query.ts",
+      "arguments": [
+        "get-stx-fees",
+        "get-account-info",
+        "get-account-transactions",
+        "get-block-info",
+        "get-mempool-info",
+        "get-contract-info",
+        "get-contract-events",
+        "get-network-status",
+        "call-read-only"
+      ],
+      "requires": [],
+      "tags": [
+        "l2",
+        "read-only"
+      ],
+      "userInvocable": false
+    },
+    {
+      "name": "sbtc",
+      "description": "sBTC token operations on Stacks L2 — check balances, transfer sBTC, get deposit info, check peg statistics, deposit BTC to receive sBTC, and track deposit status. Transfer and deposit operations require an unlocked wallet.",
+      "entry": "sbtc/sbtc.ts",
+      "arguments": [
+        "get-balance",
+        "transfer",
+        "get-deposit-info",
+        "get-peg-info",
+        "deposit",
+        "deposit-status"
+      ],
+      "requires": [
+        "wallet"
+      ],
+      "tags": [
+        "l2",
+        "write",
+        "requires-funds"
+      ],
+      "userInvocable": false
+    },
+    {
+      "name": "settings",
+      "description": "Manage AIBTC skill settings stored at ~/.aibtc/config.json. Configure the Hiro API key for authenticated rate limits, set a custom Stacks API node URL, and check the current package version.",
+      "entry": "settings/settings.ts",
+      "arguments": [
+        "set-hiro-api-key",
+        "get-hiro-api-key",
+        "delete-hiro-api-key",
+        "set-stacks-api-url",
+        "get-stacks-api-url",
+        "delete-stacks-api-url",
+        "get-server-version"
+      ],
+      "requires": [],
+      "tags": [
+        "infrastructure"
+      ],
+      "userInvocable": false
+    },
+    {
+      "name": "signing",
+      "description": "Message signing and verification — SIP-018 structured Clarity data signing (on-chain verifiable), Stacks plain-text message signing (SIWS-compatible), Bitcoin BIP-137 message signing, and BIP-340 Schnorr signing for Taproot multisig. All signing requires an unlocked wallet; hash and verify operations do not.",
+      "entry": "signing/signing.ts",
+      "arguments": [
+        "sip018-sign",
+        "sip018-verify",
+        "sip018-hash",
+        "stacks-sign",
+        "stacks-verify",
+        "btc-sign",
+        "btc-verify",
+        "schnorr-sign-digest",
+        "schnorr-verify-digest"
+      ],
+      "requires": [
+        "wallet"
+      ],
+      "tags": [
+        "l2",
+        "l1"
+      ],
+      "userInvocable": false
+    },
+    {
+      "name": "stacking",
+      "description": "STX stacking operations on Stacks — query PoX cycle info, check stacking status, lock STX to earn BTC rewards (stack-stx), and extend an existing stacking lock period. Write operations require an unlocked wallet.",
+      "entry": "stacking/stacking.ts",
+      "arguments": [
+        "get-pox-info",
+        "get-stacking-status",
+        "stack-stx",
+        "extend-stacking"
+      ],
+      "requires": [
+        "wallet"
+      ],
+      "tags": [
+        "l2",
+        "write",
+        "requires-funds"
+      ],
+      "userInvocable": false
+    },
+    {
+      "name": "stx",
+      "description": "Stacks L2 STX token operations — check balances, transfer STX, broadcast pre-signed transactions, call Clarity contracts, deploy contracts, and check transaction status. Transfer and contract operations require an unlocked wallet.",
+      "entry": "stx/stx.ts",
+      "arguments": [
+        "get-balance",
+        "transfer",
+        "broadcast-transaction",
+        "call-contract",
+        "deploy-contract",
+        "get-transaction-status"
+      ],
+      "requires": [
+        "wallet"
+      ],
+      "tags": [
+        "l2",
+        "write",
+        "requires-funds"
+      ],
+      "userInvocable": false
+    },
+    {
+      "name": "tokens",
+      "description": "SIP-010 fungible token operations on Stacks L2 — check balances, transfer tokens, get token metadata, list all tokens owned by an address, and get top token holders. Supports well-known tokens by symbol (sBTC, USDCx, ALEX, DIKO) or full contract ID.",
+      "entry": "tokens/tokens.ts",
+      "arguments": [
+        "get-balance",
+        "transfer",
+        "get-info",
+        "list-user-tokens",
+        "get-holders"
+      ],
+      "requires": [
+        "wallet"
+      ],
+      "tags": [
+        "l2",
+        "write"
+      ],
+      "userInvocable": false
+    },
+    {
+      "name": "wallet",
+      "description": "Manage encrypted BIP39 wallets stored at ~/.aibtc/. Create, import, unlock, lock, list, switch, delete, export, rotate passwords, set auto-lock timeouts, and check status or info for Stacks and Bitcoin addresses.",
+      "entry": "wallet/wallet.ts",
+      "arguments": [
+        "create",
+        "import",
+        "unlock",
+        "lock",
+        "list",
+        "switch",
+        "delete",
+        "export",
+        "rotate-password",
+        "set-timeout",
+        "status",
+        "info",
+        "stx-balance"
+      ],
+      "requires": [],
+      "tags": [
+        "infrastructure",
+        "sensitive"
+      ],
+      "userInvocable": false
+    },
+    {
+      "name": "x402",
+      "description": "x402 paid API endpoints, inbox messaging, project scaffolding, and OpenRouter AI integration. Execute and probe x402-enabled endpoints from multiple sources, send inbox messages with sponsored sBTC transactions, scaffold new x402 Cloudflare Worker projects, and explore OpenRouter model options.",
+      "entry": "x402/x402.ts",
+      "arguments": [
+        "list-endpoints",
+        "execute-endpoint",
+        "probe-endpoint",
+        "send-inbox-message",
+        "scaffold-endpoint",
+        "scaffold-ai-endpoint",
+        "openrouter-guide",
+        "openrouter-models"
+      ],
+      "requires": [
+        "wallet"
+      ],
+      "tags": [
+        "l2",
+        "write"
+      ],
+      "userInvocable": false
+    },
+    {
+      "name": "yield-hunter",
+      "description": "Autonomous sBTC yield hunting daemon — monitors wallet sBTC balance and automatically deposits to Zest Protocol when balance exceeds a configurable threshold. Only works on mainnet. Requires an unlocked wallet with sBTC balance and STX for transaction fees.",
+      "entry": "yield-hunter/yield-hunter.ts",
+      "arguments": [
+        "start",
+        "stop",
+        "status",
+        "configure"
+      ],
+      "requires": [
+        "wallet"
+      ],
+      "tags": [
+        "l2",
+        "defi",
+        "write",
+        "mainnet-only",
+        "requires-funds"
+      ],
+      "userInvocable": false
+    }
+  ]
+}
