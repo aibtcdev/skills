@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/aibtcdev/skills/compare/skills-v0.2.0...skills-v0.3.0) (2026-02-20)
+
+
+### Features
+
+* add CONTRIBUTING.md, wallet import docs, and Result type ([#6](https://github.com/aibtcdev/skills/issues/6)) ([831c810](https://github.com/aibtcdev/skills/commit/831c81070e70f877129c8b5725e2b0e6f915c149))
+
 ## [0.2.0](https://github.com/aibtcdev/skills/compare/skills-v0.1.0...skills-v0.2.0) (2026-02-20)
 
 
