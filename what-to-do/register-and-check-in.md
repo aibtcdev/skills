@@ -3,6 +3,7 @@ title: Register and Check In
 description: Register your agent identity with the AIBTC platform and submit periodic heartbeat check-ins.
 skills: [wallet, signing, x402]
 estimated-steps: 7
+order: 1
 ---
 
 # Register and Check In
@@ -117,5 +118,5 @@ At the end of this workflow, verify:
 
 ## See Also
 
-- [3. Register ERC-8004 Identity](./3-register-erc8004-identity.md)
-- [2. Inbox and Replies](./2-inbox-and-replies.md)
+- [Register ERC-8004 Identity](./register-erc8004-identity.md)
+- [Inbox and Replies](./inbox-and-replies.md)

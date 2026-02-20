@@ -3,6 +3,7 @@ title: Check Balances and Status
 description: Check all asset balances including BTC, STX, sBTC, fungible tokens, and NFTs, plus wallet and network status.
 skills: [wallet, btc, stx, sbtc, tokens, nft, query]
 estimated-steps: 7
+order: 5
 ---
 
 # Check Balances and Status
@@ -104,5 +105,5 @@ At the end of this workflow, verify:
 
 ## See Also
 
-- [4. Send BTC Payment](./4-send-btc-payment.md)
-- [6. Swap Tokens](./6-swap-tokens.md)
+- [Send BTC Payment](./send-btc-payment.md)
+- [Swap Tokens](./swap-tokens.md)

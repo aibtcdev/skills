@@ -3,6 +3,7 @@ title: Register ERC-8004 Identity
 description: Mint an on-chain sequential agent identity NFT via the ERC-8004 identity registry on Stacks.
 skills: [wallet, identity, query]
 estimated-steps: 5
+order: 3
 ---
 
 # Register ERC-8004 Identity
@@ -102,5 +103,5 @@ At the end of this workflow, verify:
 
 ## See Also
 
-- [1. Register and Check In](./1-register-and-check-in.md)
-- [7. Deploy Contract](./7-deploy-contract.md)
+- [Register and Check In](./register-and-check-in.md)
+- [Deploy Contract](./deploy-contract.md)

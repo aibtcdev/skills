@@ -3,6 +3,7 @@ title: Set Up Credential Store
 description: Initialize the encrypted credential store and add the first secrets needed by other AIBTC skills.
 skills: [credentials]
 estimated-steps: 5
+order: 9
 ---
 
 # Set Up Credential Store
@@ -98,5 +99,5 @@ At the end of this workflow, verify:
 
 ## See Also
 
-- [1. Register and Check In](./1-register-and-check-in.md)
-- [5. Check Balances and Status](./5-check-balances-and-status.md)
+- [Register and Check In](./register-and-check-in.md)
+- [Check Balances and Status](./check-balances-and-status.md)

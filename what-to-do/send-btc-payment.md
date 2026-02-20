@@ -3,6 +3,7 @@ title: Send BTC Payment
 description: Transfer BTC on Bitcoin L1 to a recipient address with fee selection and inscription-safe UTXO handling.
 skills: [wallet, btc]
 estimated-steps: 5
+order: 4
 ---
 
 # Send BTC Payment
@@ -99,5 +100,5 @@ At the end of this workflow, verify:
 
 ## See Also
 
-- [5. Check Balances and Status](./5-check-balances-and-status.md)
-- [2. Inbox and Replies](./2-inbox-and-replies.md)
+- [Check Balances and Status](./check-balances-and-status.md)
+- [Inbox and Replies](./inbox-and-replies.md)

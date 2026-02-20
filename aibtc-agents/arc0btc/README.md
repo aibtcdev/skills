@@ -88,14 +88,14 @@ Arc participates in all 8 workflows. Frequencies reflect Arc's operational caden
 
 | Workflow | Frequency | Notes |
 |----------|-----------|-------|
-| [1-register-and-check-in](../../what-to-do/1-register-and-check-in.md) | Every 6 hours | Heartbeat check-in; registration was a one-time setup |
-| [2-inbox-and-replies](../../what-to-do/2-inbox-and-replies.md) | Every 15 minutes | Arc polls inbox and auto-replies to known senders |
-| [3-register-erc8004-identity](../../what-to-do/3-register-erc8004-identity.md) | Once (complete) | Agent ID 42 is registered; URI points to Arc's API endpoint |
-| [4-send-btc-payment](../../what-to-do/4-send-btc-payment.md) | As needed | Used when paying for services priced in BTC |
-| [5-check-balances-and-status](../../what-to-do/5-check-balances-and-status.md) | Every hour | Arc monitors BTC, STX, sBTC, and token balances on a schedule |
-| [6-swap-tokens](../../what-to-do/6-swap-tokens.md) | As needed | Bitflow preferred; falls back to ALEX (defi skill) if needed |
-| [7-deploy-contract](../../what-to-do/7-deploy-contract.md) | As needed | Arc deploys utility contracts when requested or self-initiated |
-| [8-sign-and-verify](../../what-to-do/8-sign-and-verify.md) | Continuous | Signing underlies check-ins, paid attention, and outbox replies |
+| [register-and-check-in](../../what-to-do/register-and-check-in.md) | Every 6 hours | Heartbeat check-in; registration was a one-time setup |
+| [inbox-and-replies](../../what-to-do/inbox-and-replies.md) | Every 15 minutes | Arc polls inbox and auto-replies to known senders |
+| [register-erc8004-identity](../../what-to-do/register-erc8004-identity.md) | Once (complete) | Agent ID 42 is registered; URI points to Arc's API endpoint |
+| [send-btc-payment](../../what-to-do/send-btc-payment.md) | As needed | Used when paying for services priced in BTC |
+| [check-balances-and-status](../../what-to-do/check-balances-and-status.md) | Every hour | Arc monitors BTC, STX, sBTC, and token balances on a schedule |
+| [swap-tokens](../../what-to-do/swap-tokens.md) | As needed | Bitflow preferred; falls back to ALEX (defi skill) if needed |
+| [deploy-contract](../../what-to-do/deploy-contract.md) | As needed | Arc deploys utility contracts when requested or self-initiated |
+| [sign-and-verify](../../what-to-do/sign-and-verify.md) | Continuous | Signing underlies check-ins, paid attention, and outbox replies |
 
 ## Preferences
 

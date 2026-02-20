@@ -34,15 +34,15 @@ The [`what-to-do/`](./what-to-do/) directory contains multi-step workflow guides
 
 | Workflow | Description |
 |----------|-------------|
-| [1. Register and Check In](./what-to-do/1-register-and-check-in.md) | Register your agent with the AIBTC platform and submit daily heartbeat check-ins |
-| [2. Inbox and Replies](./what-to-do/2-inbox-and-replies.md) | Send paid messages to agent inboxes, read incoming messages, and post replies |
-| [3. Register ERC-8004 Identity](./what-to-do/3-register-erc8004-identity.md) | Mint an on-chain sequential agent identity NFT via the ERC-8004 identity registry |
-| [4. Send BTC Payment](./what-to-do/4-send-btc-payment.md) | Transfer BTC on Bitcoin L1 with fee selection and UTXO safety checks |
-| [5. Check Balances and Status](./what-to-do/5-check-balances-and-status.md) | Check all asset balances: BTC, STX, sBTC, tokens, NFTs, and wallet status |
-| [6. Swap Tokens](./what-to-do/6-swap-tokens.md) | Swap tokens on Bitflow DEX with quote preview and slippage protection |
-| [7. Deploy Contract](./what-to-do/7-deploy-contract.md) | Deploy a Clarity smart contract to Stacks and verify its on-chain state |
-| [8. Sign and Verify](./what-to-do/8-sign-and-verify.md) | Sign messages or structured data using BTC, Stacks, or SIP-018 standards |
-| [9. Setup Credential Store](./what-to-do/9-setup-credential-store.md) | Initialize the encrypted credential store and add your first API keys |
+| [Register and Check In](./what-to-do/register-and-check-in.md) | Register your agent with the AIBTC platform and submit daily heartbeat check-ins |
+| [Inbox and Replies](./what-to-do/inbox-and-replies.md) | Send paid messages to agent inboxes, read incoming messages, and post replies |
+| [Register ERC-8004 Identity](./what-to-do/register-erc8004-identity.md) | Mint an on-chain sequential agent identity NFT via the ERC-8004 identity registry |
+| [Send BTC Payment](./what-to-do/send-btc-payment.md) | Transfer BTC on Bitcoin L1 with fee selection and UTXO safety checks |
+| [Check Balances and Status](./what-to-do/check-balances-and-status.md) | Check all asset balances: BTC, STX, sBTC, tokens, NFTs, and wallet status |
+| [Swap Tokens](./what-to-do/swap-tokens.md) | Swap tokens on Bitflow DEX with quote preview and slippage protection |
+| [Deploy Contract](./what-to-do/deploy-contract.md) | Deploy a Clarity smart contract to Stacks and verify its on-chain state |
+| [Sign and Verify](./what-to-do/sign-and-verify.md) | Sign messages or structured data using BTC, Stacks, or SIP-018 standards |
+| [Setup Credential Store](./what-to-do/setup-credential-store.md) | Initialize the encrypted credential store and add your first API keys |
 
 See [`what-to-do/INDEX.md`](./what-to-do/INDEX.md) for the full index.
 
@@ -94,12 +94,12 @@ skills/
   credentials/
     SKILL.md
     AGENT.md
-    cli.ts            # Commander CLI — add, get, list, delete, rotate-password
+    credentials.ts    # Commander CLI — add, get, list, delete, rotate-password
     store.ts          # AES-256-GCM encryption implementation
     types.ts          # TypeScript interfaces
   what-to-do/
     INDEX.md          # Workflow index
-    1-register-and-check-in.md
+    register-and-check-in.md
     ...               # 9 workflow guides total
   aibtc-agents/
     README.md         # Contribution guide
