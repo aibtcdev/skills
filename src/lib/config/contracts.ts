@@ -275,28 +275,28 @@ export interface BitflowConfig {
 }
 
 /**
- * Get Bitflow configuration from environment
+ * Get Bitflow configuration from environment.
  *
- * TODO: Once API keys are obtained from Bitflow team:
- * 1. Set BITFLOW_API_KEY and BITFLOW_API_HOST environment variables
- * 2. Optionally set BITFLOW_KEEPER_API_KEY and BITFLOW_KEEPER_API_HOST for Keeper features
- * 3. Consider moving keys to Cloudflare Worker proxy for secure npm distribution
+ * As of @bitflowlabs/core-sdk v2.4.2, all API keys are optional.
+ * The SDK works out of the box with public rate limits (500 req/min per IP).
+ *
+ * Optional env vars for higher rate limits:
+ *   - BITFLOW_API_KEY: Core API (tokens, quotes, routes)
+ *   - BITFLOW_API_HOST: Override API host
+ *   - BITFLOW_KEEPER_API_KEY: Keeper automation features
+ *   - BITFLOW_KEEPER_API_HOST: Override Keeper API host
+ *   - BITFLOW_READONLY_API_HOST: Override Stacks read-only node
+ *
+ * Request higher limits: help@bitflow.finance
  */
-export function getBitflowConfig(): BitflowConfig | null {
-  const apiHost = process.env.BITFLOW_API_HOST;
-  const apiKey = process.env.BITFLOW_API_KEY;
+export function getBitflowConfig(): BitflowConfig {
   const readOnlyCallApiHost = process.env.BITFLOW_READONLY_API_HOST || "https://api.hiro.so";
 
-  // Return null if no API key configured (Bitflow features disabled)
-  if (!apiKey) {
-    return null;
-  }
-
   return {
-    apiHost: apiHost || "",
-    apiKey,
+    apiHost: process.env.BITFLOW_API_HOST || "https://bitflowsdk-api-test-7owjsmt8.uk.gateway.dev",
+    apiKey: process.env.BITFLOW_API_KEY,
     readOnlyCallApiHost,
-    keeperApiHost: process.env.BITFLOW_KEEPER_API_HOST,
+    keeperApiHost: process.env.BITFLOW_KEEPER_API_HOST || "https://bitflow-keeper-test-7owjsmt8.uc.gateway.dev",
     keeperApiKey: process.env.BITFLOW_KEEPER_API_KEY,
   };
 }

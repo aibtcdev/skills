@@ -12,13 +12,14 @@ Each skill is a self-contained directory with a `SKILL.md` (used by Claude Code 
 | [settings](./settings/) | `settings/settings.ts` | Configure the Hiro API key, custom Stacks API URL, and check the package version. Settings stored at `~/.aibtc/config.json`. |
 | [btc](./btc/) | `btc/btc.ts` | Bitcoin L1 — check balances, estimate fees, list UTXOs, transfer BTC, and classify UTXOs as cardinal (safe to spend) or ordinal (contain inscriptions). |
 | [ordinals](./ordinals/) | `ordinals/ordinals.ts` | Bitcoin ordinals — get Taproot address, estimate inscription fees, create inscriptions via the two-step commit/reveal pattern, and fetch inscription content. |
-| [signing](./signing/) | `signing/signing.ts` | Message signing and verification — SIP-018 structured data (on-chain verifiable), Stacks plain-text (SIWS-compatible), and Bitcoin BIP-137 message signing. |
+| [signing](./signing/) | `signing/signing.ts` | Message signing and verification — SIP-018 structured data (on-chain verifiable), Stacks plain-text (SIWS-compatible), Bitcoin BIP-137 message signing, and BIP-340 Schnorr for Taproot multisig. |
 | [stx](./stx/) | `stx/stx.ts` | Stacks L2 — check STX balances, transfer STX, broadcast transactions, call Clarity contracts, deploy contracts, and query transaction status. |
 | [sbtc](./sbtc/) | `sbtc/sbtc.ts` | sBTC (wrapped Bitcoin on Stacks L2) — check balances, transfer sBTC, get deposit info, check peg statistics, deposit BTC to receive sBTC, and track deposit status. |
 | [tokens](./tokens/) | `tokens/tokens.ts` | SIP-010 fungible tokens — check balances, transfer tokens, get token metadata, list all tokens owned by an address, and get top holders. |
 | [nft](./nft/) | `nft/nft.ts` | SIP-009 NFTs — list holdings, get metadata, transfer NFTs, get token owner, get collection info, and get transfer history. |
 | [bns](./bns/) | `bns/bns.ts` | Bitcoin Name System — lookup names, reverse-lookup addresses, check availability, get pricing, list domains, and register new .btc names. |
 | [identity](./identity/) | `identity/identity.ts` | ERC-8004 on-chain agent identity — register identities, query info, submit reputation feedback, and manage third-party validation requests. |
+| [bitflow](./bitflow/) | `bitflow/bitflow.ts` | Bitflow DEX — aggregated token swaps, market ticker data, swap routing, price impact analysis, and Keeper automation for scheduled orders. Mainnet-only. |
 | [defi](./defi/) | `defi/defi.ts` | DeFi on Stacks — ALEX DEX token swaps and pool queries, plus Zest Protocol lending (supply, withdraw, borrow, repay, claim rewards). Mainnet-only. |
 | [stacking](./stacking/) | `stacking/stacking.ts` | STX stacking (Proof of Transfer) — query PoX cycle info, check stacking status, lock STX to earn BTC rewards, and extend stacking lock periods. |
 | [pillar](./pillar/) | `pillar/pillar.ts`, `pillar/pillar-direct.ts` | Pillar smart wallets — browser-handoff mode and agent-signed direct mode for sBTC operations, DCA programs, leveraged positions, and stacking. |

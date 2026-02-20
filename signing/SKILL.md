@@ -1,8 +1,8 @@
 ---
 name: signing
-description: Message signing and verification — SIP-018 structured Clarity data signing (on-chain verifiable), Stacks plain-text message signing (SIWS-compatible), and Bitcoin BIP-137 message signing. All signing requires an unlocked wallet; hash and verify operations do not.
+description: Message signing and verification — SIP-018 structured Clarity data signing (on-chain verifiable), Stacks plain-text message signing (SIWS-compatible), Bitcoin BIP-137 message signing, and BIP-340 Schnorr signing for Taproot multisig. All signing requires an unlocked wallet; hash and verify operations do not.
 user-invocable: false
-arguments: sip018-sign | sip018-verify | sip018-hash | stacks-sign | stacks-verify | btc-sign | btc-verify
+arguments: sip018-sign | sip018-verify | sip018-hash | stacks-sign | stacks-verify | btc-sign | btc-verify | schnorr-sign-digest | schnorr-verify-digest
 ---
 
 # Signing Skill
@@ -12,6 +12,7 @@ Provides cryptographic message signing for the Stacks and Bitcoin ecosystems. Th
 - **SIP-018** — Structured Clarity data signing. Signatures are verifiable both off-chain and by on-chain smart contracts via `secp256k1-recover?`.
 - **Stacks messages** — SIWS-compatible plain-text signing. Used for wallet authentication and proving address ownership.
 - **Bitcoin messages** — BIP-137 plain-text signing. Compatible with Electrum, Bitcoin Core, and most Bitcoin wallets.
+- **Schnorr (BIP-340)** — Taproot-native signing over raw 32-byte digests. Used for Taproot script-path spending, multisig coordination, and OP_CHECKSIGADD witness assembly.
 
 ## Usage
 
@@ -275,6 +276,74 @@ Output:
 }
 ```
 
+### schnorr-sign-digest
+
+Sign a raw 32-byte digest with Schnorr (BIP-340) using the wallet's Taproot private key. Use for Taproot script-path spending, multisig coordination, or any case where you need a BIP-340 Schnorr signature over a pre-computed hash (e.g., BIP-341 sighash). Includes a blind-signing safety gate — the first call without `--confirm-blind-sign` returns the digest for review. Requires an unlocked wallet with Taproot keys.
+
+```
+bun run signing/signing.ts schnorr-sign-digest \
+  --digest <64-char-hex> \
+  [--aux-rand <64-char-hex>] \
+  [--confirm-blind-sign]
+```
+
+Options:
+- `--digest` (required) — 32-byte hex-encoded digest to sign (e.g., BIP-341 transaction sighash)
+- `--aux-rand` (optional) — 32-byte hex auxiliary randomness for BIP-340 (improves side-channel resistance)
+- `--confirm-blind-sign` (optional) — Set to confirm you have reviewed the digest and accept blind-signing risk. Without this flag, returns a warning with the digest for review.
+
+Output (without `--confirm-blind-sign`):
+```json
+{
+  "warning": "schnorr-sign-digest signs a raw 32-byte digest...",
+  "digestToReview": "abc123...",
+  "instructions": "Review the digest above. If you trust its origin..."
+}
+```
+
+Output (with `--confirm-blind-sign`):
+```json
+{
+  "success": true,
+  "signature": "abc123...",
+  "publicKey": "def456...",
+  "address": "bc1p...",
+  "network": "mainnet",
+  "signatureFormat": "BIP-340 Schnorr (64 bytes)",
+  "publicKeyFormat": "x-only (32 bytes)",
+  "note": "For Taproot script-path spending, append sighash type byte..."
+}
+```
+
+### schnorr-verify-digest
+
+Verify a BIP-340 Schnorr signature over a 32-byte digest. Takes the digest, signature, and x-only public key, returns whether the signature is valid. Use for verifying Taproot signatures from other agents in multisig coordination.
+
+```
+bun run signing/signing.ts schnorr-verify-digest \
+  --digest <64-char-hex> \
+  --signature <128-char-hex> \
+  --public-key <64-char-hex>
+```
+
+Options:
+- `--digest` (required) — 32-byte hex-encoded digest that was signed
+- `--signature` (required) — 64-byte hex-encoded BIP-340 Schnorr signature
+- `--public-key` (required) — 32-byte hex-encoded x-only public key of the signer
+
+Output:
+```json
+{
+  "success": true,
+  "isValid": true,
+  "digest": "abc123...",
+  "signature": "def456...",
+  "publicKey": "789abc...",
+  "message": "Signature is valid for the given digest and public key",
+  "note": "BIP-340 Schnorr verification. Use for validating signatures in Taproot multisig coordination."
+}
+```
+
 ## Signing Standards Reference
 
 | Standard | Prefix | Use Case | On-Chain Verifiable? |
@@ -282,11 +351,13 @@ Output:
 | SIP-018 | `SIP018` (hex) | Structured Clarity data | Yes (`secp256k1-recover?`) |
 | Stacks | `\x17Stacks Signed Message:\n` | Auth, ownership proof | No (off-chain only) |
 | BIP-137 | `\x18Bitcoin Signed Message:\n` | Bitcoin auth, ownership | No (off-chain only) |
+| BIP-340 | None (raw digest) | Taproot multisig, script-path spending | Yes (OP_CHECKSIG/OP_CHECKSIGADD) |
 
 ## Notes
 
 - SIP-018 signing and Stacks signing require an unlocked wallet (`bun run wallet/wallet.ts unlock`)
 - BTC signing additionally requires Bitcoin keys (automatically present in managed wallets)
-- `sip018-hash` and both `*-verify` subcommands do NOT require an unlocked wallet
-- All signatures use the secp256k1 curve
+- Schnorr signing requires Taproot keys (automatically derived in managed wallets)
+- `sip018-hash`, both `*-verify` subcommands, and `schnorr-verify-digest` do NOT require an unlocked wallet
+- All ECDSA signatures use the secp256k1 curve; Schnorr uses BIP-340 (x-only pubkeys, 64-byte sigs)
 - SIP-018 chain IDs: mainnet = 1, testnet = 2147483648 (0x80000000)

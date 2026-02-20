@@ -34,7 +34,7 @@ import {
   hashSha256Sync,
 } from "@stacks/encryption";
 import { bytesToHex } from "@stacks/common";
-import { secp256k1 } from "@noble/curves/secp256k1.js";
+import { secp256k1, schnorr } from "@noble/curves/secp256k1.js";
 import { hex } from "@scure/base";
 import { NETWORK } from "../src/lib/config/networks.js";
 import { getWalletManager } from "../src/lib/services/wallet-manager.js";
@@ -947,6 +947,196 @@ program
           note:
             "The recovered address is derived from the public key recovered from the signature. " +
             "BIP-137 signatures are compatible with most Bitcoin wallets (Electrum, Bitcoin Core, etc.).",
+        });
+      } catch (error) {
+        handleError(error);
+      }
+    }
+  );
+
+// ---------------------------------------------------------------------------
+// schnorr-sign-digest
+// ---------------------------------------------------------------------------
+
+program
+  .command("schnorr-sign-digest")
+  .description(
+    "Sign a raw 32-byte digest with Schnorr (BIP-340) using the wallet's Taproot private key. " +
+      "Use for Taproot script-path spending, multisig coordination, or any case where " +
+      "you need a BIP-340 Schnorr signature over a pre-computed hash (e.g., BIP-341 sighash). " +
+      "WARNING: This signs raw digests that cannot be human-verified — use --confirm-blind-sign after reviewing the digest. " +
+      "Returns a 64-byte signature and the x-only public key. Requires an unlocked wallet."
+  )
+  .requiredOption(
+    "--digest <hex>",
+    "32-byte hex-encoded digest to sign (e.g., BIP-341 transaction sighash)"
+  )
+  .option(
+    "--aux-rand <hex>",
+    "Optional 32-byte hex auxiliary randomness for BIP-340 (improves side-channel resistance)"
+  )
+  .option(
+    "--confirm-blind-sign",
+    "Confirm you have reviewed the digest and accept the risk of signing a raw hash"
+  )
+  .action(
+    async (opts: {
+      digest: string;
+      auxRand?: string;
+      confirmBlindSign?: boolean;
+    }) => {
+      try {
+        // Validate digest format
+        if (opts.digest.length !== 64 || !/^[0-9a-fA-F]+$/.test(opts.digest)) {
+          throw new Error(
+            "--digest must be exactly 64 hex characters (32 bytes)"
+          );
+        }
+
+        // Validate aux-rand format if provided
+        if (
+          opts.auxRand &&
+          (opts.auxRand.length !== 64 || !/^[0-9a-fA-F]+$/.test(opts.auxRand))
+        ) {
+          throw new Error(
+            "--aux-rand must be exactly 64 hex characters (32 bytes)"
+          );
+        }
+
+        // Safety gate: require explicit confirmation before signing a raw digest
+        if (!opts.confirmBlindSign) {
+          printJson({
+            warning:
+              "schnorr-sign-digest signs a raw 32-byte digest that cannot be decoded or human-verified. " +
+              "If an attacker controls the digest value, they could trick you into signing a malicious " +
+              "transaction sighash or other sensitive data.",
+            digestToReview: opts.digest,
+            instructions:
+              "Review the digest above. If you trust its origin and intent, re-call schnorr-sign-digest " +
+              "with the same parameters plus --confirm-blind-sign to proceed with signing.",
+          });
+          return;
+        }
+
+        const account = requireUnlockedWallet();
+
+        if (!account.taprootPrivateKey || !account.taprootPublicKey) {
+          throw new Error(
+            "Taproot keys not available. Ensure the wallet has Taproot key derivation."
+          );
+        }
+
+        if (!account.taprootAddress) {
+          throw new Error(
+            "Taproot address not available for this account."
+          );
+        }
+
+        const digestBytes = hex.decode(opts.digest);
+        const auxBytes = opts.auxRand ? hex.decode(opts.auxRand) : undefined;
+
+        // Sign with Schnorr (BIP-340)
+        const signature = schnorr.sign(
+          digestBytes,
+          account.taprootPrivateKey,
+          auxBytes
+        );
+
+        const xOnlyPubkey = account.taprootPublicKey;
+
+        printJson({
+          success: true,
+          signature: hex.encode(signature),
+          publicKey: hex.encode(xOnlyPubkey),
+          address: account.taprootAddress,
+          network: NETWORK,
+          signatureFormat: "BIP-340 Schnorr (64 bytes)",
+          publicKeyFormat: "x-only (32 bytes)",
+          note:
+            "For Taproot script-path spending, append sighash type byte if not SIGHASH_DEFAULT (0x00). " +
+            "Use this signature with OP_CHECKSIGADD for multisig witness assembly.",
+        });
+      } catch (error) {
+        handleError(error);
+      }
+    }
+  );
+
+// ---------------------------------------------------------------------------
+// schnorr-verify-digest
+// ---------------------------------------------------------------------------
+
+program
+  .command("schnorr-verify-digest")
+  .description(
+    "Verify a BIP-340 Schnorr signature over a 32-byte digest. " +
+      "Takes the digest, signature, and public key, returns whether the signature is valid. " +
+      "Use for verifying Taproot signatures from other agents in multisig coordination."
+  )
+  .requiredOption(
+    "--digest <hex>",
+    "32-byte hex-encoded digest that was signed"
+  )
+  .requiredOption(
+    "--signature <hex>",
+    "64-byte hex-encoded BIP-340 Schnorr signature"
+  )
+  .requiredOption(
+    "--public-key <hex>",
+    "32-byte hex-encoded x-only public key of the signer"
+  )
+  .action(
+    async (opts: {
+      digest: string;
+      signature: string;
+      publicKey: string;
+    }) => {
+      try {
+        // Validate inputs
+        if (opts.digest.length !== 64 || !/^[0-9a-fA-F]+$/.test(opts.digest)) {
+          throw new Error(
+            "--digest must be exactly 64 hex characters (32 bytes)"
+          );
+        }
+        if (
+          opts.signature.length !== 128 ||
+          !/^[0-9a-fA-F]+$/.test(opts.signature)
+        ) {
+          throw new Error(
+            "--signature must be exactly 128 hex characters (64 bytes)"
+          );
+        }
+        if (
+          opts.publicKey.length !== 64 ||
+          !/^[0-9a-fA-F]+$/.test(opts.publicKey)
+        ) {
+          throw new Error(
+            "--public-key must be exactly 64 hex characters (32 bytes)"
+          );
+        }
+
+        const digestBytes = hex.decode(opts.digest);
+        const signatureBytes = hex.decode(opts.signature);
+        const publicKeyBytes = hex.decode(opts.publicKey);
+
+        // Verify the Schnorr signature
+        const isValid = schnorr.verify(
+          signatureBytes,
+          digestBytes,
+          publicKeyBytes
+        );
+
+        printJson({
+          success: true,
+          isValid,
+          digest: opts.digest,
+          signature: opts.signature,
+          publicKey: opts.publicKey,
+          message: isValid
+            ? "Signature is valid for the given digest and public key"
+            : "Signature is INVALID",
+          note:
+            "BIP-340 Schnorr verification. Use for validating signatures in Taproot multisig coordination.",
         });
       } catch (error) {
         handleError(error);
