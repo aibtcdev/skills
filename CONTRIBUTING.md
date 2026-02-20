@@ -102,7 +102,7 @@ Common scopes: `wallet`, `btc`, `stx`, `sbtc`, `tokens`, `nft`, `bns`, `identity
 ## Security
 
 - **Never commit private keys, seed phrases, passwords, or raw API keys**
-- Wallet mnemonics are AES-GCM encrypted by the wallet skill — do not bypass the encryption layer
+- Wallet mnemonics are AES-256-GCM encrypted by the wallet skill — do not bypass the encryption layer
 - All `--password` and `--mnemonic` options are marked sensitive in CLI scripts and should not be logged
 - If you discover a security vulnerability, please open a private GitHub security advisory rather than a public issue
 
