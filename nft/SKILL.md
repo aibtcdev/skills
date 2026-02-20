@@ -3,6 +3,9 @@ name: nft
 description: SIP-009 NFT operations on Stacks L2 — list NFT holdings, get token metadata, transfer NFTs, get token owner, get collection information, and get transfer history. Transfer operations require an unlocked wallet.
 user-invocable: false
 arguments: get-holdings | get-metadata | transfer | get-owner | get-collection-info | get-history
+entry: nft/nft.ts
+requires: [wallet]
+tags: [l2, write]
 ---
 
 # NFT Skill

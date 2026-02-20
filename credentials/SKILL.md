@@ -3,6 +3,9 @@ name: credentials
 description: Encrypted credential store — add, retrieve, list, and delete named secrets (API keys, tokens, passwords) stored AES-256-GCM encrypted at ~/.aibtc/credentials.json. Each write operation requires the master password; listing metadata does not.
 user-invocable: false
 arguments: add | get | list | delete | rotate-password
+entry: credentials/cli.ts
+requires: []
+tags: [infrastructure, sensitive]
 ---
 
 # Credentials Skill

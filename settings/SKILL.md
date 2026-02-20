@@ -3,6 +3,9 @@ name: settings
 description: Manage AIBTC skill settings stored at ~/.aibtc/config.json. Configure the Hiro API key for authenticated rate limits, set a custom Stacks API node URL, and check the current package version.
 user-invocable: false
 arguments: set-hiro-api-key | get-hiro-api-key | delete-hiro-api-key | set-stacks-api-url | get-stacks-api-url | delete-stacks-api-url | get-server-version
+entry: settings/settings.ts
+requires: []
+tags: [infrastructure]
 ---
 
 # Settings Skill

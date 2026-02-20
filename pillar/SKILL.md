@@ -3,6 +3,9 @@ name: pillar
 description: Pillar smart wallet operations in two modes — browser-handoff (pillar.ts) opens the Pillar frontend for user signing, and agent-signed direct (pillar-direct.ts) signs locally with a secp256k1 keypair and submits directly to the Pillar API (no browser required, gas sponsored). Supports sBTC send/supply/boost/unwind, DCA programs, stacking, key management, wallet creation, and position queries.
 user-invocable: false
 arguments: connect | disconnect | status | send | fund | add-admin | supply | auto-compound | unwind | boost | position | create-wallet | invite | dca-invite | dca-partners | dca-leaderboard | dca-status | key-generate | key-unlock | key-lock | key-info | direct-boost | direct-unwind | direct-supply | direct-send | direct-auto-compound | direct-position | direct-withdraw-collateral | direct-add-admin | direct-create-wallet | direct-dca-invite | direct-dca-partners | direct-dca-leaderboard | direct-dca-status | direct-quote | direct-resolve-recipient | direct-stack-stx | direct-revoke-fast-pool | direct-stacking-status
+entry: pillar/pillar.ts, pillar/pillar-direct.ts
+requires: [wallet]
+tags: [l2, defi, write, mainnet-only]
 ---
 
 # Pillar Skill

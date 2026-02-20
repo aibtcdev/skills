@@ -3,6 +3,9 @@ name: bitflow
 description: Bitflow DEX on Stacks — token swaps with aggregated liquidity, market ticker data, swap routing, price impact analysis, and Keeper automation for scheduled orders. All operations are mainnet-only. No API key required (500 req/min public rate limit). Write operations require an unlocked wallet.
 user-invocable: false
 arguments: get-ticker | get-tokens | get-swap-targets | get-quote | get-routes | swap | get-keeper-contract | create-order | get-order | cancel-order | get-keeper-user
+entry: bitflow/bitflow.ts
+requires: [wallet]
+tags: [l2, defi, write, mainnet-only, requires-funds]
 ---
 
 # Bitflow Skill
