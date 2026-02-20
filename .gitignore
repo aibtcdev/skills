@@ -7,6 +7,43 @@ node_modules/
 # Build output
 dist/
 
+# TypeScript compiled output in skill directories
+# (skills run directly via bun, not compiled via tsc)
+wallet/*.js
+wallet/*.d.ts
+settings/*.js
+settings/*.d.ts
+btc/*.js
+btc/*.d.ts
+ordinals/*.js
+ordinals/*.d.ts
+signing/*.js
+signing/*.d.ts
+stx/*.js
+stx/*.d.ts
+sbtc/*.js
+sbtc/*.d.ts
+tokens/*.js
+tokens/*.d.ts
+nft/*.js
+nft/*.d.ts
+bns/*.js
+bns/*.d.ts
+identity/*.js
+identity/*.d.ts
+defi/*.js
+defi/*.d.ts
+stacking/*.js
+stacking/*.d.ts
+pillar/*.js
+pillar/*.d.ts
+query/*.js
+query/*.d.ts
+x402/*.js
+x402/*.d.ts
+yield-hunter/*.js
+yield-hunter/*.d.ts
+
 # Environment
 .env
 .env.*
@@ -14,6 +51,10 @@ dist/
 
 # OS
 .DS_Store
+*.swp
+*.swo
+*~
 
 # Wallet state (sensitive)
 .aibtc/
+
