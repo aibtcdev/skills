@@ -47,7 +47,7 @@ export interface FeedbackEntry {
   wadValue: string;
   tag1: string;
   tag2: string;
-  timestamp: number;
+  isRevoked: boolean;
 }
 
 export interface ValidationStatus {
@@ -333,17 +333,22 @@ export class Erc8004Service {
   }
 
   /**
-   * Get specific feedback entry by index
+   * Get specific feedback entry by client and index
+   *
+   * Uses `read-feedback (agent-id uint) (client principal) (index uint)` from the
+   * reputation registry. The feedback map is keyed by {agent-id, client, index},
+   * so both the client principal and the index are required to retrieve an entry.
    */
   async getFeedback(
     agentId: number,
+    client: string,
     index: number,
     callerAddress: string
   ): Promise<FeedbackEntry | null> {
     const result = await this.hiro.callReadOnlyFunction(
       this.contracts.reputationRegistry,
-      "get-feedback-at-index",
-      [uintCV(agentId), uintCV(index)],
+      "read-feedback",
+      [uintCV(agentId), principalCV(client), uintCV(index)],
       callerAddress
     );
 
@@ -356,15 +361,15 @@ export class Erc8004Service {
       return null;
     }
 
-    const fb = data.value.value.value;
+    const fb = data.value.value;
     return {
-      client: fb.client.value,
+      client,
       value: parseInt(fb.value.value, 10),
       valueDecimals: parseInt(fb["value-decimals"].value, 10),
       wadValue: fb["wad-value"].value,
       tag1: fb.tag1.value,
       tag2: fb.tag2.value,
-      timestamp: parseInt(fb.timestamp.value, 10),
+      isRevoked: fb["is-revoked"].value,
     };
   }
 
