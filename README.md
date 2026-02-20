@@ -197,7 +197,7 @@ bun run wallet/wallet.ts unlock --password yourpassword
 bun run wallet/wallet.ts status
 ```
 
-> **Note:** Wallet mnemonics are encrypted with AES-GCM before being written to disk at `~/.aibtc/`. Your password is never stored — keep it safe.
+> **Note:** Wallet mnemonics are encrypted with AES-256-GCM before being written to disk at `~/.aibtc/`. Your password is never stored — keep it safe.
 
 **Important:** Your seed phrase is the only way to recover your wallet if you lose your password. Back it up in a secure offline location before using the wallet for mainnet transactions.
 
