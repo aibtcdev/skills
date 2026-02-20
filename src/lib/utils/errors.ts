@@ -4,13 +4,22 @@ import { redactSensitive } from "./redact.js";
  * Base error class for aibtc skills
  */
 export class AibtcError extends Error {
+  public readonly suggestion: string;
+  public readonly docsRef?: string;
+
   constructor(
     message: string,
     public readonly code: string,
-    public readonly details?: unknown
+    public readonly details?: unknown,
+    suggestion?: string,
+    docsRef?: string
   ) {
     super(message);
     this.name = "AibtcError";
+    this.suggestion =
+      suggestion ??
+      "File an issue at github.com/aibtcdev/skills/issues if this persists";
+    this.docsRef = docsRef;
   }
 }
 
@@ -66,8 +75,13 @@ export class ContractError extends AibtcError {
  * Base error for wallet operations
  */
 export class WalletError extends AibtcError {
-  constructor(message: string, details?: unknown) {
-    super(message, "WALLET_ERROR", details);
+  constructor(
+    message: string,
+    details?: unknown,
+    suggestion?: string,
+    docsRef?: string
+  ) {
+    super(message, "WALLET_ERROR", details, suggestion, docsRef);
     this.name = "WalletError";
   }
 }
@@ -77,7 +91,12 @@ export class WalletError extends AibtcError {
  */
 export class WalletLockedError extends WalletError {
   constructor() {
-    super("Wallet is locked. Use wallet_unlock to unlock it.");
+    super(
+      "Wallet is locked. Run: bun run wallet/wallet.ts unlock --password <password>",
+      undefined,
+      "Run: bun run wallet/wallet.ts unlock --password <password>",
+      "wallet/SKILL.md"
+    );
     this.name = "WalletLockedError";
   }
 }
@@ -87,7 +106,12 @@ export class WalletLockedError extends WalletError {
  */
 export class WalletNotFoundError extends WalletError {
   constructor(walletId: string) {
-    super(`Wallet not found: ${walletId}`);
+    super(
+      `Wallet not found: ${walletId}. Create one with: bun run wallet/wallet.ts create --name main --password <password>`,
+      undefined,
+      "Run: bun run wallet/wallet.ts create --name main --password <password> or import with: bun run wallet/wallet.ts import --name main --mnemonic <mnemonic> --password <password>",
+      "wallet/SKILL.md"
+    );
     this.name = "WalletNotFoundError";
   }
 }
@@ -97,7 +121,12 @@ export class WalletNotFoundError extends WalletError {
  */
 export class InvalidPasswordError extends WalletError {
   constructor() {
-    super("Invalid password");
+    super(
+      "Invalid password. Check for typos and try again.",
+      undefined,
+      "Double-check your password. If forgotten, recover via mnemonic: bun run wallet/wallet.ts import --name <name> --mnemonic <mnemonic> --password <newpassword>",
+      "wallet/SKILL.md"
+    );
     this.name = "InvalidPasswordError";
   }
 }
@@ -107,7 +136,12 @@ export class InvalidPasswordError extends WalletError {
  */
 export class InvalidMnemonicError extends WalletError {
   constructor() {
-    super("Invalid mnemonic phrase");
+    super(
+      "Invalid mnemonic phrase",
+      undefined,
+      "Ensure the mnemonic is a valid BIP39 phrase (12 or 24 words). Check for typos or extra spaces.",
+      "wallet/SKILL.md"
+    );
     this.name = "InvalidMnemonicError";
   }
 }
@@ -123,7 +157,19 @@ export class InsufficientBalanceError extends AibtcError {
     public readonly required: string,
     public readonly shortfall: string
   ) {
-    super(message, "INSUFFICIENT_BALANCE", { tokenType, balance, required, shortfall });
+    const suggestion =
+      tokenType === 'STX'
+        ? "Fund your wallet with STX. Testnet faucet: https://explorer.hiro.so/sandbox/faucet?chain=testnet. " +
+          "Mainnet: purchase STX on an exchange and send to your Stacks address."
+        : "Deposit BTC to receive sBTC. Run: bun run sbtc/sbtc.ts deposit --amount <satoshis> " +
+          "or see the deposit workflow guide.";
+    super(
+      message,
+      "INSUFFICIENT_BALANCE",
+      { tokenType, balance, required, shortfall },
+      suggestion,
+      "what-to-do/check-balances.md"
+    );
     this.name = "InsufficientBalanceError";
   }
 }
@@ -131,12 +177,20 @@ export class InsufficientBalanceError extends AibtcError {
 /**
  * Format error for skill output
  */
-export function formatError(error: unknown): { message: string; code?: string; details?: unknown } {
+export function formatError(error: unknown): {
+  message: string;
+  code?: string;
+  details?: unknown;
+  suggestion?: string;
+  docsRef?: string;
+} {
   if (error instanceof AibtcError) {
     return {
       message: redactSensitive(error.message),
       code: error.code,
       details: error.details,
+      suggestion: error.suggestion,
+      docsRef: error.docsRef,
     };
   }
 
