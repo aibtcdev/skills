@@ -3,6 +3,10 @@ name: sbtc
 description: sBTC token operations on Stacks L2 — check balances, transfer sBTC, get deposit info, check peg statistics, deposit BTC to receive sBTC, and track deposit status. Transfer and deposit operations require an unlocked wallet.
 user-invocable: false
 arguments: get-balance | transfer | get-deposit-info | get-peg-info | deposit | deposit-status
+category: assets
+requires: [wallet]
+tags: [requires-wallet, has-read-ops, has-write-ops, requires-funds]
+entry-point: sbtc.ts
 ---
 
 # sBTC Skill

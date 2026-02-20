@@ -3,6 +3,10 @@ name: x402
 description: x402 paid API endpoints, inbox messaging, project scaffolding, and OpenRouter AI integration. Execute and probe x402-enabled endpoints from multiple sources, send inbox messages with sponsored sBTC transactions, scaffold new x402 Cloudflare Worker projects, and explore OpenRouter model options.
 user-invocable: false
 arguments: list-endpoints | execute-endpoint | probe-endpoint | send-inbox-message | scaffold-endpoint | scaffold-ai-endpoint | openrouter-guide | openrouter-models
+category: payments
+requires: [wallet]
+tags: [requires-wallet, has-read-ops, has-write-ops, requires-funds]
+entry-point: x402.ts
 ---
 
 # x402 Skill

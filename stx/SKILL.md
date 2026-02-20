@@ -3,6 +3,10 @@ name: stx
 description: Stacks L2 STX token operations — check balances, transfer STX, broadcast pre-signed transactions, call Clarity contracts, deploy contracts, and check transaction status. Transfer and contract operations require an unlocked wallet.
 user-invocable: false
 arguments: get-balance | transfer | broadcast-transaction | call-contract | deploy-contract | get-transaction-status
+category: stacks-l2
+requires: [wallet]
+tags: [requires-wallet, has-read-ops, has-write-ops, requires-funds]
+entry-point: stx.ts
 ---
 
 # STX Skill

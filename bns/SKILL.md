@@ -3,6 +3,10 @@ name: bns
 description: Bitcoin Name System (BNS) operations — lookup names, reverse-lookup addresses, check availability, get pricing, list domains, and register new .btc names using single-transaction claim or two-step preorder/register flow.
 user-invocable: false
 arguments: lookup | reverse-lookup | get-info | check-availability | get-price | list-user-domains | claim-fast | preorder | register
+category: assets
+requires: [wallet]
+tags: [requires-wallet, has-read-ops, has-write-ops, requires-funds]
+entry-point: bns.ts
 ---
 
 # BNS Skill

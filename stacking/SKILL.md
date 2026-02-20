@@ -3,6 +3,10 @@ name: stacking
 description: STX stacking operations on Stacks — query PoX cycle info, check stacking status, lock STX to earn BTC rewards (stack-stx), and extend an existing stacking lock period. Write operations require an unlocked wallet.
 user-invocable: false
 arguments: get-pox-info | get-stacking-status | stack-stx | extend-stacking
+category: defi
+requires: [wallet]
+tags: [requires-wallet, has-read-ops, has-write-ops, requires-funds]
+entry-point: stacking.ts
 ---
 
 # Stacking Skill

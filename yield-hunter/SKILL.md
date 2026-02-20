@@ -3,6 +3,10 @@ name: yield-hunter
 description: Autonomous sBTC yield hunting daemon — monitors wallet sBTC balance and automatically deposits to Zest Protocol when balance exceeds a configurable threshold. Only works on mainnet. Requires an unlocked wallet with sBTC balance and STX for transaction fees.
 user-invocable: false
 arguments: start | stop | status | configure
+category: defi
+requires: [wallet, sbtc]
+tags: [requires-wallet, mainnet-only, requires-funds, has-write-ops]
+entry-point: yield-hunter.ts
 ---
 
 # Yield Hunter Skill

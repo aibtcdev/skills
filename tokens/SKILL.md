@@ -3,6 +3,10 @@ name: tokens
 description: SIP-010 fungible token operations on Stacks L2 — check balances, transfer tokens, get token metadata, list all tokens owned by an address, and get top token holders. Supports well-known tokens by symbol (sBTC, USDCx, ALEX, DIKO) or full contract ID.
 user-invocable: false
 arguments: get-balance | transfer | get-info | list-user-tokens | get-holders
+category: assets
+requires: [wallet]
+tags: [requires-wallet, has-read-ops, has-write-ops, requires-funds]
+entry-point: tokens.ts
 ---
 
 # Tokens Skill

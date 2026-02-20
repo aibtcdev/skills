@@ -3,6 +3,10 @@ name: ordinals
 description: Bitcoin ordinals operations — get the Taproot receive address, estimate inscription fees, create inscriptions via the two-step commit/reveal pattern, and fetch existing inscription content from reveal transactions.
 user-invocable: false
 arguments: get-taproot-address | estimate-fee | inscribe | inscribe-reveal | get-inscription
+category: bitcoin-l1
+requires: [wallet]
+tags: [requires-wallet, has-read-ops, has-write-ops, requires-funds]
+entry-point: ordinals.ts
 ---
 
 # Ordinals Skill

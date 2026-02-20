@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "build": "bun build src/lib/index.ts --outdir dist",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "generate-manifest": "bun run scripts/generate-skills-json.ts",
+    "check-manifest": "bun run scripts/generate-skills-json.ts --check"
   },
   "keywords": [
     "claude",
