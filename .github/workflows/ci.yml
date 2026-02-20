@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  ci:
+    name: Typecheck, validate, and manifest freshness
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: TypeScript typecheck
+        run: bun run typecheck
+
+      - name: Validate skill frontmatter
+        run: bun run validate
+
+      - name: Check manifest freshness
+        run: |
+          # Save the committed skills array (excluding timestamp) for comparison
+          jq '.skills' skills.json > /tmp/skills-before.json
+          # Regenerate the manifest
+          bun run manifest
+          # Compare only the skills array — timestamp changes are expected and ignored
+          jq '.skills' skills.json > /tmp/skills-after.json
+          if ! diff -q /tmp/skills-before.json /tmp/skills-after.json > /dev/null 2>&1; then
+            echo "skills.json is stale — run 'bun run manifest' and commit the result."
+            diff /tmp/skills-before.json /tmp/skills-after.json
+            exit 1
+          fi
+          echo "skills.json is up to date."
