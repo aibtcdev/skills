@@ -30,6 +30,9 @@ Steps to add a new skill:
    description: One-line description of what the skill does
    user-invocable: false
    arguments: subcommand1 | subcommand2 | subcommand3
+   entry: <name>/<name>.ts
+   requires: [wallet]
+   tags: [l2, write]
    ---
    ```
 3. Add `AGENT.md` covering prerequisites, safety checks, and error-handling patterns
@@ -45,7 +48,7 @@ Workflow guides combine multiple skills into a complete end-to-end operation wit
 
 Steps to add a workflow:
 
-1. Add `what-to-do/<N>-<slug>.md` following the existing numbered naming pattern (e.g. `10-my-workflow.md`)
+1. Add `what-to-do/<slug>.md` with YAML frontmatter including `title`, `description`, `skills`, `estimated-steps`, and `order`
 2. Update `what-to-do/INDEX.md` with a new entry
 3. Add a row to the Workflow Discovery table in `README.md`
 4. Commit: `docs(what-to-do): add <workflow-name> workflow`

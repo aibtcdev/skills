@@ -144,6 +144,9 @@ name: btc
 description: Bitcoin L1 operations — check balances, ...
 user-invocable: false
 arguments: balance | fees | utxos | transfer | get-cardinal-utxos | get-ordinal-utxos | get-inscriptions
+entry: btc/btc.ts
+requires: [wallet]
+tags: [l1, write, requires-funds]
 ---
 ```
 
@@ -151,6 +154,9 @@ arguments: balance | fees | utxos | transfer | get-cardinal-utxos | get-ordinal-
 - `description` — What the skill does (used by Claude Code for discovery)
 - `user-invocable: false` — Claude Code invokes skills internally, not users
 - `arguments` — Pipe-separated list of subcommands
+- `entry` — Path to the CLI script(s), relative to the repo root
+- `requires` — Skills that must be set up first (e.g. `[wallet]`)
+- `tags` — Controlled vocabulary for filtering: `read-only`, `write`, `mainnet-only`, `requires-funds`, `sensitive`, `infrastructure`, `defi`, `l1`, `l2`
 
 ### Shared Infrastructure (`src/lib/`)
 
