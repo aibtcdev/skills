@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0](https://github.com/aibtcdev/skills/compare/skills-v0.4.0...skills-v0.5.0) (2026-02-20)
+
+
+### Features
+
+* AX/UX audit phases 1-5 (skills repo) ([#12](https://github.com/aibtcdev/skills/issues/12)) ([680dcf5](https://github.com/aibtcdev/skills/commit/680dcf593c57aa55cd6140e4590434e5e8de38a3))
+
 ## [0.4.0](https://github.com/aibtcdev/skills/compare/skills-v0.3.0...skills-v0.4.0) (2026-02-20)
 
 
