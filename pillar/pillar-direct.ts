@@ -29,6 +29,7 @@ import { getHiroApi } from "../src/lib/services/hiro-api.js";
 import { NETWORK, getExplorerTxUrl } from "../src/lib/config/networks.js";
 import { PILLAR_API_KEY } from "../src/lib/config/pillar.js";
 import { formatStx } from "../src/lib/utils/formatting.js";
+import { printJson, handleError } from "../src/lib/utils/cli.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -174,20 +175,6 @@ async function resolveRecipientAddress(
     throw new Error(`BNS name "${bnsName}" could not be resolved.`);
   }
   return bnsLookup.data.address;
-}
-
-// ---------------------------------------------------------------------------
-// Output helpers
-// ---------------------------------------------------------------------------
-
-function printJson(data: unknown): void {
-  console.log(JSON.stringify(data, null, 2));
-}
-
-function handleError(error: unknown): never {
-  const message = error instanceof Error ? error.message : String(error);
-  printJson({ error: message });
-  process.exit(1);
 }
 
 // ---------------------------------------------------------------------------

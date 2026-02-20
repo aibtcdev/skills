@@ -12,20 +12,7 @@ import { getStxBalance } from "../src/lib/services/hiro-api.js";
 import { getWalletAddress } from "../src/lib/services/x402.service.js";
 import { NETWORK } from "../src/lib/config/networks.js";
 import type { Network } from "../src/lib/config/networks.js";
-
-// ---------------------------------------------------------------------------
-// Output helpers
-// ---------------------------------------------------------------------------
-
-function printJson(data: unknown): void {
-  console.log(JSON.stringify(data, null, 2));
-}
-
-function handleError(error: unknown): never {
-  const message = error instanceof Error ? error.message : String(error);
-  printJson({ error: message });
-  process.exit(1);
-}
+import { printJson, handleError } from "../src/lib/utils/cli.js";
 
 // ---------------------------------------------------------------------------
 // Program

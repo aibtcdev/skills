@@ -14,6 +14,7 @@ import * as path from "path";
 import * as os from "os";
 import { getPillarApi } from "../src/lib/services/pillar-api.service.js";
 import { NETWORK, getExplorerTxUrl } from "../src/lib/config/networks.js";
+import { printJson, handleError } from "../src/lib/utils/cli.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -136,20 +137,6 @@ async function pollOperationStatus(
   }
 
   return { status: "timeout", error: "Operation timed out waiting for completion" };
-}
-
-// ---------------------------------------------------------------------------
-// Output helpers
-// ---------------------------------------------------------------------------
-
-function printJson(data: unknown): void {
-  console.log(JSON.stringify(data, null, 2));
-}
-
-function handleError(error: unknown): never {
-  const message = error instanceof Error ? error.message : String(error);
-  printJson({ error: message });
-  process.exit(1);
 }
 
 // ---------------------------------------------------------------------------
