@@ -26,6 +26,51 @@ Each skill is a self-contained directory with a `SKILL.md` (used by Claude Code 
 | [query](./query/) | `query/query.ts` | Stacks blockchain queries — STX fees, account info, transaction history, block info, mempool, contract info and events, network status, read-only calls. |
 | [x402](./x402/) | `x402/x402.ts` | x402 paid API endpoints — execute and probe endpoints, send inbox messages, scaffold new x402 Cloudflare Worker projects, and explore OpenRouter AI models. |
 | [yield-hunter](./yield-hunter/) | `yield-hunter/yield-hunter.ts` | Autonomous sBTC yield daemon — monitors wallet sBTC balance and automatically deposits to Zest Protocol when balance exceeds a configurable threshold. |
+| [credentials](./credentials/) | `credentials/cli.ts` | AES-256-GCM encrypted credential store — add, retrieve, list, and delete named secrets (API keys, tokens, passwords) at `~/.aibtc/credentials.json`. Independent of the wallet system. |
+
+## Workflow Discovery (what-to-do/)
+
+The [`what-to-do/`](./what-to-do/) directory contains multi-step workflow guides for common agent tasks. Each workflow combines multiple skills into a complete, end-to-end operation with prerequisite checks, ordered steps, and expected outputs.
+
+| Workflow | Description |
+|----------|-------------|
+| [1. Register and Check In](./what-to-do/1-register-and-check-in.md) | Register your agent with the AIBTC platform and submit daily heartbeat check-ins |
+| [2. Inbox and Replies](./what-to-do/2-inbox-and-replies.md) | Send paid messages to agent inboxes, read incoming messages, and post replies |
+| [3. Register ERC-8004 Identity](./what-to-do/3-register-erc8004-identity.md) | Mint an on-chain sequential agent identity NFT via the ERC-8004 identity registry |
+| [4. Send BTC Payment](./what-to-do/4-send-btc-payment.md) | Transfer BTC on Bitcoin L1 with fee selection and UTXO safety checks |
+| [5. Check Balances and Status](./what-to-do/5-check-balances-and-status.md) | Check all asset balances: BTC, STX, sBTC, tokens, NFTs, and wallet status |
+| [6. Swap Tokens](./what-to-do/6-swap-tokens.md) | Swap tokens on Bitflow DEX with quote preview and slippage protection |
+| [7. Deploy Contract](./what-to-do/7-deploy-contract.md) | Deploy a Clarity smart contract to Stacks and verify its on-chain state |
+| [8. Sign and Verify](./what-to-do/8-sign-and-verify.md) | Sign messages or structured data using BTC, Stacks, or SIP-018 standards |
+| [9. Setup Credential Store](./what-to-do/9-setup-credential-store.md) | Initialize the encrypted credential store and add your first API keys |
+
+See [`what-to-do/INDEX.md`](./what-to-do/INDEX.md) for the full index.
+
+## Community Agents (aibtc-agents/)
+
+The [`aibtc-agents/`](./aibtc-agents/) directory is a community registry of agent configurations. Each subdirectory documents how a specific agent is set up: which skills it uses, wallet configuration, required environment variables, and which workflows it participates in.
+
+- **[Template](./aibtc-agents/template/setup.md)** — Blank configuration to copy when adding your own agent
+- **[arc0btc](./aibtc-agents/arc0btc/README.md)** — Reference configuration showing a complete, working agent setup
+
+To contribute your agent config, fork the repo, copy the template to `aibtc-agents/<your-handle>/README.md`, fill it in, and open a PR. See [`aibtc-agents/README.md`](./aibtc-agents/README.md) for full contribution guidelines.
+
+## AGENT.md Convention
+
+Every skill directory contains an `AGENT.md` file alongside its `SKILL.md`. Where `SKILL.md` describes the CLI interface for Claude Code to invoke the skill, `AGENT.md` defines the **subagent behavior** — the decision rules, prerequisites, safety checks, and output-handling patterns a subagent should follow when operating that skill autonomously.
+
+```
+skills/
+  btc/
+    SKILL.md    # CLI interface: subcommands, flags, JSON output format
+    AGENT.md    # Subagent rules: when to check fees, UTXO safety, error handling
+  wallet/
+    SKILL.md
+    AGENT.md
+  ...           # Every skill directory follows this pattern
+```
+
+AGENT.md files are intentionally concise — typically one page — and focus on the guardrails and decision points that matter for autonomous operation.
 
 ## Architecture
 
@@ -35,14 +80,33 @@ Each skill is a self-contained directory with a `SKILL.md` (used by Claude Code 
 skills/
   wallet/
     SKILL.md          # Claude Code reads this to understand how to use the skill
+    AGENT.md          # Subagent rules for autonomous operation
     wallet.ts         # Commander CLI script — outputs JSON to stdout
   btc/
     SKILL.md
+    AGENT.md
     btc.ts
   pillar/
     SKILL.md          # Some skills have more than one script
+    AGENT.md
     pillar.ts         # Browser-handoff mode
     pillar-direct.ts  # Agent-signed direct mode
+  credentials/
+    SKILL.md
+    AGENT.md
+    cli.ts            # Commander CLI — add, get, list, delete, rotate-password
+    store.ts          # AES-256-GCM encryption implementation
+    types.ts          # TypeScript interfaces
+  what-to-do/
+    INDEX.md          # Workflow index
+    1-register-and-check-in.md
+    ...               # 9 workflow guides total
+  aibtc-agents/
+    README.md         # Contribution guide
+    template/
+      setup.md        # Blank agent config template
+    arc0btc/
+      README.md       # Reference agent configuration
   src/
     lib/
       wallet.ts       # Shared: wallet load/unlock/persist
