@@ -37,12 +37,15 @@ skills/
   what-to-do/       # Multi-step workflow guides (9 guides)
   aibtc-agents/     # Community agent configuration registry
   src/
-    lib/            # Shared infrastructure modules
-      config/       # Network config, contract addresses, Pillar config
-      wallet.ts     # Wallet load/unlock/persist
-      config.ts     # Read/write ~/.aibtc/config.json
-      stacks-api.ts # Hiro Stacks API client
-      btc-api.ts    # mempool.space + Hiro Ordinals API client
+    lib/                  # Shared infrastructure modules
+      services/           # External API + wallet services
+        wallet-manager.ts # Wallet load/unlock/persist
+        hiro-api.ts       # Hiro Stacks API client
+        mempool-api.ts    # mempool.space + Hiro Ordinals API client
+      config/             # Network config, contract addresses, Pillar config, other config utilities
+      utils/
+        storage.ts        # Read/write ~/.aibtc/config.json and local storage
+      transactions/       # Transaction builders and helpers
   scripts/
     generate-manifest.ts   # Generates skills.json from SKILL.md frontmatter
     validate-frontmatter.ts # Validates all SKILL.md frontmatter fields
@@ -114,12 +117,12 @@ Each skill script uses [Commander.js](https://github.com/tj/commander.js) for ar
 
 | Module | Purpose |
 |--------|---------|
-| `wallet.ts` | Load encrypted wallets, unlock with password, persist session to `~/.aibtc/` |
-| `config.ts` | Read and write `~/.aibtc/config.json` (API keys, active wallet, network) |
+| `src/lib/services/wallet-manager.ts` | Load encrypted wallets, unlock with password, persist session to `~/.aibtc/` |
+| `src/lib/utils/storage.ts`, `src/lib/config/` | Read and write `~/.aibtc/config.json` (API keys, active wallet, network) |
 | `config/networks.ts` | Network URL selection, x402 API base URL, explorer helpers |
 | `config/contracts.ts` | Stacks contract addresses for sBTC, identity, and other protocols |
-| `stacks-api.ts` | Hiro Stacks API client with optional API key and custom URL |
-| `btc-api.ts` | Bitcoin API client: mempool.space (fees/UTXOs/broadcast) + Hiro Ordinals |
+| `src/lib/services/hiro-api.ts` | Hiro Stacks API client with optional API key and custom URL |
+| `src/lib/services/mempool-api.ts` | Bitcoin API client: mempool.space (fees/UTXOs/broadcast) + Hiro Ordinals |
 
 ### SKILL.md Frontmatter
 
@@ -247,9 +250,9 @@ This repo uses [Release Please](https://github.com/googleapis/release-please) fo
 | `scripts/validate-frontmatter.ts` | Validates required frontmatter fields across all skills |
 | `src/lib/config/networks.ts` | Network URL selection, x402 default API URL |
 | `src/lib/config/contracts.ts` | Stacks contract addresses (sBTC, identity registry, etc.) |
-| `src/lib/wallet.ts` | Shared wallet load/unlock/persist logic |
-| `src/lib/stacks-api.ts` | Hiro Stacks API client |
-| `src/lib/btc-api.ts` | mempool.space + Hiro Ordinals API client |
+| `src/lib/services/wallet-manager.ts` | Shared wallet load/unlock/persist logic |
+| `src/lib/services/hiro-api.ts` | Hiro Stacks API client |
+| `src/lib/services/mempool-api.ts` | mempool.space + Hiro Ordinals API client |
 | `what-to-do/INDEX.md` | Index of all workflow guides |
 | `aibtc-agents/README.md` | Community agent registry contribution guide |
 | `aibtc-agents/template/setup.md` | Agent config template to copy |

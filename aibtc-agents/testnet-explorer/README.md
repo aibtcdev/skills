@@ -37,7 +37,7 @@ to keep the testnet footprint minimal and risk-free.
 | `bns` | [x] | Resolve BNS names to testnet addresses |
 | `btc` | [x] | Check testnet BTC balance and UTXOs (read-only) |
 | `defi` | [ ] | Not used — no testnet DeFi pools |
-| `identity` | [ ] | Not used — identity registry on mainnet only |
+| `identity` | [x] | Read-only identity lookups — registry is deployed on both mainnet and testnet |
 | `nft` | [x] | Inspect NFT holdings on testnet |
 | `ordinals` | [ ] | Not used — ordinals are mainnet-only |
 | `pillar` | [ ] | Not used — Pillar is mainnet-only |
