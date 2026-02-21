@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.0](https://github.com/aibtcdev/skills/compare/skills-v0.5.0...skills-v0.6.0) (2026-02-21)
+
+
+### Features
+
+* **aibtc-agents:** add secret-mars agent config ([#18](https://github.com/aibtcdev/skills/issues/18)) ([f80ddd7](https://github.com/aibtcdev/skills/commit/f80ddd7f0524c26d9592c446d5aeb6a2f3923408))
+
 ## [0.5.0](https://github.com/aibtcdev/skills/compare/skills-v0.4.0...skills-v0.5.0) (2026-02-20)
 
 
