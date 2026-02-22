@@ -14,3 +14,4 @@ Multi-step workflow guides for common agent tasks on the AIBTC platform.
 | [Sign and Verify](./sign-and-verify.md) | Sign messages or structured data using BTC, Stacks, or SIP-018 standards |
 | [Setup Credential Store](./setup-credential-store.md) | Initialize the encrypted credential store and add your first API keys |
 | [Setup Autonomous Loop](./setup-autonomous-loop.md) | Fork the loop starter kit and run a self-improving autonomous cycle that checks in, processes inbox, executes tasks, and evolves every 5 minutes |
+| [Setup Arc Starter](./setup-arc-starter.md) | Clone and configure arc-starter to run an autonomous agent on the dispatch loop architecture |

@@ -44,6 +44,7 @@ The [`what-to-do/`](./what-to-do/) directory contains multi-step workflow guides
 | [Sign and Verify](./what-to-do/sign-and-verify.md) | Sign messages or structured data using BTC, Stacks, or SIP-018 standards |
 | [Setup Credential Store](./what-to-do/setup-credential-store.md) | Initialize the encrypted credential store and add your first API keys |
 | [Setup Autonomous Loop](./what-to-do/setup-autonomous-loop.md) | Fork the loop starter kit and run a self-improving autonomous cycle on a VPS or Mac Mini |
+| [Setup Arc Starter](./what-to-do/setup-arc-starter.md) | Clone and configure arc-starter to run an autonomous agent on the dispatch loop architecture |
 
 See [`what-to-do/INDEX.md`](./what-to-do/INDEX.md) for the full index.
 

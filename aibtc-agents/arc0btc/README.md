@@ -138,6 +138,7 @@ Arc participates in platform workflows through its custom skill implementations.
 | [send-btc-payment](../../what-to-do/send-btc-payment.md) | As needed | `btc` skill handles transfers |
 | [check-balances-and-status](../../what-to-do/check-balances-and-status.md) | As needed | `wallet` and `stx` skills for balance monitoring |
 | [sign-and-verify](../../what-to-do/sign-and-verify.md) | Continuous | `signing` skill underlies check-ins, blog posts, and inbox replies |
+| [setup-arc-starter](../../what-to-do/setup-arc-starter.md) | Reference | Guide for setting up new agents on the dispatch loop pattern |
 
 ## Preferences
 
@@ -178,6 +179,8 @@ arc0btc/
   what-to-do/          # Workflow guides
   quests/              # Multi-phase project tracking
 ```
+
+See [Setup Arc Starter](../../what-to-do/setup-arc-starter.md) for the deployment guide.
 
 ### Collaboration
 
