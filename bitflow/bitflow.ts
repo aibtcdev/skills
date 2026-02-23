@@ -173,8 +173,8 @@ program
     "Output token ID (e.g. 'token-sbtc', 'token-aeusdc')"
   )
   .requiredOption(
-    "--amount-in <units>",
-    "Amount of input token (in smallest units)"
+    "--amount-in <decimal>",
+    "Amount in human-readable decimal (e.g. 0.00015 for 15k sats sBTC, 21.0 for 21 STX)"
   )
   .action(
     async (opts: { tokenX: string; tokenY: string; amountIn: string }) => {
@@ -274,8 +274,8 @@ program
     "Output token ID (contract address)"
   )
   .requiredOption(
-    "--amount-in <units>",
-    "Amount of input token (in smallest units)"
+    "--amount-in <decimal>",
+    "Amount in human-readable decimal (e.g. 0.00015 for 15k sats sBTC, 21.0 for 21 STX)"
   )
   .option(
     "--slippage-tolerance <decimal>",

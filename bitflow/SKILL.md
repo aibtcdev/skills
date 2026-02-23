@@ -116,13 +116,13 @@ Output:
 Get a swap quote from Bitflow DEX. Returns expected output amount, best route, and price impact analysis.
 
 ```
-bun run bitflow/bitflow.ts get-quote --token-x <tokenId> --token-y <tokenId> --amount-in <units>
+bun run bitflow/bitflow.ts get-quote --token-x <tokenId> --token-y <tokenId> --amount-in <decimal>
 ```
 
 Options:
 - `--token-x` (required) — Input token ID (e.g. `token-stx`, `token-sbtc`)
 - `--token-y` (required) — Output token ID (e.g. `token-sbtc`, `token-aeusdc`)
-- `--amount-in` (required) — Amount of input token (in smallest units)
+- `--amount-in` (required) — Amount of input token in human-readable decimal (e.g. `0.00015` for 15,000 sats sBTC, `21.0` for 21 STX). The SDK auto-scales by `10^decimals` internally.
 
 Output:
 ```json
@@ -131,8 +131,8 @@ Output:
   "quote": {
     "tokenIn": "token-stx",
     "tokenOut": "token-sbtc",
-    "amountIn": "1000000",
-    "expectedAmountOut": "12",
+    "amountIn": "1.0",
+    "expectedAmountOut": "0.0000036",
     "route": ["token-stx", "token-sbtc"]
   },
   "priceImpact": {
@@ -179,14 +179,14 @@ Execute a token swap on Bitflow DEX. Automatically finds the best route across a
 
 ```
 bun run bitflow/bitflow.ts swap \
-  --token-x <tokenId> --token-y <tokenId> --amount-in <units> \
+  --token-x <tokenId> --token-y <tokenId> --amount-in <decimal> \
   [--slippage-tolerance <decimal>] [--fee <value>] [--confirm-high-impact]
 ```
 
 Options:
 - `--token-x` (required) — Input token ID (contract address)
 - `--token-y` (required) — Output token ID (contract address)
-- `--amount-in` (required) — Amount of input token (in smallest units)
+- `--amount-in` (required) — Amount of input token in human-readable decimal (e.g. `0.00015` for 15,000 sats sBTC, `21.0` for 21 STX). The SDK auto-scales by `10^decimals` internally.
 - `--slippage-tolerance` (optional) — Slippage tolerance as decimal (default 0.01 = 1%)
 - `--fee` (optional) — Fee: `low` | `medium` | `high` preset or micro-STX amount. If omitted, auto-estimated.
 - `--confirm-high-impact` (optional) — Required to execute swaps with price impact above 5%
@@ -199,7 +199,7 @@ Output:
   "swap": {
     "tokenIn": "token-stx",
     "tokenOut": "token-sbtc",
-    "amountIn": "1000000",
+    "amountIn": "1.0",
     "slippageTolerance": 0.01,
     "priceImpact": { "combinedImpactPct": "0.23%", "severity": "low" }
   },
