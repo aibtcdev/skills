@@ -211,8 +211,11 @@ mcporter call aibtc.call_contract \
   contractAddress="SP3N5CN0PE7YRRP29X7K9XG22BT861BRS5BN8HFFA" \
   contractName="market-factory-v18-bias" \
   functionName="buy-no-auto" \
-  functionArgs='[1770756378700, 2, 2000000, 2000000]'
+  functionArgs='[1770756378700, 2, 2000000, 2000000]' \
+  postConditionMode="allow"
 ```
+
+> **MUST pass `postConditionMode="allow"`** — without it, the tx aborts by post-condition. The contract moves STX internally (sender→pool→fee wallets) and default post-conditions block this.
 
 ### ⚠️ Critical: MCP Arg Format Differences
 
