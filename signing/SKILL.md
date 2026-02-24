@@ -1,6 +1,6 @@
 ---
 name: signing
-description: Message signing and verification — SIP-018 structured Clarity data signing (on-chain verifiable), Stacks plain-text message signing (SIWS-compatible), Bitcoin BIP-137 message signing, and BIP-340 Schnorr signing for Taproot multisig. All signing requires an unlocked wallet; hash and verify operations do not.
+description: Message signing and verification — SIP-018 structured Clarity data signing (on-chain verifiable), Stacks plain-text message signing (SIWS-compatible), Bitcoin message signing (BIP-137 for legacy/wrapped-SegWit, BIP-322 for native SegWit bc1q and Taproot bc1p), and BIP-340 Schnorr signing for Taproot multisig. All signing requires an unlocked wallet; hash and verify operations do not.
 user-invocable: false
 arguments: sip018-sign | sip018-verify | sip018-hash | stacks-sign | stacks-verify | btc-sign | btc-verify | schnorr-sign-digest | schnorr-verify-digest
 entry: signing/signing.ts
@@ -14,7 +14,7 @@ Provides cryptographic message signing for the Stacks and Bitcoin ecosystems. Th
 
 - **SIP-018** — Structured Clarity data signing. Signatures are verifiable both off-chain and by on-chain smart contracts via `secp256k1-recover?`.
 - **Stacks messages** — SIWS-compatible plain-text signing. Used for wallet authentication and proving address ownership.
-- **Bitcoin messages** — BIP-137 plain-text signing. Compatible with Electrum, Bitcoin Core, and most Bitcoin wallets.
+- **Bitcoin messages** — BIP-137/BIP-322 hybrid. BIP-137 for legacy (1...) and wrapped SegWit (3...) addresses; BIP-322 "simple" for native SegWit (bc1q) and Taproot (bc1p) addresses. Compatible with Electrum, Bitcoin Core, and modern wallets.
 - **Schnorr (BIP-340)** — Taproot-native signing over raw 32-byte digests. Used for Taproot script-path spending, multisig coordination, and OP_CHECKSIGADD witness assembly.
 
 ## Usage
@@ -213,7 +213,7 @@ Output:
 
 ### btc-sign
 
-Sign a plain text message using Bitcoin message signing format (BIP-137). Produces a 65-byte signature in BIP-137 format, compatible with Electrum, Bitcoin Core, and most Bitcoin wallets. Requires an unlocked wallet with Bitcoin keys.
+Sign a plain text message using Bitcoin message signing. Automatically selects the signing format based on address type: BIP-137 (65-byte compact signature) for legacy (1...) and wrapped SegWit (3...) addresses; BIP-322 "simple" (witness-serialized) for native SegWit (bc1q) and Taproot (bc1p) addresses. Compatible with Electrum, Bitcoin Core, and modern wallets. Requires an unlocked wallet with Bitcoin keys.
 
 ```
 bun run signing/signing.ts btc-sign --message "Hello, Bitcoin!"
@@ -246,7 +246,7 @@ Output:
 
 ### btc-verify
 
-Verify a BIP-137 Bitcoin message signature and recover the signer's Bitcoin address. Accepts signatures in hex (130 chars) or base64 (88 chars) format.
+Verify a Bitcoin message signature (BIP-137 or BIP-322) and recover the signer's Bitcoin address. Automatically detects the format: BIP-137 (65-byte compact, hex 130 chars or base64 88 chars) for legacy/wrapped-SegWit addresses, and BIP-322 "simple" (witness-serialized, base64) for native SegWit (bc1q) and Taproot (bc1p) addresses.
 
 ```
 bun run signing/signing.ts btc-verify \
@@ -257,7 +257,7 @@ bun run signing/signing.ts btc-verify \
 
 Options:
 - `--message` (required) — The original plain text message that was signed
-- `--signature` (required) — BIP-137 signature (65 bytes as hex [130 chars] or base64 [88 chars])
+- `--signature` (required) — Bitcoin signature: BIP-137 (65 bytes as hex [130 chars] or base64 [88 chars]) for legacy/wrapped-SegWit, or BIP-322 "simple" (witness-serialized, base64) for bc1q/bc1p addresses
 - `--expected-signer` (optional) — Expected signer Bitcoin address to verify against
 
 Output:
@@ -353,7 +353,7 @@ Output:
 |----------|--------|----------|---------------------|
 | SIP-018 | `SIP018` (hex) | Structured Clarity data | Yes (`secp256k1-recover?`) |
 | Stacks | `\x17Stacks Signed Message:\n` | Auth, ownership proof | No (off-chain only) |
-| BIP-137 | `\x18Bitcoin Signed Message:\n` | Bitcoin auth, ownership | No (off-chain only) |
+| BIP-137 / BIP-322 | `\x18Bitcoin Signed Message:\n` | Bitcoin auth, ownership proof (BIP-137 for 1.../3...; BIP-322 for bc1q/bc1p) | No (off-chain only) |
 | BIP-340 | None (raw digest) | Taproot multisig, script-path spending | Yes (OP_CHECKSIG/OP_CHECKSIGADD) |
 
 ## Notes
