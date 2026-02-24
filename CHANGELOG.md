@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.0](https://github.com/aibtcdev/skills/compare/skills-v0.8.0...skills-v0.9.0) (2026-02-24)
+
+
+### Features
+
+* **what-to-do:** add autonomy workflows and update registration flow ([#37](https://github.com/aibtcdev/skills/issues/37)) ([a7a0bd6](https://github.com/aibtcdev/skills/commit/a7a0bd6ac3cb6a880ff9ecd08fc74e1335661d70))
+
 ## [0.8.0](https://github.com/aibtcdev/skills/compare/skills-v0.7.0...skills-v0.8.0) (2026-02-24)
 
 
