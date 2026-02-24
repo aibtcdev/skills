@@ -1,6 +1,6 @@
 {
-  "version": "0.4.0",
-  "generated": "2026-02-20T19:09:51.504Z",
+  "version": "0.7.0",
+  "generated": "2026-02-24T16:56:34.009Z",
   "skills": [
     {
       "name": "bitflow",
@@ -314,7 +314,7 @@
     },
     {
       "name": "signing",
-      "description": "Message signing and verification — SIP-018 structured Clarity data signing (on-chain verifiable), Stacks plain-text message signing (SIWS-compatible), Bitcoin BIP-137 message signing, and BIP-340 Schnorr signing for Taproot multisig. All signing requires an unlocked wallet; hash and verify operations do not.",
+      "description": "Message signing and verification — SIP-018 structured Clarity data signing (on-chain verifiable), Stacks plain-text message signing (SIWS-compatible), Bitcoin message signing (BIP-137 for legacy/wrapped-SegWit, BIP-322 for native SegWit bc1q and Taproot bc1p), and BIP-340 Schnorr signing for Taproot multisig. All signing requires an unlocked wallet; hash and verify operations do not.",
       "entry": "signing/signing.ts",
       "arguments": [
         "sip018-sign",
