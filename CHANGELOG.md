@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.0](https://github.com/aibtcdev/skills/compare/skills-v0.7.0...skills-v0.8.0) (2026-02-24)
+
+
+### Features
+
+* **signing:** add BIP-322 support for bc1q and bc1p addresses ([#32](https://github.com/aibtcdev/skills/issues/32)) ([d70d07c](https://github.com/aibtcdev/skills/commit/d70d07c6f312dc6bca336c91515f723853b9878b))
+
 ## [0.7.0](https://github.com/aibtcdev/skills/compare/skills-v0.6.0...skills-v0.7.0) (2026-02-24)
 
 
