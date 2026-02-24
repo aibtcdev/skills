@@ -1,6 +1,6 @@
 {
-  "version": "0.4.0",
-  "generated": "2026-02-20T19:09:51.504Z",
+  "version": "0.6.0",
+  "generated": "2026-02-24T05:47:42.013Z",
   "skills": [
     {
       "name": "bitflow",
@@ -352,6 +352,35 @@
       "tags": [
         "l2",
         "write",
+        "requires-funds"
+      ],
+      "userInvocable": false
+    },
+    {
+      "name": "stacks-market",
+      "description": "Prediction market trading on stacksmarket.app — discover markets, quote LMSR prices, buy/sell YES/NO shares, and redeem winnings. Uses the market-factory-v18-bias contract on Stacks mainnet. Write operations require an unlocked wallet with STX.",
+      "entry": "stacks-market/stacks-market.ts",
+      "arguments": [
+        "list-markets",
+        "search-markets",
+        "get-market",
+        "quote-buy",
+        "quote-sell",
+        "buy-yes",
+        "buy-no",
+        "sell-yes",
+        "sell-no",
+        "redeem",
+        "get-position"
+      ],
+      "requires": [
+        "wallet"
+      ],
+      "tags": [
+        "l2",
+        "defi",
+        "write",
+        "mainnet-only",
         "requires-funds"
       ],
       "userInvocable": false
