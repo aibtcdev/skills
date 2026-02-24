@@ -44,7 +44,7 @@ import {
   Script,
   SigHash,
   RawWitness,
-  RawOldTx,
+  RawTx,
   Address,
   NETWORK as BTC_MAINNET,
   TEST_NETWORK as BTC_TESTNET,
@@ -184,21 +184,54 @@ function writeUint64LE(n: bigint): Uint8Array {
   return buf;
 }
 
+/**
+ * Convert a DER-encoded ECDSA signature to compact (64-byte) format.
+ *
+ * Bitcoin witness stacks store ECDSA signatures in DER format with a hashtype byte appended.
+ * @noble/curves secp256k1.verify() requires compact (64-byte r||s) format in v2.
+ *
+ * DER format: 30 <total_len> 02 <r_len> [00?] <r_bytes> 02 <s_len> [00?] <s_bytes>
+ * The leading 0x00 is padding for high-bit integers (to keep the sign positive).
+ */
+function parseDERSignature(der: Uint8Array): Uint8Array {
+  if (der[0] !== 0x30) throw new Error("parseDERSignature: expected 0x30 header");
+  let pos = 2; // skip 0x30 and total length byte
+  if (der[pos] !== 0x02) throw new Error("parseDERSignature: expected 0x02 for r");
+  pos++;
+  const rLen = der[pos++];
+  // Strip optional leading 0x00 padding byte (added when high bit is set)
+  const rBytes = der.slice(rLen === 33 ? pos + 1 : pos, pos + rLen);
+  pos += rLen;
+  if (der[pos] !== 0x02) throw new Error("parseDERSignature: expected 0x02 for s");
+  pos++;
+  const sLen = der[pos++];
+  const sBytes = der.slice(sLen === 33 ? pos + 1 : pos, pos + sLen);
+
+  const compact = new Uint8Array(64);
+  compact.set(rBytes.slice(-32), 0);  // r (last 32 bytes, in case rLen < 32)
+  compact.set(sBytes.slice(-32), 32); // s (last 32 bytes)
+  return compact;
+}
+
 // ---------------------------------------------------------------------------
 // BIP-322 helper functions
 // ---------------------------------------------------------------------------
 
 /**
- * BIP-322 tagged hash: SHA256(SHA256(tag) || SHA256(tag) || varint(msg.len) || msg)
- * where tag = "BIP0322-signed-message"
+ * SHA-256 tagged hash: SHA256(SHA256(tag) || SHA256(tag) || data)
+ * Used by BIP-322 ("BIP0322-signed-message") and BIP-341 ("TapSighash").
+ */
+function taggedHash(tag: string, data: Uint8Array): Uint8Array {
+  const tagHash = hashSha256Sync(new TextEncoder().encode(tag));
+  return hashSha256Sync(concatBytes(tagHash, tagHash, data));
+}
+
+/**
+ * BIP-322 message hash: taggedHash("BIP0322-signed-message", varint(msg.len) || msg)
  */
 function bip322TaggedHash(message: string): Uint8Array {
-  const tagBytes = new TextEncoder().encode("BIP0322-signed-message");
-  const tagHash = hashSha256Sync(tagBytes);
   const msgBytes = new TextEncoder().encode(message);
-  const varint = encodeVarInt(msgBytes.length);
-  const msgPart = concatBytes(varint, msgBytes);
-  return hashSha256Sync(concatBytes(tagHash, tagHash, msgPart));
+  return taggedHash("BIP0322-signed-message", concatBytes(encodeVarInt(msgBytes.length), msgBytes));
 }
 
 /**
@@ -216,8 +249,12 @@ function bip322BuildToSpendTxId(message: string, scriptPubKey: Uint8Array): Uint
   // scriptSig: OP_0 (0x00) push32 (0x20) <32-byte hash>
   const scriptSig = concatBytes(new Uint8Array([0x00, 0x20]), msgHash);
 
-  const rawTx = RawOldTx.encode({
+  // Use RawTx with segwitFlag: false to get legacy (non-segwit) serialization.
+  // RawOldTx is not exported from @scure/btc-signer's package index;
+  // RawTx with segwitFlag=false produces identical byte output for this virtual tx.
+  const rawTx = RawTx.encode({
     version: 0,
+    segwitFlag: false,
     inputs: [
       {
         txid: new Uint8Array(32),
@@ -232,6 +269,7 @@ function bip322BuildToSpendTxId(message: string, scriptPubKey: Uint8Array): Uint
         script: scriptPubKey,
       },
     ],
+    witnesses: [],
     lockTime: 0,
   });
 
@@ -254,16 +292,22 @@ function bip322BuildToSpendTxId(message: string, scriptPubKey: Uint8Array): Uint
 function bip322Sign(
   message: string,
   privateKey: Uint8Array,
-  scriptPubKey: Uint8Array
+  scriptPubKey: Uint8Array,
+  tapInternalKey?: Uint8Array
 ): string {
   const toSpendTxid = bip322BuildToSpendTxId(message, scriptPubKey);
 
-  const toSignTx = new Transaction({ version: 0, lockTime: 0 });
+  // allowUnknownOutputs: true is required for the OP_RETURN output in BIP-322 virtual transactions.
+  const toSignTx = new Transaction({ version: 0, lockTime: 0, allowUnknownOutputs: true });
+  // For P2TR signing, tapInternalKey must be the UNTWEAKED x-only pubkey (not extracted from
+  // the scriptPubKey, which contains the tweaked key). Pass it explicitly via the parameter.
+
   toSignTx.addInput({
     txid: toSpendTxid,
     index: 0,
     sequence: 0,
     witnessUtxo: { amount: 0n, script: scriptPubKey },
+    ...(tapInternalKey && { tapInternalKey }),
   });
   toSignTx.addOutput({ script: Script.encode(["RETURN"]), amount: 0n });
 
@@ -312,8 +356,9 @@ function bip322VerifyP2WPKH(
   // Build to_spend txid using the claimed address's scriptPubKey
   const toSpendTxid = bip322BuildToSpendTxId(message, scriptPubKey);
 
-  // Build the (unsigned) to_sign transaction for sighash computation
-  const toSignTx = new Transaction({ version: 0, lockTime: 0 });
+  // Build the (unsigned) to_sign transaction for sighash computation.
+  // allowUnknownOutputs: true is required for the OP_RETURN output in BIP-322 virtual transactions.
+  const toSignTx = new Transaction({ version: 0, lockTime: 0, allowUnknownOutputs: true });
   toSignTx.addInput({
     txid: toSpendTxid,
     index: 0,
@@ -327,11 +372,13 @@ function bip322VerifyP2WPKH(
   const scriptCode = p2pkh(pubkeyBytes).script;
   const sighash = toSignTx.preimageWitnessV0(0, scriptCode, SigHash.ALL, 0n);
 
-  // Strip hashtype byte from DER signature
+  // Strip hashtype byte from DER signature.
+  // @noble/curves secp256k1.verify() in v2 requires compact (64-byte) format, not DER.
   const derSig = ecdsaSigWithHashtype.slice(0, -1);
+  const compactSig = parseDERSignature(derSig);
 
   // Verify ECDSA signature
-  const sigValid = secp256k1.verify(derSig, sighash, pubkeyBytes, { prehash: false });
+  const sigValid = secp256k1.verify(compactSig, sighash, pubkeyBytes, { prehash: false });
 
   if (!sigValid) return false;
 
@@ -369,15 +416,16 @@ function bip322VerifyP2TR(
     throw new Error(`P2TR BIP-322: expected 64-byte Schnorr sig, got ${schnorrSig.length}`);
   }
 
-  // Extract x-only pubkey from the P2TR address
+  // Extract the tweaked output key from the P2TR address.
+  // Address().decode() returns decoded.pubkey = the TWEAKED key embedded in the bech32 data.
+  // We must NOT call p2tr(decoded.pubkey, ...) — that would apply another TapTweak.
+  // Instead, build the scriptPubKey directly: OP_1 (0x51) OP_PUSH32 (0x20) <tweakedKey>
   const decoded = Address(btcNetwork).decode(address);
   if (decoded.type !== "tr") {
     throw new Error(`P2TR BIP-322: address does not decode to P2TR type`);
   }
-  const xOnlyPubkey = decoded.pubkey;
-
-  // Build scriptPubKey for this P2TR address
-  const scriptPubKey = p2tr(xOnlyPubkey, undefined, btcNetwork).script;
+  const tweakedKey = decoded.pubkey;
+  const scriptPubKey = new Uint8Array([0x51, 0x20, ...tweakedKey]);
 
   // Build to_spend txid
   const toSpendTxid = bip322BuildToSpendTxId(message, scriptPubKey);
@@ -396,8 +444,14 @@ function bip322VerifyP2TR(
   //   1 input: txid=toSpendTxid, vout=0, sequence=0, amount=0n, scriptPubKey=p2tr_script
   //   1 output: amount=0n, script=OP_RETURN (0x6a, 1 byte)
 
-  // hashPrevouts = SHA256(txid(32LE) || vout(4LE))
-  const prevouts = concatBytes(toSpendTxid, writeUint32LE(0));
+  // hashPrevouts = SHA256(txid_wire_bytes || vout(4LE))
+  //
+  // @scure/btc-signer stores txid as-is but applies P.bytes(32, true) (reversing) when
+  // encoding TxHashIdx for the BIP341 sighash computation. This means the wire-format txid
+  // used in hashPrevouts is the reverse of what bip322BuildToSpendTxId returns.
+  // We must re-reverse to produce the same bytes that btc-signer uses when signing.
+  const txidForHashPrevouts = toSpendTxid.slice().reverse();
+  const prevouts = concatBytes(txidForHashPrevouts, writeUint32LE(0));
   const hashPrevouts = hashSha256Sync(prevouts);
 
   // hashAmounts = SHA256(amount_8LE)  [amount = 0n for our virtual input]
@@ -437,12 +491,10 @@ function bip322VerifyP2TR(
     writeUint32LE(0)               // input_index = 0
   );
 
-  // tagged_hash("TapSighash", sigMsg) = SHA256(SHA256(tag) || SHA256(tag) || sigMsg)
-  const tagBytes = new TextEncoder().encode("TapSighash");
-  const tagHash = hashSha256Sync(tagBytes);
-  const sighash = hashSha256Sync(concatBytes(tagHash, tagHash, sigMsg));
+  const sighash = taggedHash("TapSighash", sigMsg);
 
-  return schnorr.verify(schnorrSig, sighash, xOnlyPubkey);
+  // Schnorr verification uses the TWEAKED output key (the one in the scriptPubKey bytes)
+  return schnorr.verify(schnorrSig, sighash, tweakedKey);
 }
 
 /**
@@ -491,25 +543,71 @@ function isBip137Signature(sigBytes: Uint8Array): boolean {
 }
 
 /**
+ * BIP-137 header byte ranges mapped to address types.
+ */
+const BIP137_HEADER_RANGES: Array<{ min: number; max: number; type: string }> = [
+  { min: 27, max: 30, type: "P2PKH (uncompressed)" },
+  { min: 31, max: 34, type: "P2PKH (compressed)" },
+  { min: 35, max: 38, type: "P2SH-P2WPKH (SegWit wrapped)" },
+  { min: 39, max: 42, type: "P2WPKH (native SegWit)" },
+];
+
+/**
  * Get Bitcoin address type from BIP-137 header byte.
  */
 function getAddressTypeFromHeader(header: number): string {
-  if (header >= 27 && header <= 30) return "P2PKH (uncompressed)";
-  if (header >= 31 && header <= 34) return "P2PKH (compressed)";
-  if (header >= 35 && header <= 38) return "P2SH-P2WPKH (SegWit wrapped)";
-  if (header >= 39 && header <= 42) return "P2WPKH (native SegWit)";
-  return "Unknown";
+  const range = BIP137_HEADER_RANGES.find((r) => header >= r.min && header <= r.max);
+  return range?.type ?? "Unknown";
 }
 
 /**
  * Extract recovery ID from BIP-137 header byte.
  */
 function getRecoveryIdFromHeader(header: number): number {
-  if (header >= 27 && header <= 30) return header - 27;
-  if (header >= 31 && header <= 34) return header - 31;
-  if (header >= 35 && header <= 38) return header - 35;
-  if (header >= 39 && header <= 42) return header - 39;
-  throw new Error(`Invalid BIP-137 header byte: ${header}`);
+  const range = BIP137_HEADER_RANGES.find((r) => header >= r.min && header <= r.max);
+  if (!range) throw new Error(`Invalid BIP-137 header byte: ${header}`);
+  return header - range.min;
+}
+
+/**
+ * Validate that a string is exactly `byteCount * 2` hex characters.
+ */
+function validateHexBytes(value: string, byteCount: number, label: string): void {
+  if (value.length !== byteCount * 2 || !/^[0-9a-fA-F]+$/.test(value)) {
+    throw new Error(`${label} must be exactly ${byteCount * 2} hex characters (${byteCount} bytes)`);
+  }
+}
+
+/**
+ * Parse a JSON string into a non-null, non-array object, or throw.
+ */
+function parseJsonObject(jsonStr: string, label: string): Record<string, unknown> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(jsonStr);
+  } catch {
+    throw new Error(`${label} must be a valid JSON string`);
+  }
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    throw new Error(`${label} must be a JSON object`);
+  }
+  return parsed as Record<string, unknown>;
+}
+
+/**
+ * Get the Bitcoin network object for @scure/btc-signer based on the NETWORK config.
+ */
+function getBtcNetwork(): typeof BTC_MAINNET {
+  return NETWORK === "mainnet" ? BTC_MAINNET : BTC_TESTNET;
+}
+
+/**
+ * Build a verification result message for signature verification commands.
+ */
+function buildVerificationMessage(sigValid: boolean, signerMatches: boolean | undefined): string {
+  if (!sigValid) return "Signature is invalid";
+  if (signerMatches === false) return "Signature is valid but does NOT match expected signer";
+  return "Signature is valid and matches expected signer";
 }
 
 /**
@@ -726,17 +824,7 @@ program
     }) => {
       try {
         const account = requireUnlockedWallet();
-
-        let messageJson: unknown;
-        try {
-          messageJson = JSON.parse(opts.message);
-        } catch {
-          throw new Error("--message must be a valid JSON string");
-        }
-
-        if (typeof messageJson !== "object" || messageJson === null || Array.isArray(messageJson)) {
-          throw new Error("--message must be a JSON object");
-        }
+        const messageJson = parseJsonObject(opts.message, "--message");
 
         const chainId = CHAIN_IDS[NETWORK];
         const domainCV = buildDomainCV(opts.domainName, opts.domainVersion, chainId);
@@ -887,16 +975,7 @@ program
       chainId?: string;
     }) => {
       try {
-        let messageJson: unknown;
-        try {
-          messageJson = JSON.parse(opts.message);
-        } catch {
-          throw new Error("--message must be a valid JSON string");
-        }
-
-        if (typeof messageJson !== "object" || messageJson === null || Array.isArray(messageJson)) {
-          throw new Error("--message must be a JSON object");
-        }
+        const messageJson = parseJsonObject(opts.message, "--message");
 
         const chainId = opts.chainId
           ? parseInt(opts.chainId, 10)
@@ -1066,11 +1145,7 @@ program
                 expectedSigner: opts.expectedSigner,
                 signerMatches,
                 isFullyValid,
-                message: isFullyValid
-                  ? "Signature is valid and matches expected signer"
-                  : signatureValid
-                    ? "Signature is valid but does NOT match expected signer"
-                    : "Signature is invalid",
+                message: buildVerificationMessage(signatureValid, signerMatches),
               }
             : undefined,
           note:
@@ -1109,7 +1184,7 @@ program
   .action(async (opts: { message: string; addressType: string }) => {
     try {
       const account = requireUnlockedWallet();
-      const btcNetwork = NETWORK === "mainnet" ? BTC_MAINNET : BTC_TESTNET;
+      const btcNetwork = getBtcNetwork();
 
       // Determine signing mode from --address-type flag or auto-detect from btcAddress prefix
       const useTaproot =
@@ -1137,7 +1212,8 @@ program
 
         const xOnlyPubkey = account.taprootPublicKey;
         const scriptPubKey = p2tr(xOnlyPubkey, undefined, btcNetwork).script;
-        const signatureBase64 = bip322Sign(opts.message, account.taprootPrivateKey, scriptPubKey);
+        // Pass xOnlyPubkey as tapInternalKey (untweaked) — required for P2TR signing
+        const signatureBase64 = bip322Sign(opts.message, account.taprootPrivateKey, scriptPubKey, xOnlyPubkey);
 
         printJson({
           success: true,
@@ -1323,7 +1399,7 @@ program
           );
 
           // Derive Bitcoin address from recovered public key
-          const btcNetwork = NETWORK === "testnet" ? BTC_TESTNET : BTC_MAINNET;
+          const btcNetwork = getBtcNetwork();
           const p2wpkhResult = p2wpkh(recoveredPubKey, btcNetwork);
           const recoveredAddress = p2wpkhResult.address!;
 
@@ -1356,11 +1432,7 @@ program
                   expectedSigner: opts.expectedSigner,
                   signerMatches,
                   isFullyValid,
-                  message: isFullyValid
-                    ? "Signature is valid and matches expected signer"
-                    : isValidSig
-                      ? "Signature is valid but does NOT match expected signer"
-                      : "Signature is invalid",
+                  message: buildVerificationMessage(isValidSig, signerMatches),
                 }
               : undefined,
             note:
@@ -1415,8 +1487,7 @@ program
               if (witnessItems.length === 2 && witnessItems[1].length === 33) {
                 // Looks like P2WPKH: [ecdsa_sig, compressed_pubkey]
                 const pubkeyBytes = witnessItems[1];
-                const btcNetwork = NETWORK === "testnet" ? BTC_TESTNET : BTC_MAINNET;
-                const recoveredAddress = p2wpkh(pubkeyBytes, btcNetwork).address!;
+                const recoveredAddress = p2wpkh(pubkeyBytes, getBtcNetwork()).address!;
 
                 let isValid: boolean;
                 try {
@@ -1498,21 +1569,9 @@ program
       confirmBlindSign?: boolean;
     }) => {
       try {
-        // Validate digest format
-        if (opts.digest.length !== 64 || !/^[0-9a-fA-F]+$/.test(opts.digest)) {
-          throw new Error(
-            "--digest must be exactly 64 hex characters (32 bytes)"
-          );
-        }
-
-        // Validate aux-rand format if provided
-        if (
-          opts.auxRand &&
-          (opts.auxRand.length !== 64 || !/^[0-9a-fA-F]+$/.test(opts.auxRand))
-        ) {
-          throw new Error(
-            "--aux-rand must be exactly 64 hex characters (32 bytes)"
-          );
+        validateHexBytes(opts.digest, 32, "--digest");
+        if (opts.auxRand) {
+          validateHexBytes(opts.auxRand, 32, "--aux-rand");
         }
 
         // Safety gate: require explicit confirmation before signing a raw digest
@@ -1532,15 +1591,9 @@ program
 
         const account = requireUnlockedWallet();
 
-        if (!account.taprootPrivateKey || !account.taprootPublicKey) {
+        if (!account.taprootPrivateKey || !account.taprootPublicKey || !account.taprootAddress) {
           throw new Error(
             "Taproot keys not available. Ensure the wallet has Taproot key derivation."
-          );
-        }
-
-        if (!account.taprootAddress) {
-          throw new Error(
-            "Taproot address not available for this account."
           );
         }
 
@@ -1604,28 +1657,9 @@ program
       publicKey: string;
     }) => {
       try {
-        // Validate inputs
-        if (opts.digest.length !== 64 || !/^[0-9a-fA-F]+$/.test(opts.digest)) {
-          throw new Error(
-            "--digest must be exactly 64 hex characters (32 bytes)"
-          );
-        }
-        if (
-          opts.signature.length !== 128 ||
-          !/^[0-9a-fA-F]+$/.test(opts.signature)
-        ) {
-          throw new Error(
-            "--signature must be exactly 128 hex characters (64 bytes)"
-          );
-        }
-        if (
-          opts.publicKey.length !== 64 ||
-          !/^[0-9a-fA-F]+$/.test(opts.publicKey)
-        ) {
-          throw new Error(
-            "--public-key must be exactly 64 hex characters (32 bytes)"
-          );
-        }
+        validateHexBytes(opts.digest, 32, "--digest");
+        validateHexBytes(opts.signature, 64, "--signature");
+        validateHexBytes(opts.publicKey, 32, "--public-key");
 
         const digestBytes = hex.decode(opts.digest);
         const signatureBytes = hex.decode(opts.signature);
