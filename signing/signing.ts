@@ -199,17 +199,19 @@ function parseDERSignature(der: Uint8Array): Uint8Array {
   if (der[pos] !== 0x02) throw new Error("parseDERSignature: expected 0x02 for r");
   pos++;
   const rLen = der[pos++];
+  if (pos + rLen > der.length) throw new Error("parseDERSignature: r extends beyond signature");
   // Strip optional leading 0x00 padding byte (added when high bit is set)
   const rBytes = der.slice(rLen === 33 ? pos + 1 : pos, pos + rLen);
   pos += rLen;
   if (der[pos] !== 0x02) throw new Error("parseDERSignature: expected 0x02 for s");
   pos++;
   const sLen = der[pos++];
+  if (pos + sLen > der.length) throw new Error("parseDERSignature: s extends beyond signature");
   const sBytes = der.slice(sLen === 33 ? pos + 1 : pos, pos + sLen);
 
   const compact = new Uint8Array(64);
-  compact.set(rBytes.slice(-32), 0);  // r (last 32 bytes, in case rLen < 32)
-  compact.set(sBytes.slice(-32), 32); // s (last 32 bytes)
+  compact.set(rBytes, 32 - rBytes.length);  // left-pad r
+  compact.set(sBytes, 64 - sBytes.length);  // left-pad s
   return compact;
 }
 
@@ -1248,7 +1250,16 @@ program
 
         // recovered format: [recoveryId (1 byte), r (32 bytes), s (32 bytes)]
         const recoveryId = sigWithRecovery[0];
-        const header = BIP137_HEADER_BASE.P2WPKH + recoveryId;
+        const addrPrefix = account.btcAddress![0];
+        let headerBase: number;
+        if (addrPrefix === "1" || addrPrefix === "m" || addrPrefix === "n") {
+          headerBase = BIP137_HEADER_BASE.P2PKH_COMPRESSED;
+        } else if (addrPrefix === "3" || addrPrefix === "2") {
+          headerBase = BIP137_HEADER_BASE.P2SH_P2WPKH;
+        } else {
+          headerBase = BIP137_HEADER_BASE.P2WPKH;
+        }
+        const header = headerBase + recoveryId;
 
         const rBytes = sigWithRecovery.slice(1, 33);
         const sBytes = sigWithRecovery.slice(33, 65);
