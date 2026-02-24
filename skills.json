@@ -1,6 +1,6 @@
 {
   "version": "0.6.0",
-  "generated": "2026-02-24T05:47:42.013Z",
+  "generated": "2026-02-24T05:52:55.903Z",
   "skills": [
     {
       "name": "bitflow",
@@ -379,6 +379,29 @@
       "tags": [
         "l2",
         "defi",
+        "write",
+        "mainnet-only",
+        "requires-funds"
+      ],
+      "userInvocable": false
+    },
+    {
+      "name": "stackspot",
+      "description": "Stacking lottery pots on stackspot.app — pool STX into pots that get stacked via PoX, VRF picks a random winner for sBTC rewards, and all participants get their STX back. Mainnet-only.",
+      "entry": "stackspot/stackspot.ts",
+      "arguments": [
+        "list-pots",
+        "get-pot-state",
+        "join-pot",
+        "start-pot",
+        "claim-rewards",
+        "cancel-pot"
+      ],
+      "requires": [
+        "wallet"
+      ],
+      "tags": [
+        "l2",
         "write",
         "mainnet-only",
         "requires-funds"

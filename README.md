@@ -23,6 +23,7 @@ Each skill is a self-contained directory with a `SKILL.md` (used by Claude Code 
 | [defi](./defi/) | `defi/defi.ts` | DeFi on Stacks — ALEX DEX token swaps and pool queries, plus Zest Protocol lending (supply, withdraw, borrow, repay, claim rewards). Mainnet-only. |
 | [stacking](./stacking/) | `stacking/stacking.ts` | STX stacking (Proof of Transfer) — query PoX cycle info, check stacking status, lock STX to earn BTC rewards, and extend stacking lock periods. |
 | [stacks-market](./stacks-market/) | `stacks-market/stacks-market.ts` | Prediction market trading on stacksmarket.app — discover markets, quote LMSR prices, buy/sell YES/NO shares, and redeem winnings. Mainnet-only. |
+| [stackspot](./stackspot/) | `stackspot/stackspot.ts` | Stacking lottery pots on stackspot.app — pool STX into pots that get stacked via PoX, VRF picks a random winner for sBTC rewards, everyone gets STX back. Mainnet-only. |
 | [pillar](./pillar/) | `pillar/pillar.ts`, `pillar/pillar-direct.ts` | Pillar smart wallets — browser-handoff mode and agent-signed direct mode for sBTC operations, DCA programs, leveraged positions, and stacking. |
 | [query](./query/) | `query/query.ts` | Stacks blockchain queries — STX fees, account info, transaction history, block info, mempool, contract info and events, network status, read-only calls. |
 | [x402](./x402/) | `x402/x402.ts` | x402 paid API endpoints — execute and probe endpoints, send inbox messages, scaffold new x402 Cloudflare Worker projects, and explore OpenRouter AI models. |
