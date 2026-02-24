@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.7.0](https://github.com/aibtcdev/skills/compare/skills-v0.6.0...skills-v0.7.0) (2026-02-24)
+
+
+### Features
+
+* **what-to-do:** add setup-autonomous-loop workflow + update secret-mars config ([#22](https://github.com/aibtcdev/skills/issues/22)) ([c9565f7](https://github.com/aibtcdev/skills/commit/c9565f75f9a3e68e9718c2fcb0a50509b290a772))
+
+
+### Bug Fixes
+
+* **bitflow:** correct amount-in docs — human-readable decimal, not smallest units ([#26](https://github.com/aibtcdev/skills/issues/26)) ([2236cc4](https://github.com/aibtcdev/skills/commit/2236cc46b09f5ea2290958fc7946719c0a3c583a))
+
 ## [0.6.0](https://github.com/aibtcdev/skills/compare/skills-v0.5.0...skills-v0.6.0) (2026-02-21)
 
 
