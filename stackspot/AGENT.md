@@ -41,15 +41,15 @@ Delegate to this agent when the workflow needs to:
 # List all known pots with current value and lock status
 bun run stackspot/stackspot.ts list-pots
 
-# Get full on-chain state for the STXLFG pot
-bun run stackspot/stackspot.ts get-pot-state --contract-name STXLFG
+# Get full on-chain state for a pot (accepts bare name or full identifier)
+bun run stackspot/stackspot.ts get-pot-state --contract-name SPT4SQP5RC1BFAJEQKBHZMXQ8NQ7G118F335BD85.STXLFG
 
-# Join the STXLFG pot with 21 STX (21,000,000 micro-STX)
-bun run stackspot/stackspot.ts join-pot --contract-name STXLFG --amount 21000000
+# Join a pot with 21 STX (21,000,000 micro-STX)
+bun run stackspot/stackspot.ts join-pot --contract-name SPT4SQP5RC1BFAJEQKBHZMXQ8NQ7G118F335BD85.STXLFG --amount 21000000
 
 # Start a full pot (must be in PoX prepare phase)
-bun run stackspot/stackspot.ts start-pot --contract-name STXLFG
+bun run stackspot/stackspot.ts start-pot --contract-name SPT4SQP5RC1BFAJEQKBHZMXQ8NQ7G118F335BD85.STXLFG
 
 # Claim sBTC rewards after pot cycle completes
-bun run stackspot/stackspot.ts claim-rewards --contract-name STXLFG
+bun run stackspot/stackspot.ts claim-rewards --contract-name SPT4SQP5RC1BFAJEQKBHZMXQ8NQ7G118F335BD85.STXLFG
 ```

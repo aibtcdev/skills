@@ -67,21 +67,38 @@ const KNOWN_POTS: PotInfo[] = [
 // ---------------------------------------------------------------------------
 
 /**
- * Call a read-only function on a pot contract deployed by POT_DEPLOYER.
+ * Parse a contract name that may be fully qualified (deployer.name) or bare (name).
+ * Returns { deployer, contractName }.
+ */
+function parseContractName(input: string): {
+  deployer: string;
+  contractName: string;
+} {
+  if (input.includes(".")) {
+    const [deployer, ...rest] = input.split(".");
+    return { deployer, contractName: rest.join(".") };
+  }
+  return { deployer: POT_DEPLOYER, contractName: input };
+}
+
+/**
+ * Call a read-only function on a pot contract.
+ * Accepts either a bare contract name or fully qualified deployer.name.
  * Returns the deserialized Clarity value as a JSON-friendly object.
  */
 async function callPotReadOnly(
-  contractName: string,
+  contractNameOrId: string,
   functionName: string,
   args: ClarityValue[]
 ): Promise<unknown> {
   const hiro = getHiroApi(NETWORK);
-  const contractId = `${POT_DEPLOYER}.${contractName}`;
+  const { deployer, contractName } = parseContractName(contractNameOrId);
+  const contractId = `${deployer}.${contractName}`;
   const result = await hiro.callReadOnlyFunction(
     contractId,
     functionName,
     args,
-    POT_DEPLOYER
+    deployer
   );
   if (!result.okay) {
     throw new Error(
@@ -179,7 +196,7 @@ program
   )
   .requiredOption(
     "--contract-name <name>",
-    "Pot contract name (e.g., Genesis, BuildOnBitcoin, STXLFG)"
+    "Pot contract name or full identifier (e.g., SPT4SQP5RC1BFAJEQKBHZMXQ8NQ7G118F335BD85.STXLFG or STXLFG)"
   )
   .action(async (opts: { contractName: string }) => {
     try {
@@ -189,7 +206,8 @@ program
         );
       }
 
-      const contractId = `${POT_DEPLOYER}.${opts.contractName}`;
+      const parsed = parseContractName(opts.contractName);
+      const contractId = `${parsed.deployer}.${parsed.contractName}`;
 
       const [potValue, isLocked, configs, poolConfig, details] =
         await Promise.all([
@@ -202,7 +220,7 @@ program
 
       printJson({
         network: NETWORK,
-        contractName: opts.contractName,
+        contractName: parsed.contractName,
         contractId,
         state: {
           potValueUstx: potValue,
@@ -229,7 +247,7 @@ program
   )
   .requiredOption(
     "--contract-name <name>",
-    "Pot contract name (e.g., STXLFG)"
+    "Pot name or full identifier (e.g., SPT4SQP5RC1BFAJEQKBHZMXQ8NQ7G118F335BD85.STXLFG or STXLFG)"
   )
   .requiredOption(
     "--amount <microStx>",
@@ -248,15 +266,17 @@ program
         throw new Error("--amount must be a positive integer in micro-STX");
       }
 
+      const parsed = parseContractName(opts.contractName);
+
       // Warn if amount is below the known minimum for this pot
       const knownPot = KNOWN_POTS.find(
-        (p) => p.contractName === opts.contractName
+        (p) => p.contractName === parsed.contractName
       );
       if (knownPot) {
         const minUstx = BigInt(knownPot.minAmountStx) * 1_000_000n;
         if (amount < minUstx) {
           throw new Error(
-            `--amount ${opts.amount} is below the minimum for ${opts.contractName}: ` +
+            `--amount ${opts.amount} is below the minimum for ${parsed.contractName}: ` +
               `${minUstx} micro-STX (${knownPot.minAmountStx} STX)`
           );
         }
@@ -265,8 +285,8 @@ program
       const account = await getAccount();
 
       const result = await callContract(account, {
-        contractAddress: POT_DEPLOYER,
-        contractName: opts.contractName,
+        contractAddress: parsed.deployer,
+        contractName: parsed.contractName,
         functionName: "join-pot",
         functionArgs: [uintCV(amount)],
         postConditionMode: PostConditionMode.Allow,
@@ -278,7 +298,7 @@ program
         network: NETWORK,
         explorerUrl: getExplorerTxUrl(result.txid, NETWORK),
         pot: {
-          contractName: opts.contractName,
+          contractName: parsed.contractName,
           amountUstx: opts.amount,
         },
       });
@@ -299,7 +319,7 @@ program
   )
   .requiredOption(
     "--contract-name <name>",
-    "Pot contract name to start stacking"
+    "Pot name or full identifier to start stacking"
   )
   .action(async (opts: { contractName: string }) => {
     try {
@@ -309,13 +329,14 @@ program
         );
       }
 
+      const parsed = parseContractName(opts.contractName);
       const account = await getAccount();
 
       const result = await callContract(account, {
         contractAddress: PLATFORM_ADDRESS,
         contractName: PLATFORM_CONTRACT,
         functionName: "start-stackspot-jackpot",
-        functionArgs: [contractPrincipalCV(POT_DEPLOYER, opts.contractName)],
+        functionArgs: [contractPrincipalCV(parsed.deployer, parsed.contractName)],
         postConditionMode: PostConditionMode.Allow,
       });
 
@@ -325,7 +346,7 @@ program
         network: NETWORK,
         explorerUrl: getExplorerTxUrl(result.txid, NETWORK),
         pot: {
-          contractName: opts.contractName,
+          contractName: parsed.contractName,
         },
       });
     } catch (error) {
@@ -345,7 +366,7 @@ program
   )
   .requiredOption(
     "--contract-name <name>",
-    "Pot contract name to claim rewards from"
+    "Pot name or full identifier to claim rewards from"
   )
   .action(async (opts: { contractName: string }) => {
     try {
@@ -355,13 +376,14 @@ program
         );
       }
 
+      const parsed = parseContractName(opts.contractName);
       const account = await getAccount();
 
       const result = await callContract(account, {
-        contractAddress: POT_DEPLOYER,
-        contractName: opts.contractName,
+        contractAddress: parsed.deployer,
+        contractName: parsed.contractName,
         functionName: "claim-pot-reward",
-        functionArgs: [contractPrincipalCV(POT_DEPLOYER, opts.contractName)],
+        functionArgs: [contractPrincipalCV(parsed.deployer, parsed.contractName)],
         postConditionMode: PostConditionMode.Allow,
       });
 
@@ -371,7 +393,7 @@ program
         network: NETWORK,
         explorerUrl: getExplorerTxUrl(result.txid, NETWORK),
         pot: {
-          contractName: opts.contractName,
+          contractName: parsed.contractName,
         },
       });
     } catch (error) {
@@ -391,7 +413,7 @@ program
   )
   .requiredOption(
     "--contract-name <name>",
-    "Pot contract name to cancel"
+    "Pot name or full identifier to cancel"
   )
   .action(async (opts: { contractName: string }) => {
     try {
@@ -401,13 +423,14 @@ program
         );
       }
 
+      const parsed = parseContractName(opts.contractName);
       const account = await getAccount();
 
       const result = await callContract(account, {
-        contractAddress: POT_DEPLOYER,
-        contractName: opts.contractName,
+        contractAddress: parsed.deployer,
+        contractName: parsed.contractName,
         functionName: "cancel-pot",
-        functionArgs: [contractPrincipalCV(POT_DEPLOYER, opts.contractName)],
+        functionArgs: [contractPrincipalCV(parsed.deployer, parsed.contractName)],
         postConditionMode: PostConditionMode.Allow,
       });
 
@@ -417,7 +440,7 @@ program
         network: NETWORK,
         explorerUrl: getExplorerTxUrl(result.txid, NETWORK),
         pot: {
-          contractName: opts.contractName,
+          contractName: parsed.contractName,
         },
       });
     } catch (error) {

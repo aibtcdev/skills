@@ -66,7 +66,7 @@ bun run stackspot/stackspot.ts get-pot-state --contract-name <name>
 ```
 
 Options:
-- `--contract-name` (required) — Pot contract name (e.g., `Genesis`, `BuildOnBitcoin`, `STXLFG`)
+- `--contract-name` (required) — Pot contract name or full identifier (e.g., `SPT4SQP5RC1BFAJEQKBHZMXQ8NQ7G118F335BD85.STXLFG` or `STXLFG`)
 
 Output:
 ```json
