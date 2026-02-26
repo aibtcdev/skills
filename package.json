@@ -7,7 +7,8 @@
     "build": "bun build src/lib/index.ts --outdir dist",
     "typecheck": "tsc --noEmit",
     "manifest": "bun run scripts/generate-manifest.ts",
-    "validate": "bun run scripts/validate-frontmatter.ts"
+    "validate": "bun run scripts/validate-frontmatter.ts",
+    "test": "bun test"
   },
   "keywords": [
     "claude",
