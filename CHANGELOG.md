@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.10.0](https://github.com/aibtcdev/skills/compare/skills-v0.9.0...skills-v0.10.0) (2026-02-26)
+
+
+### Features
+
+* **aibtc-agents:** add tiny-marten config and two workflow guides ([#42](https://github.com/aibtcdev/skills/issues/42)) ([e028c02](https://github.com/aibtcdev/skills/commit/e028c02430adbc51b9be00a70cf51a252f8b6936))
+* **stacks-market:** add prediction market skill ([#30](https://github.com/aibtcdev/skills/issues/30)) ([45067ea](https://github.com/aibtcdev/skills/commit/45067ea946cc291e14142403551441f9d2889048))
+* **stackspot:** add stacking lottery skill ([#31](https://github.com/aibtcdev/skills/issues/31)) ([569fb3c](https://github.com/aibtcdev/skills/commit/569fb3cc6c51037f8f3cdff1e859e638122f0416))
+* **test:** add unit tests for config, transactions, and services (77 tests) ([d17dda5](https://github.com/aibtcdev/skills/commit/d17dda5f95900b8edeaef3fd8af49c588a13a887))
+
+
+### Bug Fixes
+
+* **stackspot:** accept fully qualified contract identifiers ([#44](https://github.com/aibtcdev/skills/issues/44)) ([4b56455](https://github.com/aibtcdev/skills/commit/4b564552e0a56dec30b9a3f34878d83a07f33187))
+
 ## [0.9.0](https://github.com/aibtcdev/skills/compare/skills-v0.8.0...skills-v0.9.0) (2026-02-24)
 
 
