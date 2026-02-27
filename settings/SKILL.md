@@ -199,7 +199,6 @@ Output:
   "status": "healthy",
   "network": "mainnet",
   "version": "1.0.0",
-  "health": { "status": "healthy", "network": "mainnet", "version": "1.0.0" },
   "checkedAt": "2026-02-27T19:30:00.000Z"
 }
 ```

@@ -321,14 +321,19 @@ program
           `Relay health check failed with HTTP ${response.status}`
         );
       }
-      const data = (await response.json()) as Record<string, unknown>;
+      interface RelayHealthResponse {
+        status?: string;
+        network?: string;
+        version?: string;
+      }
+
+      const data = (await response.json()) as RelayHealthResponse;
       printJson({
         success: true,
         relay: relayUrl,
-        status: (data.status as string) || "healthy",
-        network: (data.network as string) || "unknown",
-        version: (data.version as string) || "unknown",
-        health: data,
+        status: data.status || "healthy",
+        network: data.network || "unknown",
+        version: data.version || "unknown",
         checkedAt: new Date().toISOString(),
       });
     } catch (error) {
