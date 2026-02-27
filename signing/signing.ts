@@ -795,6 +795,38 @@ program
   .version("0.1.0");
 
 // ---------------------------------------------------------------------------
+// Domain parameter resolution (CLI flat params OR MCP-style JSON object)
+// ---------------------------------------------------------------------------
+
+/**
+ * Resolve domain name/version from either:
+ *   --domain '{"name":"App","version":"1.0.0"}' (MCP-compatible)
+ *   --domain-name "App" --domain-version "1.0.0" (CLI flat params)
+ * Both produce identical signatures.
+ */
+function resolveDomainParams(opts: {
+  domain?: string;
+  domainName?: string;
+  domainVersion?: string;
+}): { name: string; version: string } {
+  if (opts.domain) {
+    const parsed = parseJsonObject(opts.domain, "--domain");
+    if (typeof parsed.name !== "string" || typeof parsed.version !== "string") {
+      throw new Error(
+        '--domain must be a JSON object with "name" and "version" string fields'
+      );
+    }
+    return { name: parsed.name, version: parsed.version };
+  }
+  if (opts.domainName && opts.domainVersion) {
+    return { name: opts.domainName, version: opts.domainVersion };
+  }
+  throw new Error(
+    'Domain is required: use --domain \'{"name":"...","version":"..."}\' or --domain-name + --domain-version'
+  );
+}
+
+// ---------------------------------------------------------------------------
 // sip018-sign
 // ---------------------------------------------------------------------------
 
@@ -810,26 +842,32 @@ program
     "--message <json>",
     "The structured data to sign as a JSON string (e.g., '{\"amount\":{\"type\":\"uint\",\"value\":100}}')"
   )
-  .requiredOption(
+  .option(
+    "--domain <json>",
+    "Domain as JSON object matching MCP format (e.g., '{\"name\":\"My App\",\"version\":\"1.0.0\"}')"
+  )
+  .option(
     "--domain-name <name>",
     "Application name for domain binding (e.g., 'My App')"
   )
-  .requiredOption(
+  .option(
     "--domain-version <version>",
     "Application version for domain binding (e.g., '1.0.0')"
   )
   .action(
     async (opts: {
       message: string;
-      domainName: string;
-      domainVersion: string;
+      domain?: string;
+      domainName?: string;
+      domainVersion?: string;
     }) => {
       try {
         const account = requireUnlockedWallet();
         const messageJson = parseJsonObject(opts.message, "--message");
+        const { name: dName, version: dVersion } = resolveDomainParams(opts);
 
         const chainId = CHAIN_IDS[NETWORK];
-        const domainCV = buildDomainCV(opts.domainName, opts.domainVersion, chainId);
+        const domainCV = buildDomainCV(dName, dVersion, chainId);
         const messageCV = jsonToClarityValue(messageJson);
 
         const signature = signStructuredData({
@@ -863,8 +901,8 @@ program
             prefix: SIP018_MSG_PREFIX,
           },
           domain: {
-            name: opts.domainName,
-            version: opts.domainVersion,
+            name: dName,
+            version: dVersion,
             chainId,
           },
           verificationNote:
@@ -957,11 +995,15 @@ program
     "--message <json>",
     "The structured data as a JSON string (e.g., '{\"amount\":{\"type\":\"uint\",\"value\":100}}')"
   )
-  .requiredOption(
+  .option(
+    "--domain <json>",
+    "Domain as JSON object matching MCP format (e.g., '{\"name\":\"My App\",\"version\":\"1.0.0\"}')"
+  )
+  .option(
     "--domain-name <name>",
     "Application name (e.g., 'My App')"
   )
-  .requiredOption(
+  .option(
     "--domain-version <version>",
     "Application version (e.g., '1.0.0')"
   )
@@ -972,12 +1014,14 @@ program
   .action(
     async (opts: {
       message: string;
-      domainName: string;
-      domainVersion: string;
+      domain?: string;
+      domainName?: string;
+      domainVersion?: string;
       chainId?: string;
     }) => {
       try {
         const messageJson = parseJsonObject(opts.message, "--message");
+        const { name: dName, version: dVersion } = resolveDomainParams(opts);
 
         const chainId = opts.chainId
           ? parseInt(opts.chainId, 10)
@@ -987,7 +1031,7 @@ program
           throw new Error("--chain-id must be an integer");
         }
 
-        const domainCV = buildDomainCV(opts.domainName, opts.domainVersion, chainId);
+        const domainCV = buildDomainCV(dName, dVersion, chainId);
         const messageCV = jsonToClarityValue(messageJson);
 
         const messageHash = hashStructuredData(messageCV);
@@ -1014,8 +1058,8 @@ program
             note: "Use 'verification' hash with sip018-verify. Use 'encoded' with secp256k1-recover? on-chain.",
           },
           domain: {
-            name: opts.domainName,
-            version: opts.domainVersion,
+            name: dName,
+            version: dVersion,
             chainId,
           },
           network: NETWORK,
