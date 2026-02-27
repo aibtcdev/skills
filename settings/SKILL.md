@@ -1,8 +1,8 @@
 ---
 name: settings
-description: Manage AIBTC skill settings stored at ~/.aibtc/config.json. Configure the Hiro API key for authenticated rate limits, set a custom Stacks API node URL, and check the current package version.
+description: Manage AIBTC skill settings stored at ~/.aibtc/config.json. Configure the Hiro API key for authenticated rate limits, set a custom Stacks API node URL, check the current package version, and diagnose x402 sponsor relay health.
 user-invocable: false
-arguments: set-hiro-api-key | get-hiro-api-key | delete-hiro-api-key | set-stacks-api-url | get-stacks-api-url | delete-stacks-api-url | get-server-version
+arguments: set-hiro-api-key | get-hiro-api-key | delete-hiro-api-key | set-stacks-api-url | get-stacks-api-url | delete-stacks-api-url | get-server-version | check-relay-health
 entry: settings/settings.ts
 requires: []
 tags: [infrastructure]
@@ -177,6 +177,62 @@ Output:
   "isLatest": true,
   "updateAvailable": false,
   "package": "@aibtc/skills"
+}
+```
+
+### check-relay-health
+
+Check the health of the x402 sponsor relay and the sponsor address nonce status on-chain. Reports relay reachability, version, sponsor nonce gaps, and mempool congestion.
+
+```
+bun run settings/settings.ts check-relay-health [--relay-url <url>] [--sponsor-address <address>]
+```
+
+Options:
+- `--relay-url` (optional) — Base URL of the sponsor relay (default: `https://sponsor.aibtc.dev`)
+- `--sponsor-address` (optional) — STX address of the relay sponsor (default: `SP1PMPPVCMVW96FSWFV30KJQ4MNBMZ8MRWR3JWQ7`)
+
+Output (healthy):
+```json
+{
+  "healthy": true,
+  "relay": {
+    "url": "https://sponsor.aibtc.dev",
+    "reachable": true,
+    "status": "ok",
+    "version": "1.0.0"
+  },
+  "sponsor": {
+    "address": "SP1PMPPVCMVW96FSWFV30KJQ4MNBMZ8MRWR3JWQ7",
+    "lastExecutedNonce": 732,
+    "possibleNextNonce": 733,
+    "lastMempoolNonce": null,
+    "mempoolCount": 0,
+    "missingNonces": []
+  },
+  "issues": [],
+  "hint": "Relay and sponsor are operating normally."
+}
+```
+
+Output (issues detected):
+```json
+{
+  "healthy": false,
+  "relay": { "url": "https://sponsor.aibtc.dev", "reachable": false, "error": "fetch failed" },
+  "sponsor": {
+    "address": "SP1PMPPVCMVW96FSWFV30KJQ4MNBMZ8MRWR3JWQ7",
+    "lastExecutedNonce": 732,
+    "possibleNextNonce": 733,
+    "lastMempoolNonce": null,
+    "mempoolCount": 0,
+    "missingNonces": [730]
+  },
+  "issues": [
+    "Relay unreachable: fetch failed",
+    "Nonce gaps detected: [730]. Transactions may be stuck. The sponsor may need to fill missing nonces."
+  ],
+  "hint": "Issues detected — see the issues array for details."
 }
 ```
 

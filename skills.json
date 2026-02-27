@@ -295,7 +295,7 @@
     },
     {
       "name": "settings",
-      "description": "Manage AIBTC skill settings stored at ~/.aibtc/config.json. Configure the Hiro API key for authenticated rate limits, set a custom Stacks API node URL, and check the current package version.",
+      "description": "Manage AIBTC skill settings stored at ~/.aibtc/config.json. Configure the Hiro API key for authenticated rate limits, set a custom Stacks API node URL, check the current package version, and diagnose x402 sponsor relay health.",
       "entry": "settings/settings.ts",
       "arguments": [
         "set-hiro-api-key",
@@ -304,7 +304,8 @@
         "set-stacks-api-url",
         "get-stacks-api-url",
         "delete-stacks-api-url",
-        "get-server-version"
+        "get-server-version",
+        "check-relay-health"
       ],
       "requires": [],
       "tags": [
