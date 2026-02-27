@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.1](https://github.com/aibtcdev/skills/compare/skills-v0.10.0...skills-v0.10.1) (2026-02-27)
+
+
+### Bug Fixes
+
+* **what-to-do:** correct aibtc.com API alignment in workflow guides ([#52](https://github.com/aibtcdev/skills/issues/52)) ([884ce0b](https://github.com/aibtcdev/skills/commit/884ce0b9729d7394c55a042a4e5c01ab4fbeffe5))
+
 ## [0.10.0](https://github.com/aibtcdev/skills/compare/skills-v0.9.0...skills-v0.10.0) (2026-02-26)
 
 
