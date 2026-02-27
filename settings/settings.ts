@@ -296,6 +296,47 @@ program
   });
 
 // ---------------------------------------------------------------------------
+// check-relay-health
+// ---------------------------------------------------------------------------
+
+program
+  .command("check-relay-health")
+  .description(
+    "Check the health status of the x402-sponsor-relay service used for sponsored transactions"
+  )
+  .option(
+    "--relay-url <url>",
+    "Custom relay URL",
+    "https://x402-relay.aibtc.com"
+  )
+  .action(async (opts: { relayUrl: string }) => {
+    try {
+      const relayUrl = opts.relayUrl.replace(/\/+$/, "");
+      if (!relayUrl.startsWith("https://")) {
+        throw new Error("Relay URL must use HTTPS");
+      }
+      const response = await fetch(`${relayUrl}/health`);
+      if (!response.ok) {
+        throw new Error(
+          `Relay health check failed with HTTP ${response.status}`
+        );
+      }
+      const data = (await response.json()) as Record<string, unknown>;
+      printJson({
+        success: true,
+        relay: relayUrl,
+        status: (data.status as string) || "healthy",
+        network: (data.network as string) || "unknown",
+        version: (data.version as string) || "unknown",
+        health: data,
+        checkedAt: new Date().toISOString(),
+      });
+    } catch (error) {
+      handleError(error);
+    }
+  });
+
+// ---------------------------------------------------------------------------
 // Parse
 // ---------------------------------------------------------------------------
 

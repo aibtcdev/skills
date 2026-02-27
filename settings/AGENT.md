@@ -13,6 +13,7 @@ This agent manages configuration stored at `~/.aibtc/config.json`. It controls t
 - Set, retrieve, and delete the Hiro API key for authenticated API access
 - Set, retrieve, and delete a custom Stacks API node URL
 - Query the current package version for compatibility checks
+- Check x402-sponsor-relay health status before sending sponsored transactions
 
 ## When to Delegate Here
 
@@ -21,6 +22,7 @@ Delegate to this agent when the workflow needs to:
 - Switch between mainnet and a custom Stacks node endpoint
 - Verify the installed version of the AIBTC skills package
 - Troubleshoot rate limiting by confirming the Hiro API key is set
+- Verify the x402 sponsor relay is healthy before attempting sponsored transactions
 
 ## Example Invocations
 
