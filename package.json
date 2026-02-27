@@ -22,7 +22,7 @@
   "author": "aibtcdev",
   "license": "MIT",
   "dependencies": {
-    "@bitflowlabs/core-sdk": "^2.4.0",
+    "@bitflowlabs/core-sdk": "^3.0.0",
     "@noble/curves": "^2.0.1",
     "@scure/base": "^2.0.0",
     "@scure/bip32": "^1.6.2",
