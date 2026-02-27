@@ -826,11 +826,51 @@ function resolveDomainParams(opts: {
   );
 }
 
+/**
+ * Add the shared --domain, --domain-name, and --domain-version options to a command.
+ */
+function addDomainOptions(cmd: Command): Command {
+  return cmd
+    .option(
+      "--domain <json>",
+      "Domain as JSON object matching MCP format (e.g., '{\"name\":\"My App\",\"version\":\"1.0.0\"}')"
+    )
+    .option(
+      "--domain-name <name>",
+      "Application name for domain binding (e.g., 'My App')"
+    )
+    .option(
+      "--domain-version <version>",
+      "Application version for domain binding (e.g., '1.0.0')"
+    );
+}
+
+/**
+ * Compute the standard SIP-018 hash set (message, domain, encoded, verification).
+ */
+function computeSip018Hashes(
+  messageCV: ClarityValue,
+  domainCV: ClarityValue
+): { message: string; domain: string; encoded: string; verification: string } {
+  const messageHash = hashStructuredData(messageCV);
+  const domainHash = hashStructuredData(domainCV);
+  const encodedBytes = encodeStructuredDataBytes({
+    message: messageCV,
+    domain: domainCV,
+  });
+  return {
+    message: messageHash,
+    domain: domainHash,
+    encoded: bytesToHex(encodedBytes),
+    verification: bytesToHex(hashSha256Sync(encodedBytes)),
+  };
+}
+
 // ---------------------------------------------------------------------------
 // sip018-sign
 // ---------------------------------------------------------------------------
 
-program
+const sip018SignCmd = program
   .command("sip018-sign")
   .description(
     "Sign structured Clarity data using the SIP-018 standard. " +
@@ -841,19 +881,8 @@ program
   .requiredOption(
     "--message <json>",
     "The structured data to sign as a JSON string (e.g., '{\"amount\":{\"type\":\"uint\",\"value\":100}}')"
-  )
-  .option(
-    "--domain <json>",
-    "Domain as JSON object matching MCP format (e.g., '{\"name\":\"My App\",\"version\":\"1.0.0\"}')"
-  )
-  .option(
-    "--domain-name <name>",
-    "Application name for domain binding (e.g., 'My App')"
-  )
-  .option(
-    "--domain-version <version>",
-    "Application version for domain binding (e.g., '1.0.0')"
-  )
+  );
+addDomainOptions(sip018SignCmd)
   .action(
     async (opts: {
       message: string;
@@ -864,10 +893,10 @@ program
       try {
         const account = requireUnlockedWallet();
         const messageJson = parseJsonObject(opts.message, "--message");
-        const { name: dName, version: dVersion } = resolveDomainParams(opts);
+        const { name: domainName, version: domainVersion } = resolveDomainParams(opts);
 
         const chainId = CHAIN_IDS[NETWORK];
-        const domainCV = buildDomainCV(dName, dVersion, chainId);
+        const domainCV = buildDomainCV(domainName, domainVersion, chainId);
         const messageCV = jsonToClarityValue(messageJson);
 
         const signature = signStructuredData({
@@ -876,15 +905,7 @@ program
           privateKey: account.privateKey,
         });
 
-        const messageHash = hashStructuredData(messageCV);
-        const domainHash = hashStructuredData(domainCV);
-
-        const encodedBytes = encodeStructuredDataBytes({
-          message: messageCV,
-          domain: domainCV,
-        });
-        const encodedHex = bytesToHex(encodedBytes);
-        const verificationHash = bytesToHex(hashSha256Sync(encodedBytes));
+        const hashes = computeSip018Hashes(messageCV, domainCV);
 
         printJson({
           success: true,
@@ -894,15 +915,12 @@ program
           network: NETWORK,
           chainId,
           hashes: {
-            message: messageHash,
-            domain: domainHash,
-            encoded: encodedHex,
-            verification: verificationHash,
+            ...hashes,
             prefix: SIP018_MSG_PREFIX,
           },
           domain: {
-            name: dName,
-            version: dVersion,
+            name: domainName,
+            version: domainVersion,
             chainId,
           },
           verificationNote:
@@ -983,7 +1001,7 @@ program
 // sip018-hash
 // ---------------------------------------------------------------------------
 
-program
+const sip018HashCmd = program
   .command("sip018-hash")
   .description(
     "Compute the SIP-018 message hash without signing. " +
@@ -994,19 +1012,8 @@ program
   .requiredOption(
     "--message <json>",
     "The structured data as a JSON string (e.g., '{\"amount\":{\"type\":\"uint\",\"value\":100}}')"
-  )
-  .option(
-    "--domain <json>",
-    "Domain as JSON object matching MCP format (e.g., '{\"name\":\"My App\",\"version\":\"1.0.0\"}')"
-  )
-  .option(
-    "--domain-name <name>",
-    "Application name (e.g., 'My App')"
-  )
-  .option(
-    "--domain-version <version>",
-    "Application version (e.g., '1.0.0')"
-  )
+  );
+addDomainOptions(sip018HashCmd)
   .option(
     "--chain-id <id>",
     "Optional chain ID (default: 1 for mainnet, 2147483648 for testnet)"
@@ -1021,7 +1028,7 @@ program
     }) => {
       try {
         const messageJson = parseJsonObject(opts.message, "--message");
-        const { name: dName, version: dVersion } = resolveDomainParams(opts);
+        const { name: domainName, version: domainVersion } = resolveDomainParams(opts);
 
         const chainId = opts.chainId
           ? parseInt(opts.chainId, 10)
@@ -1031,35 +1038,22 @@ program
           throw new Error("--chain-id must be an integer");
         }
 
-        const domainCV = buildDomainCV(dName, dVersion, chainId);
+        const domainCV = buildDomainCV(domainName, domainVersion, chainId);
         const messageCV = jsonToClarityValue(messageJson);
 
-        const messageHash = hashStructuredData(messageCV);
-        const domainHash = hashStructuredData(domainCV);
-
-        const encodedBytes = encodeStructuredDataBytes({
-          message: messageCV,
-          domain: domainCV,
-        });
-        const encodedHex = bytesToHex(encodedBytes);
-        const verificationHash = bytesToHex(hashSha256Sync(encodedBytes));
+        const hashes = computeSip018Hashes(messageCV, domainCV);
 
         printJson({
           success: true,
-          hashes: {
-            message: messageHash,
-            domain: domainHash,
-            encoded: encodedHex,
-            verification: verificationHash,
-          },
+          hashes,
           hashConstruction: {
             prefix: SIP018_MSG_PREFIX,
             formula: "verification = sha256(prefix || domainHash || messageHash)",
             note: "Use 'verification' hash with sip018-verify. Use 'encoded' with secp256k1-recover? on-chain.",
           },
           domain: {
-            name: dName,
-            version: dVersion,
+            name: domainName,
+            version: domainVersion,
             chainId,
           },
           network: NETWORK,
