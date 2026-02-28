@@ -123,6 +123,23 @@ npx skills add @aibtc/mcp-server/skill
 | `stacks_verify_message` | Verify Stacks message signature |
 | `btc_sign_message` | Sign with Bitcoin key (BIP-137) |
 | `btc_verify_message` | Verify BIP-137 signature |
+| `nostr_sign_event` | Sign a Nostr event using NIP-06 derived key (default) or wallet key |
+
+#### `nostr_sign_event` — NIP-06 Key Derivation
+
+`nostr_sign_event` signs a Nostr event JSON object and returns the signature and public key.
+
+**Default key derivation:** NIP-06 (`m/44'/1237'/0'/0/0`) — the standard derivation path for Nostr keys from a BIP-39 mnemonic. The resulting `npub` matches what NIP-06 compliant Nostr clients (e.g. Amethyst, Damus, Snort) derive from the same seed phrase.
+
+**`keySource` parameter:**
+
+| Value | Derivation Path | When to Use |
+|-------|-----------------|-------------|
+| `"nostr"` (default) | `m/44'/1237'/0'/0/0` (NIP-06) | New identities, compatible with all NIP-06 Nostr clients |
+| `"taproot"` | BIP-86 Taproot path | Wallets with an existing Nostr identity on the Taproot key |
+| `"segwit"` | BIP-84 native SegWit path | Wallets with an existing Nostr identity on the SegWit key |
+
+Use the default `"nostr"` source unless you already have a Nostr identity established on a different key path.
 
 ### Stacks L2 Operations
 

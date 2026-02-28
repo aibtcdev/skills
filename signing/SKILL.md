@@ -1,8 +1,8 @@
 ---
 name: signing
-description: Message signing and verification — SIP-018 structured Clarity data signing (on-chain verifiable), Stacks plain-text message signing (SIWS-compatible), Bitcoin message signing (BIP-137 for legacy/wrapped-SegWit, BIP-322 for native SegWit bc1q and Taproot bc1p), and BIP-340 Schnorr signing for Taproot multisig. All signing requires an unlocked wallet; hash and verify operations do not.
+description: Message signing and verification — SIP-018 structured Clarity data signing (on-chain verifiable), Stacks plain-text message signing (SIWS-compatible), Bitcoin message signing (BIP-137 for legacy/wrapped-SegWit, BIP-322 for native SegWit bc1q and Taproot bc1p), BIP-340 Schnorr signing for Taproot multisig, and Nostr event signing using NIP-06 key derivation. All signing requires an unlocked wallet; hash and verify operations do not.
 user-invocable: false
-arguments: sip018-sign | sip018-verify | sip018-hash | stacks-sign | stacks-verify | btc-sign | btc-verify | schnorr-sign-digest | schnorr-verify-digest
+arguments: sip018-sign | sip018-verify | sip018-hash | stacks-sign | stacks-verify | btc-sign | btc-verify | schnorr-sign-digest | schnorr-verify-digest | nostr-sign-event
 entry: signing/signing.ts
 requires: [wallet]
 tags: [l2, l1]
@@ -10,12 +10,13 @@ tags: [l2, l1]
 
 # Signing Skill
 
-Provides cryptographic message signing for the Stacks and Bitcoin ecosystems. Three signing standards are supported:
+Provides cryptographic message signing for the Stacks and Bitcoin ecosystems. Four signing standards are supported:
 
 - **SIP-018** — Structured Clarity data signing. Signatures are verifiable both off-chain and by on-chain smart contracts via `secp256k1-recover?`.
 - **Stacks messages** — SIWS-compatible plain-text signing. Used for wallet authentication and proving address ownership.
 - **Bitcoin messages** — BIP-137/BIP-322 hybrid. BIP-137 for legacy (1...) and wrapped SegWit (3...) addresses; BIP-322 "simple" for native SegWit (bc1q) and Taproot (bc1p) addresses. Compatible with Electrum, Bitcoin Core, and modern wallets.
 - **Schnorr (BIP-340)** — Taproot-native signing over raw 32-byte digests. Used for Taproot script-path spending, multisig coordination, and OP_CHECKSIGADD witness assembly.
+- **Nostr events (NIP-06)** — Sign Nostr event objects using the NIP-06 derived key (`m/44'/1237'/0'/0/0`) by default, or from a wallet key path via `keySource`.
 
 ## Usage
 
@@ -347,6 +348,45 @@ Output:
 }
 ```
 
+### nostr-sign-event
+
+Sign a Nostr event object (NIP-01 format) using the wallet's Nostr key. By default the key is derived via NIP-06 (`m/44'/1237'/0'/0/0`) from the wallet mnemonic, producing an `npub` that matches NIP-06 compliant Nostr clients (e.g. Amethyst, Damus, Snort). Requires an unlocked wallet.
+
+```
+bun run signing/signing.ts nostr-sign-event \
+  --event '{"kind":1,"created_at":1700000000,"tags":[],"content":"Hello, Nostr!"}' \
+  [--key-source nostr|taproot|segwit]
+```
+
+Options:
+- `--event` (required) — Nostr event JSON object (NIP-01 format). Fields `id`, `pubkey`, and `sig` are computed and returned; do not include them in the input.
+- `--key-source` (optional, default: `"nostr"`) — Which wallet key to use for signing:
+  - `"nostr"` (default) — NIP-06 derived key (`m/44'/1237'/0'/0/0`). Use this for new identities and compatibility with all NIP-06 Nostr clients.
+  - `"taproot"` — BIP-86 Taproot key (`m/86'/0'/0'/0/0`). Use if you already have an existing Nostr identity on your Taproot key.
+  - `"segwit"` — BIP-84 native SegWit key (`m/84'/0'/0'/0/0`). Use if you already have an existing Nostr identity on your SegWit key.
+
+Output:
+```json
+{
+  "success": true,
+  "event": {
+    "id": "abc123...",
+    "pubkey": "def456...",
+    "created_at": 1700000000,
+    "kind": 1,
+    "tags": [],
+    "content": "Hello, Nostr!",
+    "sig": "789abc..."
+  },
+  "npub": "npub1...",
+  "keySource": "nostr",
+  "derivationPath": "m/44'/1237'/0'/0/0",
+  "note": "Key derived via NIP-06. npub matches NIP-06 compliant Nostr clients."
+}
+```
+
+**Key derivation note:** The default `"nostr"` source uses NIP-06 (`m/44'/1237'/0'/0/0`), the standard Nostr derivation path defined in the [NIP-06 spec](https://github.com/nostr-protocol/nips/blob/master/06.md). Agents should use this default for all Nostr interactions. The `keySource` override is only needed when an existing Nostr identity was previously established on a different key path.
+
 ## Signing Standards Reference
 
 | Standard | Prefix | Use Case | On-Chain Verifiable? |
@@ -355,6 +395,7 @@ Output:
 | Stacks | `\x17Stacks Signed Message:\n` | Auth, ownership proof | No (off-chain only) |
 | BIP-137 / BIP-322 | `\x18Bitcoin Signed Message:\n` | Bitcoin auth, ownership proof (BIP-137 for 1.../3...; BIP-322 for bc1q/bc1p) | No (off-chain only) |
 | BIP-340 | None (raw digest) | Taproot multisig, script-path spending | Yes (OP_CHECKSIG/OP_CHECKSIGADD) |
+| NIP-06 (Nostr) | None (event hash) | Nostr event signing (NIP-01) | No (Nostr network only) |
 
 ## Notes
 
