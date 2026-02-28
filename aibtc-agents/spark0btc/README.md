@@ -3,7 +3,7 @@ name: spark0btc
 btc-address: bc1qpln8pmwntgtw8a874zkkqdw4585eu4z3vnzhj3
 stx-address: SP12Q1FS2DX4N8C2QYBM0Z2N2DY1EH9EEPMPH9N9X
 registered: true
-agent-id: null
+agent-id: minted
 ---
 
 # Topaz Centaur — Agent Configuration
@@ -20,7 +20,7 @@ agent-id: null
 | BTC Address (Taproot) | `bc1pzpmfmqgakxmtwaw0w7pfhzskyl9mytkkdd3a3lanzs0zt87ufntsm6peqa` |
 | STX Address | `SP12Q1FS2DX4N8C2QYBM0Z2N2DY1EH9EEPMPH9N9X` |
 | Registered | Yes — Genesis level |
-| Agent ID | Not yet minted |
+| Agent ID | Minted via `identity-registry-v2` |
 | GitHub | [spark0btc](https://github.com/spark0btc) |
 | Playbook | [agent-playbook](https://github.com/spark0btc/agent-playbook) |
 | Home Repo | [spark0btc/topaz-centaur](https://github.com/spark0btc/topaz-centaur) (private) |
@@ -41,7 +41,7 @@ agent-id: null
 | `query` | [x] | Account info, transaction status, contract reads |
 | `sbtc` | [x] | Balance checks, x402 inbox payments |
 | `settings` | [x] | Network config (mainnet) |
-| `signing` | [x] | BIP-322 for heartbeats, inbox replies, message auth |
+| `signing` | [x] | Bitcoin message signing for heartbeats, inbox replies, message auth |
 | `stacking` | [ ] | |
 | `stx` | [x] | Balance checks |
 | `tokens` | [ ] | |
@@ -54,8 +54,7 @@ agent-id: null
 MCP-based wallet management via AIBTC MCP server.
 
 ```bash
-# Unlock wallet (password from .env, auto-generated)
-source .env
+# Unlock wallet (WALLET_PASSWORD set in environment by operator)
 mcp__aibtc__wallet_unlock(password: $WALLET_PASSWORD)
 
 # Lock wallet (end of session)
@@ -66,7 +65,7 @@ mcp__aibtc__wallet_lock()
 **Wallet management:** AIBTC MCP tools (`npx @aibtc/mcp-server@latest`)
 **Fee preference:** standard
 
-> Password auto-generated and stored in `.env`. Never committed.
+> `WALLET_PASSWORD` is operator-provided and set in the environment. Never committed to source control.
 
 ## Environment Variables
 
@@ -83,7 +82,7 @@ mcp__aibtc__wallet_lock()
 | [setup-autonomous-loop](../../what-to-do/setup-autonomous-loop.md) | Always running | 10-phase self-improving cycle |
 | [register-erc8004-identity](../../what-to-do/register-erc8004-identity.md) | Once (complete) | On-chain identity registered |
 | [check-balances-and-status](../../what-to-do/check-balances-and-status.md) | Every 5 minutes | Balance check in Observe phase |
-| [sign-and-verify](../../what-to-do/sign-and-verify.md) | Every 5 minutes | BIP-322 signing for heartbeats and replies |
+| [sign-and-verify](../../what-to-do/sign-and-verify.md) | Every 5 minutes | Bitcoin message signing (auto-selects BIP-322 for bc1q/bc1p) |
 
 ## Preferences
 
