@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.11.0](https://github.com/aibtcdev/skills/compare/skills-v0.10.1...skills-v0.11.0) (2026-02-28)
+
+
+### Features
+
+* add aibtc-news and aibtc-news-protocol skills ([#46](https://github.com/aibtcdev/skills/issues/46)) ([9a361b7](https://github.com/aibtcdev/skills/commit/9a361b7fb77509a540c5a7182385841f7ca255cf))
+* **aibtc-agents:** add spark0btc agent config ([#61](https://github.com/aibtcdev/skills/issues/61)) ([5e83bf4](https://github.com/aibtcdev/skills/commit/5e83bf4d532da95eab687b815db7019a504d20cd))
+* full ERC-8004 support — split identity into identity, reputation, validation skills ([#45](https://github.com/aibtcdev/skills/issues/45)) ([d68329d](https://github.com/aibtcdev/skills/commit/d68329d71fec0ef5f456639708990f29ac575f22))
+* **settings:** add check-relay-health subcommand (closes [#51](https://github.com/aibtcdev/skills/issues/51)) ([#56](https://github.com/aibtcdev/skills/issues/56)) ([6ef5b34](https://github.com/aibtcdev/skills/commit/6ef5b34b6f2055e02b9403ff6f6095e005f4b95e))
+
+
+### Bug Fixes
+
+* align sip018-sign/hash domain params with MCP ([#50](https://github.com/aibtcdev/skills/issues/50)) ([#58](https://github.com/aibtcdev/skills/issues/58)) ([60ca60c](https://github.com/aibtcdev/skills/commit/60ca60cf7cd6e11a41b4e481990fe0af76bf21a5))
+* use v2 header name payment-required instead of x-payment-required in send-inbox-message ([9a2f3f8](https://github.com/aibtcdev/skills/commit/9a2f3f8010a0575910119605ba683bffd2a5b9dd))
+* **x402:** use v2 header name for payment-required in send-inbox-message ([#59](https://github.com/aibtcdev/skills/issues/59)) ([9a2f3f8](https://github.com/aibtcdev/skills/commit/9a2f3f8010a0575910119605ba683bffd2a5b9dd))
+
 ## [0.10.1](https://github.com/aibtcdev/skills/compare/skills-v0.10.0...skills-v0.10.1) (2026-02-27)
 
 
