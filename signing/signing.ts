@@ -229,11 +229,16 @@ function taggedHash(tag: string, data: Uint8Array): Uint8Array {
 }
 
 /**
- * BIP-322 message hash: taggedHash("BIP0322-signed-message", varint(msg.len) || msg)
+ * BIP-322 message hash: taggedHash("BIP0322-signed-message", msg)
+ *
+ * Per BIP-322 spec, the tagged hash takes the raw message bytes directly.
+ * Prepending a varint length prefix was incorrect — that belongs to BIP-137
+ * serialization, not BIP-322's tagged hash construction.
+ * See: https://github.com/aibtcdev/x402-sponsor-relay/issues/135
  */
 function bip322TaggedHash(message: string): Uint8Array {
   const msgBytes = new TextEncoder().encode(message);
-  return taggedHash("BIP0322-signed-message", concatBytes(encodeVarInt(msgBytes.length), msgBytes));
+  return taggedHash("BIP0322-signed-message", msgBytes);
 }
 
 /**
