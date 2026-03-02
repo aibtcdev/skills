@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.12.1](https://github.com/aibtcdev/skills/compare/skills-v0.12.0...skills-v0.12.1) (2026-03-02)
+
+
+### Bug Fixes
+
+* pass msgBytes directly to taggedHash, removing the encodeVarInt call. ([720c90c](https://github.com/aibtcdev/skills/commit/720c90cf7cdddc8c9e8ee6f713e6d0db663bc520))
+* **signing:** remove varint prepend from bip322TaggedHash ([#69](https://github.com/aibtcdev/skills/issues/69)) ([720c90c](https://github.com/aibtcdev/skills/commit/720c90cf7cdddc8c9e8ee6f713e6d0db663bc520))
+
 ## [0.12.0](https://github.com/aibtcdev/skills/compare/skills-v0.11.0...skills-v0.12.0) (2026-03-02)
 
 
