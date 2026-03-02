@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.12.0](https://github.com/aibtcdev/skills/compare/skills-v0.11.0...skills-v0.12.0) (2026-03-02)
+
+
+### Features
+
+* **business-dev:** add business development skill ([#65](https://github.com/aibtcdev/skills/issues/65)) ([eaf8e3f](https://github.com/aibtcdev/skills/commit/eaf8e3f46c3bb54052c1bdc1c237b6d92d89cc49))
+* **ceo:** add CEO operating manual skill for agent guidance ([#67](https://github.com/aibtcdev/skills/issues/67)) ([9cf5d1f](https://github.com/aibtcdev/skills/commit/9cf5d1fc397658e6c0f7a6bed7ed5260c819843d))
+
 ## [0.11.0](https://github.com/aibtcdev/skills/compare/skills-v0.10.1...skills-v0.11.0) (2026-02-28)
 
 
