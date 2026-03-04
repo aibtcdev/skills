@@ -2,10 +2,12 @@
 /**
  * Nostr skill CLI
  * Nostr protocol operations for AI agents — post notes, read feeds,
- * search by hashtags, manage profiles, and derive NIP-06 keys.
+ * search by hashtags, manage profiles, and derive keys.
  *
- * Key derivation: BIP84 m/84'/0'/0'/0/0 → secp256k1 privkey → x-only pubkey
+ * Key derivation (BTC-shared): BIP84 m/84'/0'/0'/0/0 → secp256k1 privkey → x-only pubkey
  * Same keypair as BTC wallet (npub ↔ taproot address share the same key).
+ * NOTE: This is NOT NIP-06 (which uses m/44'/1237'/0'/0/0). We intentionally
+ * reuse the BTC key so the agent has a single identity across both protocols.
  *
  * Usage: bun run nostr/nostr.ts <subcommand> [options]
  */
@@ -37,7 +39,7 @@ const WS_TIMEOUT_MS = 10_000;
 // ---------------------------------------------------------------------------
 
 /**
- * NIP-06 Key Derivation
+ * Key Derivation (BTC-shared)
  *
  * BIP39 mnemonic → BIP32 seed → m/84'/0'/0'/0/0 → 32-byte secp256k1 private key
  *
@@ -46,6 +48,10 @@ const WS_TIMEOUT_MS = 10_000;
  *
  * This is the same key used for the BTC taproot address, so:
  *   npub ↔ BTC address share the same underlying keypair.
+ *
+ * NOTE: This is NOT NIP-06 derivation (which uses m/44'/1237'/0'/0/0).
+ * The BTC path is intentional — agents get a shared identity across
+ * Bitcoin and Nostr from a single mnemonic.
  */
 function deriveNostrKeys(): { sk: Uint8Array; pubkey: string; npub: string } {
   const walletManager = getWalletManager();
@@ -96,12 +102,12 @@ async function publishToRelays(
   const results: Record<string, string> = {};
   const promises = relays.map(async (relay) => {
     try {
-      await Promise.race([
-        pool.publish([relay], event),
-        new Promise((_, reject) =>
-          setTimeout(() => reject(new Error("timeout")), WS_TIMEOUT_MS)
-        ),
-      ]);
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("timeout")), WS_TIMEOUT_MS)
+      );
+      // pool.publish returns Promise<string>[] in nostr-tools v2+
+      const pubPromises = pool.publish([relay], event);
+      await Promise.race([...pubPromises, timeoutPromise]);
       results[relay] = "ok";
     } catch (err: any) {
       results[relay] = `error: ${err.message}`;
@@ -138,7 +144,7 @@ program
   .name("nostr")
   .description(
     "Nostr protocol operations — post notes, read feeds, search by hashtag tags, " +
-      "get/set profiles, derive NIP-06 keys, and manage relay connections."
+      "get/set profiles, derive keys (BTC-shared path), and manage relay connections."
   )
   .version("0.1.0");
 
@@ -323,7 +329,26 @@ program
     try {
       const { sk, pubkey } = deriveNostrKeys();
 
-      const content: Record<string, string> = {};
+      // Fetch existing profile to merge (kind:0 is replaceable — publishing
+      // a new event wipes fields not included). This prevents set-profile
+      // --name "foo" from deleting about, picture, etc.
+      const pool = createPool();
+      const relays = DEFAULT_RELAYS;
+      let existing: Record<string, string> = {};
+      try {
+        const profileEvents = await queryRelays(pool, relays, {
+          kinds: [0],
+          authors: [pubkey],
+          limit: 1,
+        });
+        if (profileEvents.length > 0) {
+          existing = JSON.parse(profileEvents[0].content);
+        }
+      } catch {
+        // If fetch fails, proceed with empty — user's new fields will still apply
+      }
+
+      const content: Record<string, string> = { ...existing };
       if (opts.name) content.name = opts.name;
       if (opts.about) content.about = opts.about;
       if (opts.picture) content.picture = opts.picture;
@@ -338,8 +363,6 @@ program
       };
 
       const event = finalizeEvent(template, sk);
-      const pool = createPool();
-      const relays = DEFAULT_RELAYS;
       const results = await publishToRelays(pool, event, relays);
 
       pool.close(relays);
@@ -362,7 +385,7 @@ program
 program
   .command("get-pubkey")
   .description(
-    "Derive and display your Nostr public key (NIP-06) from the BIP84 wallet. " +
+    "Derive and display your Nostr public key from the BIP84 wallet (BTC-shared key). " +
       "Requires unlocked wallet."
   )
   .action(async () => {

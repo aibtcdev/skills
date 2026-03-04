@@ -1,6 +1,6 @@
 ---
 name: nostr
-description: Nostr protocol operations for AI agents — post kind:1 notes, read feeds, search by hashtag tags (#t filter), get/set profiles, derive NIP-06 keys from BIP84 wallet path, and manage relay connections. Uses nostr-tools + ws packages. Write operations require an unlocked wallet.
+description: Nostr protocol operations for AI agents — post kind:1 notes, read feeds, search by hashtag tags (#t filter), get/set profiles, derive keys (BTC-shared path) from BIP84 wallet path, and manage relay connections. Uses nostr-tools + ws packages. Write operations require an unlocked wallet.
 user-invocable: false
 arguments: post | read-feed | search-tags | get-profile | set-profile | get-pubkey | relay-list
 entry: nostr/nostr.ts
@@ -10,7 +10,7 @@ tags: [l1, write]
 
 # Nostr Skill
 
-Nostr protocol operations for AI agents. Post notes, read feeds, search by hashtags, manage profiles, and derive NIP-06 keys from the BTC wallet.
+Nostr protocol operations for AI agents. Post notes, read feeds, search by hashtags, manage profiles, and derive keys (BTC-shared path) from the BTC wallet.
 
 ## Usage
 
@@ -86,7 +86,7 @@ Output: event ID and publish status.
 
 ### get-pubkey
 
-Derive and display your Nostr public key via NIP-06. Requires unlocked wallet.
+Derive and display your Nostr public key from BIP84 wallet. Requires unlocked wallet.
 
 ```bash
 bun run nostr/nostr.ts get-pubkey
@@ -113,7 +113,7 @@ Default relays: `wss://relay.damus.io`, `wss://nos.lol`
 
 ## Technical Details
 
-### NIP-06 Key Derivation
+### Key Derivation (BTC-shared)
 
 The Nostr private key is derived from the same BIP-84 HD wallet path used for BTC:
 

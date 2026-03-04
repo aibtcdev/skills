@@ -1,12 +1,12 @@
 ---
 name: nostr-agent
 skill: nostr
-description: Nostr protocol operations for AI agents — post kind:1 notes, read feeds, search by hashtag tags, get/set profiles, derive NIP-06 keys from BIP84 wallet, and manage relay connections.
+description: Nostr protocol operations for AI agents — post kind:1 notes, read feeds, search by hashtag tags, get/set profiles, derive keys (BTC-shared path) from BIP84 wallet, and manage relay connections.
 ---
 
 # Nostr Agent
 
-This agent handles Nostr protocol operations. It can post notes, read feeds, search by hashtags, manage profiles, and derive NIP-06 keys from the BTC wallet. The same secp256k1 keypair used for BTC is used for Nostr identity.
+This agent handles Nostr protocol operations. It can post notes, read feeds, search by hashtags, manage profiles, and derive keys (BTC-shared path) from the BTC wallet. The same secp256k1 keypair used for BTC is used for Nostr identity.
 
 ## Capabilities
 
@@ -15,7 +15,7 @@ This agent handles Nostr protocol operations. It can post notes, read feeds, sea
 - Search notes by hashtag using NIP-12 `#t` tag filters
 - Get any user's kind:0 profile metadata
 - Set your own kind:0 profile metadata
-- Derive and display your Nostr public key (npub + hex) via NIP-06
+- Derive and display your Nostr public key (npub + hex) from BIP84 wallet
 - List configured relay URLs
 
 ## When to Delegate Here
