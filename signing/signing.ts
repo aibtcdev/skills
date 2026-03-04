@@ -813,7 +813,7 @@ function resolveDomainParams(opts: {
   domain?: string;
   domainName?: string;
   domainVersion?: string;
-}): { name: string; version: string } {
+}): { name: string; version: string; chainId?: number } {
   if (opts.domain) {
     const parsed = parseJsonObject(opts.domain, "--domain");
     if (typeof parsed.name !== "string" || typeof parsed.version !== "string") {
@@ -821,7 +821,20 @@ function resolveDomainParams(opts: {
         '--domain must be a JSON object with "name" and "version" string fields'
       );
     }
-    return { name: parsed.name, version: parsed.version };
+
+    let chainId: number | undefined;
+    if (parsed.chainId !== undefined) {
+      const parsedChainId =
+        typeof parsed.chainId === "string"
+          ? parseInt(parsed.chainId, 10)
+          : parsed.chainId;
+      if (!Number.isInteger(parsedChainId)) {
+        throw new Error('--domain.chainId must be an integer when provided');
+      }
+      chainId = parsedChainId;
+    }
+
+    return { name: parsed.name, version: parsed.version, chainId };
   }
   if (opts.domainName && opts.domainVersion) {
     return { name: opts.domainName, version: opts.domainVersion };
@@ -838,7 +851,7 @@ function addDomainOptions(cmd: Command): Command {
   return cmd
     .option(
       "--domain <json>",
-      "Domain as JSON object matching MCP format (e.g., '{\"name\":\"My App\",\"version\":\"1.0.0\"}')"
+      "Domain as JSON object matching MCP format (e.g., '{\"name\":\"My App\",\"version\":\"1.0.0\",\"chainId\":2147483648}')"
     )
     .option(
       "--domain-name <name>",
@@ -898,9 +911,13 @@ addDomainOptions(sip018SignCmd)
       try {
         const account = requireUnlockedWallet();
         const messageJson = parseJsonObject(opts.message, "--message");
-        const { name: domainName, version: domainVersion } = resolveDomainParams(opts);
+        const {
+          name: domainName,
+          version: domainVersion,
+          chainId: domainChainId,
+        } = resolveDomainParams(opts);
 
-        const chainId = CHAIN_IDS[NETWORK];
+        const chainId = domainChainId ?? CHAIN_IDS[NETWORK];
         const domainCV = buildDomainCV(domainName, domainVersion, chainId);
         const messageCV = jsonToClarityValue(messageJson);
 
@@ -1033,11 +1050,15 @@ addDomainOptions(sip018HashCmd)
     }) => {
       try {
         const messageJson = parseJsonObject(opts.message, "--message");
-        const { name: domainName, version: domainVersion } = resolveDomainParams(opts);
+        const {
+          name: domainName,
+          version: domainVersion,
+          chainId: domainChainId,
+        } = resolveDomainParams(opts);
 
         const chainId = opts.chainId
           ? parseInt(opts.chainId, 10)
-          : CHAIN_IDS[NETWORK];
+          : domainChainId ?? CHAIN_IDS[NETWORK];
 
         if (isNaN(chainId)) {
           throw new Error("--chain-id must be an integer");
