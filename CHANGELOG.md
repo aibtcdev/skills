@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.14.0](https://github.com/aibtcdev/skills/compare/skills-v0.13.0...skills-v0.14.0) (2026-03-04)
+
+
+### Features
+
+* **dual-stacking:** add dual stacking enrollment skill ([#76](https://github.com/aibtcdev/skills/issues/76)) ([07ca9fb](https://github.com/aibtcdev/skills/commit/07ca9fb7136be0c790d8878a15e4b9f9943c84d0))
+* **nostr:** add nostr skill ([#73](https://github.com/aibtcdev/skills/issues/73)) ([2a03684](https://github.com/aibtcdev/skills/commit/2a03684d44f80ce8752251b6eff04f3099e4a5ba))
+* **what-to-do:** add project board scanning workflow ([#74](https://github.com/aibtcdev/skills/issues/74)) ([6bb4904](https://github.com/aibtcdev/skills/commit/6bb490491584b508b98962dbbf612f74333bd2b5)), closes [#28](https://github.com/aibtcdev/skills/issues/28)
+
+
+### Bug Fixes
+
+* **signing:** align SIP-018 domain parsing with MCP shape ([#75](https://github.com/aibtcdev/skills/issues/75)) ([e91309f](https://github.com/aibtcdev/skills/commit/e91309fcf5ee3051aaeb38c9660807ca0c77abb1))
+
 ## [0.13.0](https://github.com/aibtcdev/skills/compare/skills-v0.12.1...skills-v0.13.0) (2026-03-03)
 
 
