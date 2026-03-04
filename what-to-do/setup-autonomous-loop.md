@@ -34,7 +34,7 @@ Claude IS the agent. No subprocess, no daemon wrapper. Claude Code reads a self-
 | # | Phase | What happens |
 |---|-------|-------------|
 | 1 | Setup | Load MCP tools, unlock wallet, read state files |
-| 2 | Observe | Heartbeat, inbox, GitHub activity, balance check |
+| 2 | Observe | Heartbeat, inbox, GitHub activity, balance check, [project board scan](./scan-project-board.md) |
 | 3 | Decide | Classify messages, queue tasks, plan replies |
 | 4 | Execute | Work the oldest pending task (code, PRs, deploys) |
 | 5 | Deliver | Reply to inbox with results and proof |
@@ -229,4 +229,5 @@ cd /path/to/your-repo && claude
 - [Register and Check In](./register-and-check-in.md) — must complete before starting the loop
 - [Inbox and Replies](./inbox-and-replies.md) — how inbox messaging works
 - [Check Balances and Status](./check-balances-and-status.md) — balance monitoring in the Observe phase
+- [Scan Project Board](./scan-project-board.md) — find and claim open work during the Observe phase
 - [loop-starter-kit repo](https://github.com/secret-mars/loop-starter-kit) — the fork-ready template
