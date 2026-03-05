@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.0](https://github.com/aibtcdev/skills/compare/skills-v0.14.0...skills-v0.15.0) (2026-03-05)
+
+
+### Features
+
+* **styx:** add BTC→sBTC conversion skill via Styx protocol ([#78](https://github.com/aibtcdev/skills/issues/78)) ([db36f98](https://github.com/aibtcdev/skills/commit/db36f980cfc82cb57fbb57ef7c4684fc11347a8f))
+
 ## [0.14.0](https://github.com/aibtcdev/skills/compare/skills-v0.13.0...skills-v0.14.0) (2026-03-04)
 
 
