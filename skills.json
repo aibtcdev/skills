@@ -338,6 +338,33 @@
       "userInvocable": false
     },
     {
+      "name": "ordinals-p2p",
+      "description": "Peer-to-peer ordinals trading on the trade ledger (ledger.drx4.xyz) \u2014 create offers, counter, accept transfers, cancel trades, record PSBT swaps, and browse the public trade history. All write operations are BIP-137 authenticated.",
+      "entry": "ordinals-p2p/ordinals-p2p.ts",
+      "arguments": [
+        "list-trades",
+        "get-trade",
+        "create-offer",
+        "counter",
+        "transfer",
+        "cancel",
+        "psbt-swap",
+        "my-trades",
+        "agents"
+      ],
+      "requires": [
+        "wallet"
+      ],
+      "tags": [
+        "l1",
+        "l2",
+        "write",
+        "requires-funds",
+        "defi"
+      ],
+      "userInvocable": false
+    },
+    {
       "name": "pillar",
       "description": "Pillar smart wallet operations in two modes \u2014 browser-handoff (pillar.ts) opens the Pillar frontend for user signing, and agent-signed direct (pillar-direct.ts) signs locally with a secp256k1 keypair and submits directly to the Pillar API (no browser required, gas sponsored). Supports sBTC send/supply/boost/unwind, DCA programs, stacking, key management, wallet creation, and position queries.",
       "entry": [
