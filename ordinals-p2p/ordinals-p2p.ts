@@ -70,13 +70,13 @@ function signBip137(message: string, privateKey: Uint8Array, btcAddress: string)
   const formatted = formatBitcoinMessage(message);
   const msgHash = doubleSha256(formatted);
 
-  const sigWithRecovery = secp256k1.sign(msgHash, privateKey, {
-    prehash: false,
+  // @noble/curves v2: format "recovered" returns Uint8Array(65) = [recovery, r(32), s(32)]
+  const recovered = secp256k1.sign(msgHash, privateKey, {
     lowS: true,
     format: "recovered",
-  }) as Uint8Array;
+  } as any);
 
-  const recoveryId = sigWithRecovery[0];
+  const recoveryId = recovered[0];
   const prefix = btcAddress[0];
   let headerBase: number;
   if (prefix === "1" || prefix === "m" || prefix === "n") {
@@ -89,8 +89,8 @@ function signBip137(message: string, privateKey: Uint8Array, btcAddress: string)
 
   const bip137Sig = new Uint8Array(65);
   bip137Sig[0] = headerBase + recoveryId;
-  bip137Sig.set(sigWithRecovery.slice(1, 33), 1);
-  bip137Sig.set(sigWithRecovery.slice(33, 65), 33);
+  bip137Sig.set(recovered.slice(1, 33), 1);   // r
+  bip137Sig.set(recovered.slice(33, 65), 33);  // s
 
   return Buffer.from(bip137Sig).toString("base64");
 }
@@ -275,7 +275,7 @@ program
   .description("Record a completed inscription transfer.")
   .requiredOption("--inscription <id>", "Inscription ID")
   .requiredOption("--to <addr>", "Recipient BTC address")
-  .requiredOption("--tx-hash <txid>", "On-chain transaction hash")
+  .option("--tx-hash <txid>", "On-chain transaction hash (optional for sBTC/off-chain transfers)")
   .option("--parent <tradeId>", "Parent trade ID (if closing an offer)")
   .option("--amount <sats>", "Amount in satoshis")
   .option("--metadata <text>", "Optional metadata")
@@ -288,8 +288,8 @@ program
         ...auth,
         inscription_id: opts.inscription,
         to_agent: opts.to,
-        tx_hash: opts.txHash,
       };
+      if (opts.txHash) body.tx_hash = opts.txHash;
       if (opts.parent) body.parent_trade_id = parseInt(opts.parent, 10);
       if (opts.amount) body.amount_sats = parseInt(opts.amount, 10);
       if (opts.metadata) body.metadata = opts.metadata;
@@ -366,14 +366,15 @@ program
 
 program
   .command("my-trades")
-  .description("List trades involving the active wallet.")
+  .description("List trades involving the active wallet (or a given address).")
+  .option("--address <btcAddr>", "BTC address to query (defaults to active wallet)")
   .option("--status <status>", "Filter by status")
   .option("--limit <n>", "Results per page", "50")
   .action(async (opts) => {
     try {
-      const account = getSignedAccount();
+      const addr = opts.address || getSignedAccount().btcAddress!;
       const params = new URLSearchParams();
-      params.set("agent", account.btcAddress!);
+      params.set("agent", addr);
       if (opts.status) params.set("status", opts.status);
       params.set("limit", opts.limit);
       const data = await ledgerGet(`/api/trades?${params}`);

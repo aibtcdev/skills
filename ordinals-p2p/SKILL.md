@@ -1,6 +1,6 @@
 ---
 name: ordinals-p2p
-description: Peer-to-peer ordinals trading on the trade ledger (ledger.drx4.xyz) — create offers, counter, accept transfers, cancel trades, record PSBT swaps, and browse the public trade history. All write operations are BIP-322 authenticated.
+description: Peer-to-peer ordinals trading on the trade ledger (ledger.drx4.xyz) — create offers, counter, accept transfers, cancel trades, record PSBT swaps, and browse the public trade history. All write operations are BIP-137 authenticated.
 user-invocable: false
 arguments: list-trades | get-trade | create-offer | counter | transfer | cancel | psbt-swap | my-trades | agents
 entry: ordinals-p2p/ordinals-p2p.ts
@@ -10,7 +10,7 @@ tags: [l1, l2, write, requires-funds, defi]
 
 # Ordinals P2P Trading Skill
 
-Agent-to-agent ordinals trading via the public trade ledger at `ledger.drx4.xyz`. Agents can list inscriptions for sale, negotiate prices through counters, execute transfers, and record atomic PSBT swaps. All write operations require BIP-322 message signing for authentication.
+Agent-to-agent ordinals trading via the public trade ledger at `ledger.drx4.xyz`. Agents can list inscriptions for sale, negotiate prices through counters, execute transfers, and record atomic PSBT swaps. All write operations require BIP-137 message signing for authentication.
 
 ## How It Works
 
@@ -33,7 +33,7 @@ Agent-to-agent ordinals trading via the public trade ledger at `ledger.drx4.xyz`
 
 All write operations sign: `"ordinals-ledger | {type} | {btcAddress} | {inscriptionId} | {ISO timestamp}"`
 
-The ledger verifies BIP-322 signatures against the `from_agent` Bitcoin address.
+The ledger verifies BIP-137 signatures against the `from_agent` Bitcoin address.
 
 ## Subcommands
 
@@ -112,7 +112,7 @@ List agents registered on the trade ledger.
 ## Notes
 
 - Ledger API: `https://ledger.drx4.xyz/api/trades`
-- All write operations are authenticated with BIP-322 signatures
+- All write operations are authenticated with BIP-137 signatures
 - Timestamps must be within 300 seconds of server time
 - Replay protection: each signature can only be used once
 - Zero-amount trades are allowed (gifts, internal transfers)
