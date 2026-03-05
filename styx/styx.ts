@@ -14,7 +14,6 @@ import { Command } from "commander";
 import {
   styxSDK,
   MIN_DEPOSIT_SATS,
-  MAX_DEPOSIT_SATS,
 } from "@faktoryfun/styx-sdk";
 import type {
   FeePriority,
@@ -28,7 +27,10 @@ import { hex } from "@scure/base";
 import { NETWORK } from "../src/lib/config/networks.js";
 import { getWalletManager } from "../src/lib/services/wallet-manager.js";
 import { MempoolApi, getMempoolTxUrl } from "../src/lib/services/mempool-api.js";
+import { OrdinalIndexer } from "../src/lib/services/ordinal-indexer.js";
 import { printJson, handleError } from "../src/lib/utils/cli.js";
+
+const FEE_PRIORITIES = ["low", "medium", "high"] as const;
 
 // ---------------------------------------------------------------------------
 // Program
@@ -59,7 +61,8 @@ program
         realAvailable: status.realAvailable,
         estimatedAvailable: status.estimatedAvailable,
         lastUpdated: status.lastUpdated,
-        note: `Available: ~${status.estimatedAvailable} BTC (${Math.floor(status.estimatedAvailable * 1e8)} sats)`,
+        network: NETWORK,
+        note: `Available: ~${status.estimatedAvailable} BTC (${Math.round(status.estimatedAvailable * 1e8)} sats)`,
       });
     } catch (error) {
       handleError(error);
@@ -76,7 +79,7 @@ program
   .action(async () => {
     try {
       const pools: PoolConfig[] = await styxSDK.getAvailablePools();
-      printJson({ pools });
+      printJson({ pools, network: NETWORK });
     } catch (error) {
       handleError(error);
     }
@@ -92,7 +95,7 @@ program
   .action(async () => {
     try {
       const fees: FeeEstimates = await styxSDK.getFeeEstimates();
-      printJson(fees);
+      printJson({ ...fees, network: NETWORK });
     } catch (error) {
       handleError(error);
     }
@@ -108,7 +111,7 @@ program
   .action(async () => {
     try {
       const price = await styxSDK.getBTCPrice();
-      printJson({ priceUsd: price });
+      printJson({ priceUsd: price, network: NETWORK });
     } catch (error) {
       handleError(error);
     }
@@ -174,9 +177,17 @@ program
         const stxReceiver = opts.stxReceiver || account.address;
         const btcSender = opts.btcSender || account.btcAddress;
 
+        // Validate fee priority
+        const feePriority = opts.fee as FeePriority;
+        if (!FEE_PRIORITIES.includes(feePriority)) {
+          throw new Error(
+            `Invalid --fee value "${opts.fee}". Must be one of: ${FEE_PRIORITIES.join(", ")}`
+          );
+        }
+
         // Step 1: Check pool liquidity
         const poolStatus = await styxSDK.getPoolStatus(opts.pool);
-        const availableSats = Math.floor(poolStatus.estimatedAvailable * 1e8);
+        const availableSats = Math.round(poolStatus.estimatedAvailable * 1e8);
         if (amountSats > availableSats) {
           throw new Error(
             `Insufficient pool liquidity: need ${amountSats} sats, pool has ~${availableSats} sats`
@@ -184,17 +195,17 @@ program
         }
 
         // Step 2: Create deposit reservation
+        const btcAmount = (amountSats / 1e8).toFixed(8);
         const depositId = await styxSDK.createDeposit({
-          btcAmount: amountSats / 1e8,
+          btcAmount: parseFloat(btcAmount),
           stxReceiver,
           btcSender,
           poolId: opts.pool,
         });
 
         // Step 3: Prepare transaction (get UTXOs, deposit address, OP_RETURN)
-        const feePriority = opts.fee as FeePriority;
         const prepared = await styxSDK.prepareTransaction({
-          amount: (amountSats / 1e8).toFixed(8),
+          amount: btcAmount,
           userAddress: stxReceiver,
           btcAddress: btcSender,
           feePriority,
@@ -202,14 +213,46 @@ program
           poolId: opts.pool,
         });
 
-        // Step 4: Build PSBT locally with @scure/btc-signer
+        // Step 4: Filter out ordinal UTXOs to prevent destroying inscriptions
+        // On mainnet, cross-reference SDK UTXOs against Hiro Ordinals API
+        let safeUtxos = prepared.utxos;
+        if (NETWORK === "mainnet") {
+          const indexer = new OrdinalIndexer(NETWORK);
+          const cardinalUtxos = await indexer.getCardinalUtxos(btcSender);
+          const cardinalSet = new Set(
+            cardinalUtxos.map((u) => `${u.txid}:${u.vout}`)
+          );
+          const filtered = prepared.utxos.filter((u) =>
+            cardinalSet.has(`${u.txid}:${u.vout}`)
+          );
+          if (filtered.length < prepared.utxos.length) {
+            const removed = prepared.utxos.length - filtered.length;
+            if (filtered.length === 0) {
+              throw new Error(
+                `All ${removed} UTXO(s) selected by Styx contain inscriptions. ` +
+                  "Cannot deposit without risking inscription loss."
+              );
+            }
+            // Recalculate total to verify we still have enough
+            const filteredTotal = filtered.reduce((sum, u) => sum + u.value, 0);
+            if (filteredTotal < amountSats) {
+              throw new Error(
+                `After removing ${removed} ordinal UTXO(s), remaining cardinal balance ` +
+                  `(${filteredTotal} sats) is insufficient for deposit (${amountSats} sats).`
+              );
+            }
+          }
+          safeUtxos = filtered;
+        }
+
+        // Step 5: Build PSBT locally with @scure/btc-signer
         const btcNetwork =
           NETWORK === "testnet" ? btc.TEST_NETWORK : btc.NETWORK;
         const tx = new btc.Transaction({ allowUnknownOutputs: true });
         const senderP2wpkh = btc.p2wpkh(account.btcPublicKey, btcNetwork);
 
-        // Add inputs from prepared UTXOs
-        for (const utxo of prepared.utxos) {
+        // Add inputs from safe UTXOs (ordinals filtered out on mainnet)
+        for (const utxo of safeUtxos) {
           tx.addInput({
             txid: utxo.txid,
             index: utxo.vout,
@@ -246,27 +289,45 @@ program
           );
         }
 
-        // Step 5: Sign all inputs
+        // Step 6: Sign all inputs
         tx.sign(account.btcPrivateKey);
         tx.finalize();
 
         const txHex = tx.hex;
-        const txid = tx.id;
 
-        // Step 6: Broadcast to mempool.space
+        // Step 7: Broadcast to mempool.space
         const mempoolApi = new MempoolApi(NETWORK);
         const broadcastTxid = await mempoolApi.broadcastTransaction(txHex);
 
-        // Step 7: Update deposit status
-        await styxSDK.updateDepositStatus({
-          id: depositId,
-          data: {
-            btcTxId: broadcastTxid,
-            status: "broadcast",
-          },
-        });
-
-        const btcAmount = (amountSats / 1e8).toFixed(8);
+        // Step 8: Update deposit status (retry once on failure to avoid locking pool liquidity)
+        try {
+          await styxSDK.updateDepositStatus({
+            id: depositId,
+            data: {
+              btcTxId: broadcastTxid,
+              status: "broadcast",
+            },
+          });
+        } catch (statusError) {
+          // Retry once — failing to update leaves pool liquidity locked
+          try {
+            await styxSDK.updateDepositStatus({
+              id: depositId,
+              data: {
+                btcTxId: broadcastTxid,
+                status: "broadcast",
+              },
+            });
+          } catch {
+            // Log enough info for manual recovery but don't fail the deposit
+            printJson({
+              warning: "Deposit broadcast succeeded but status update failed. Save these IDs for manual recovery.",
+              depositId,
+              txid: broadcastTxid,
+              statusUpdateError: statusError instanceof Error ? statusError.message : String(statusError),
+            });
+          }
+        }
 
         printJson({
           success: true,
@@ -302,15 +363,13 @@ program
   .option("--txid <btcTxId>", "Bitcoin transaction ID")
   .action(async (opts: { id?: string; txid?: string }) => {
     try {
-      if (!opts.id && !opts.txid) {
-        throw new Error("Provide either --id <depositId> or --txid <btcTxId>");
-      }
-
       let deposit: Deposit;
       if (opts.id) {
         deposit = await styxSDK.getDepositStatus(opts.id);
+      } else if (opts.txid) {
+        deposit = await styxSDK.getDepositStatusByTxId(opts.txid);
       } else {
-        deposit = await styxSDK.getDepositStatusByTxId(opts.txid!);
+        throw new Error("Provide either --id <depositId> or --txid <btcTxId>");
       }
 
       printJson({
@@ -324,6 +383,7 @@ program
         stxTxId: deposit.stxTxId,
         createdAt: deposit.createdAt,
         updatedAt: deposit.updatedAt,
+        network: NETWORK,
         explorerUrl: deposit.btcTxId
           ? getMempoolTxUrl(deposit.btcTxId, NETWORK)
           : null,
@@ -349,20 +409,20 @@ program
       let address = opts.address;
       if (!address) {
         const walletManager = getWalletManager();
-        try {
-          const account = walletManager.getActiveAccount();
-          address = account.address;
-        } catch {
+        const account = walletManager.getActiveAccount();
+        if (!account) {
           throw new Error(
             "No --address provided and wallet is not unlocked."
           );
         }
+        address = account.address;
       }
 
       const deposits: Deposit[] = await styxSDK.getDepositHistory(address);
       printJson({
         address,
         count: deposits.length,
+        network: NETWORK,
         deposits: deposits.map((d) => ({
           id: d.id,
           status: d.status,
