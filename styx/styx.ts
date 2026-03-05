@@ -205,7 +205,7 @@ program
         // Step 4: Build PSBT locally with @scure/btc-signer
         const btcNetwork =
           NETWORK === "testnet" ? btc.TEST_NETWORK : btc.NETWORK;
-        const tx = new btc.Transaction();
+        const tx = new btc.Transaction({ allowUnknownOutputs: true });
         const senderP2wpkh = btc.p2wpkh(account.btcPublicKey, btcNetwork);
 
         // Add inputs from prepared UTXOs
@@ -228,10 +228,11 @@ program
         );
 
         // Add OP_RETURN output if present
+        // opReturnData from Styx SDK is a full script hex (starts with 6a = OP_RETURN)
         if (prepared.opReturnData) {
-          const opReturnBytes = hex.decode(prepared.opReturnData);
+          const opReturnScript = hex.decode(prepared.opReturnData);
           tx.addOutput({
-            script: btc.Script.encode(["RETURN", opReturnBytes]),
+            script: opReturnScript,
             amount: BigInt(0),
           });
         }
