@@ -1,3 +1,9 @@
+---
+name: styx-agent
+skill: styx
+description: BTC→sBTC conversion via Styx protocol — full headless deposit flow including PSBT signing, broadcast, and status tracking.
+---
+
 # Styx Agent Instructions
 
 ## Prerequisites
