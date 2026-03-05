@@ -149,6 +149,8 @@ program
       pool: string;
       fee: string;
     }) => {
+      let depositId: string | undefined;
+      let broadcastTxid: string | undefined;
       try {
         const amountSats = parseInt(opts.amount, 10);
         if (isNaN(amountSats) || amountSats <= 0) {
@@ -175,7 +177,15 @@ program
         }
 
         const stxReceiver = opts.stxReceiver || account.address;
-        const btcSender = opts.btcSender || account.btcAddress;
+
+        // Ensure btcSender matches the active wallet — signing uses the wallet's keys
+        if (opts.btcSender && opts.btcSender !== account.btcAddress) {
+          throw new Error(
+            `--btc-sender must match the active wallet BTC address (${account.btcAddress}). ` +
+              "This CLI signs with the active wallet's keys."
+          );
+        }
+        const btcSender = account.btcAddress;
 
         // Validate fee priority
         const feePriority = opts.fee as FeePriority;
@@ -196,7 +206,7 @@ program
 
         // Step 2: Create deposit reservation
         const btcAmount = (amountSats / 1e8).toFixed(8);
-        const depositId = await styxSDK.createDeposit({
+        depositId = await styxSDK.createDeposit({
           btcAmount: parseFloat(btcAmount),
           stxReceiver,
           btcSender,
@@ -233,14 +243,22 @@ program
                   "Cannot deposit without risking inscription loss."
               );
             }
-            // Recalculate total to verify we still have enough
+            // Recompute change to keep the transaction balanced after removing inputs
+            const originalTotal = prepared.utxos.reduce((sum, u) => sum + u.value, 0);
             const filteredTotal = filtered.reduce((sum, u) => sum + u.value, 0);
-            if (filteredTotal < amountSats) {
+            const originalFee = originalTotal - prepared.amountInSatoshis - prepared.changeAmount;
+            if (originalFee < 0) {
+              throw new Error("Invalid SDK transaction preparation: negative implied fee.");
+            }
+            const requiredTotal = prepared.amountInSatoshis + originalFee;
+            if (filteredTotal < requiredTotal) {
               throw new Error(
                 `After removing ${removed} ordinal UTXO(s), remaining cardinal balance ` +
-                  `(${filteredTotal} sats) is insufficient for deposit (${amountSats} sats).`
+                  `(${filteredTotal} sats) is insufficient for deposit (${amountSats} sats) ` +
+                  `and fee (${originalFee} sats).`
               );
             }
+            prepared.changeAmount = filteredTotal - prepared.amountInSatoshis - originalFee;
           }
           safeUtxos = filtered;
         }
@@ -297,9 +315,10 @@ program
 
         // Step 7: Broadcast to mempool.space
         const mempoolApi = new MempoolApi(NETWORK);
-        const broadcastTxid = await mempoolApi.broadcastTransaction(txHex);
+        broadcastTxid = await mempoolApi.broadcastTransaction(txHex);
 
         // Step 8: Update deposit status (retry once on failure to avoid locking pool liquidity)
+        let statusUpdateWarning: string | undefined;
         try {
           await styxSDK.updateDepositStatus({
             id: depositId,
@@ -319,13 +338,10 @@ program
               },
             });
           } catch {
-            // Log enough info for manual recovery but don't fail the deposit
-            printJson({
-              warning: "Deposit broadcast succeeded but status update failed. Save these IDs for manual recovery.",
-              depositId,
-              txid: broadcastTxid,
-              statusUpdateError: statusError instanceof Error ? statusError.message : String(statusError),
-            });
+            statusUpdateWarning =
+              "Deposit broadcast succeeded but status update failed after retry. " +
+              "Save depositId and txid for manual recovery. " +
+              (statusError instanceof Error ? statusError.message : String(statusError));
           }
         }
 
@@ -345,8 +361,20 @@ program
           status: "broadcast",
           network: NETWORK,
           note: "sBTC will be credited to your Stacks address after Bitcoin confirmation.",
+          ...(statusUpdateWarning ? { warning: statusUpdateWarning } : {}),
         });
       } catch (error) {
+        // Best-effort cleanup: cancel reservation if we never broadcast
+        if (depositId && !broadcastTxid) {
+          try {
+            await styxSDK.updateDepositStatus({
+              id: depositId,
+              data: { status: "canceled" },
+            });
+          } catch {
+            // Reservation will expire server-side; don't mask original error
+          }
+        }
         handleError(error);
       }
     }

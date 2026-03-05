@@ -16,7 +16,7 @@ Trustless BTC→sBTC conversion via the Styx protocol by FaktoryFun. Agents depo
 
 1. **Check pool liquidity** — `pool-status` shows available sBTC in the pool
 2. **Create deposit reservation** — `deposit` reserves pool liquidity and returns a deposit ID
-3. **Build & sign PSBT** — The SDK prepares a PSBT; the agent signs with `@scure/btc-signer`
+3. **Build & sign transaction** — The SDK provides UTXOs and deposit address; the agent builds and signs locally with `@scure/btc-signer`
 4. **Broadcast** — Signed transaction is broadcast to mempool.space
 5. **Track status** — `status` monitors the deposit through confirmation
 
