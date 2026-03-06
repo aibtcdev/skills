@@ -11,7 +11,8 @@
 
 import { Command } from "commander";
 import { secp256k1 } from "@noble/curves/secp256k1.js";
-import { hashSha256Sync } from "@stacks/encryption";
+import { sha256 } from "@noble/hashes/sha256";
+import { hexToBytes } from "@noble/hashes/utils";
 import { getWalletManager } from "../src/lib/services/wallet-manager.js";
 import { NETWORK } from "../src/lib/config/networks.js";
 import { printJson, handleError } from "../src/lib/utils/cli.js";
@@ -69,7 +70,12 @@ function formatBitcoinMessage(message: string): Uint8Array {
 }
 
 function doubleSha256(data: Uint8Array): Uint8Array {
-  return hashSha256Sync(hashSha256Sync(data));
+  return sha256(sha256(data));
+}
+
+function ensureBytes(key: Uint8Array | string): Uint8Array {
+  if (typeof key === "string") return hexToBytes(key);
+  return key;
 }
 
 function signBip137(message: string, privateKey: Uint8Array, btcAddress: string): string {
@@ -130,7 +136,10 @@ function getSignedAccount() {
   if (!account.btcAddress || !account.btcPrivateKey) {
     throw new Error("Bitcoin keys not available. Unlock your wallet.");
   }
-  return account;
+  return {
+    ...account,
+    btcPrivateKey: ensureBytes(account.btcPrivateKey),
+  };
 }
 
 function buildAuthFields(
