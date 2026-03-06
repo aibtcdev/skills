@@ -38,7 +38,6 @@ const SBTC_TOKEN = "SM3VDXK3WZZSA84XXFKAFAF15NNZX32CTSG82JFQ4.sbtc-token";
 
 // Zest V2 (rewards live, pool-read-supply pending)
 const ZEST_V2_DEPLOYER = "SP4SZE494VC2YC5JYG7AYFQ44F5Q4PYV7DVMDPBG";
-const ZEST_V2_REWARDS = "rewards-v8";
 const ZEST_V2_POOL_READ = "pool-read-supply";
 
 // ALEX AMM
@@ -182,13 +181,7 @@ async function readZestPosition(
             [
               "0x" +
                 Buffer.from(
-                  serializeCV(
-                    // standard principal for wallet
-                    (() => {
-
-                      return standardPrincipalCV(walletAddress);
-                    })()
-                  )
+                  serializeCV(standardPrincipalCV(walletAddress))
                 ).toString("hex"),
             ]
           );
@@ -250,7 +243,7 @@ async function readAlexPosition(
       pos.details.poolBalanceY = balY.toString();
       // ALEX typical LP APY estimate from fee revenue
       pos.apyPct = 3.5;
-      pos.details.apySource = "estimated from historical fee revenue";
+      pos.details.apySource = "static estimate, not live";
     }
   } catch (e) {
     pos.details.error = String(e);
@@ -351,7 +344,8 @@ async function readStackingPosition(
             : typeof lockAmount === "number"
               ? lockAmount
               : 0;
-        pos.apyPct = 8.0; // Approximate stacking APY
+        pos.apyPct = 8.0;
+        pos.details.apySource = "static estimate, not live";
         pos.details.stackerInfo = val;
       }
     }
@@ -513,8 +507,9 @@ program
         positions: positions.map((p) => ({
           protocol: p.protocol,
           asset: p.asset,
-          valueSats: p.valueSats,
-          valueBtc: formatBtc(p.valueSats),
+          ...(p.valueUnit === "sats"
+            ? { valueSats: p.valueSats, valueBtc: formatBtc(p.valueSats) }
+            : { valueMicroStx: p.valueSats, valueStx: formatStx(p.valueSats) }),
           apyPct: p.apyPct,
           riskScore: p.riskScore,
           details: p.details,

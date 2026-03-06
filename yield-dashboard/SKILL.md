@@ -5,7 +5,7 @@ user-invocable: false
 arguments: overview | positions | apy-breakdown | rebalance
 entry: yield-dashboard/yield-dashboard.ts
 requires: [wallet]
-tags: [l2, defi, read, mainnet-only]
+tags: [l2, defi, read-only, mainnet-only]
 ---
 
 # Yield Dashboard Skill
