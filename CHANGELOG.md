@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.16.0](https://github.com/aibtcdev/skills/compare/skills-v0.15.0...skills-v0.16.0) (2026-03-06)
+
+
+### Features
+
+* add author attribution to skill frontmatter ([#90](https://github.com/aibtcdev/skills/issues/90)) ([f90b996](https://github.com/aibtcdev/skills/commit/f90b9966a63265fffef583d3a487311d8ce83797))
+* add skill scaffolding script for new contributors ([#89](https://github.com/aibtcdev/skills/issues/89)) ([a0def2c](https://github.com/aibtcdev/skills/commit/a0def2cee5dbb2853d6b49514b605f40254a5e20))
+* add yield-dashboard skill — cross-protocol DeFi yield aggregator ([#82](https://github.com/aibtcdev/skills/issues/82)) ([979bd69](https://github.com/aibtcdev/skills/commit/979bd69eddb755d903e27a8d07586d58f7d3726e))
+* **nostr:** add amplify-signal and amplify-text subcommands ([#92](https://github.com/aibtcdev/skills/issues/92)) ([7100cd6](https://github.com/aibtcdev/skills/commit/7100cd6e66d435586baf1ff9e438e03ee43d2ec0))
+* **onboarding:** add agent onboarding automation skill ([#81](https://github.com/aibtcdev/skills/issues/81)) ([867f8f8](https://github.com/aibtcdev/skills/commit/867f8f877f209033d04086c7a484389ef09a2f23))
+
+
+### Bug Fixes
+
+* **styx:** move OP_RETURN to output index 0 for Styx protocol compliance ([#85](https://github.com/aibtcdev/skills/issues/85)) ([9f7c6a6](https://github.com/aibtcdev/skills/commit/9f7c6a634bdde0adc9b4fa80fea68b31d152745a))
+
 ## [0.15.0](https://github.com/aibtcdev/skills/compare/skills-v0.14.0...skills-v0.15.0) (2026-03-05)
 
 
