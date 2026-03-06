@@ -1,6 +1,6 @@
 {
   "version": "0.15.0",
-  "generated": "2026-03-06T19:20:45.688Z",
+  "generated": "2026-03-06T19:43:59.700Z",
   "skills": [
     {
       "name": "aibtc-news",
@@ -771,6 +771,27 @@
       "tags": [
         "l2",
         "write"
+      ],
+      "userInvocable": false
+    },
+    {
+      "name": "yield-dashboard",
+      "description": "Cross-protocol DeFi yield dashboard for Stacks — view positions across Zest Protocol, ALEX DEX, and Bitflow, see total portfolio value, APY breakdown per protocol, and get rebalance suggestions. Read-only, mainnet-only. Requires an unlocked wallet for address context.",
+      "entry": "yield-dashboard/yield-dashboard.ts",
+      "arguments": [
+        "overview",
+        "positions",
+        "apy-breakdown",
+        "rebalance"
+      ],
+      "requires": [
+        "wallet"
+      ],
+      "tags": [
+        "l2",
+        "defi",
+        "read-only",
+        "mainnet-only"
       ],
       "userInvocable": false
     },
