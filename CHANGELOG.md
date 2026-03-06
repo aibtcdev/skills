@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.0](https://github.com/aibtcdev/skills/compare/skills-v0.17.0...skills-v0.18.0) (2026-03-06)
+
+
+### Features
+
+* multi-author support and full author attribution ([#97](https://github.com/aibtcdev/skills/issues/97)) ([fc82ef7](https://github.com/aibtcdev/skills/commit/fc82ef70bd8c9a31fcf27f091636304f33e94ecf))
+
 ## [0.17.0](https://github.com/aibtcdev/skills/compare/skills-v0.16.0...skills-v0.17.0) (2026-03-06)
 
 
