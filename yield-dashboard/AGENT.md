@@ -25,6 +25,7 @@ description: Subagent rules for yield dashboard — portfolio aggregation across
 - If defi/bitflow/pillar/stacking fails: include partial results and note which source failed
 - If YieldAgent 402: inform user they need sBTC; offer `positions` (free) as fallback
 - Never block on a single source — best-effort aggregation
+- Pillar uses signing key (not `--address`): position may differ from other sources — flag mismatches rather than averaging away
 
 ## Output Handling
 

@@ -10,6 +10,7 @@
 
 import { Command } from "commander";
 import path from "path";
+import { printJson } from "../src/lib/utils/cli.js";
 
 const YIELD_AGENT_URL = "https://api.yieldagentx402.app/api/yields";
 // Resolve skill paths relative to skills repo root (parent of yield-dashboard/)
@@ -95,10 +96,6 @@ async function fetchYieldAgentYields(): Promise<unknown> {
   }
 }
 
-function printJson(obj: unknown) {
-  console.log(JSON.stringify(obj, null, 2));
-}
-
 // Stacks mainnet address: SP (single-sig) or ST (multisig), base58check, 34–43 chars
 function isValidStacksAddress(addr: string): boolean {
   if (!addr || typeof addr !== "string") return false;
@@ -115,7 +112,7 @@ function validateAddress(addr: string | undefined): string[] {
 
 type ZestResponse = { position?: { asset: string; supplied: string; borrowed: string } };
 
-async function gatherZestPositions(address: string[]): Promise<unknown[]> {
+async function gatherZestPositions(address: string[], maxAssets: number = 10): Promise<unknown[]> {
   let zestAssets: string[] = [];
   try {
     const assets = (await runSkill("defi/defi.ts", ["zest-list-assets"])) as {
@@ -125,8 +122,9 @@ async function gatherZestPositions(address: string[]): Promise<unknown[]> {
   } catch {
     zestAssets = ["sBTC", "stSTX", "aeUSDC"];
   }
+  const cap = maxAssets > 0 ? maxAssets : zestAssets.length;
   const zestPositions: unknown[] = [];
-  for (const symbol of zestAssets.slice(0, 5)) {
+  for (const symbol of zestAssets.slice(0, cap)) {
     try {
       const res = (await runSkill("defi/defi.ts", [
         "zest-get-position",
@@ -142,10 +140,10 @@ async function gatherZestPositions(address: string[]): Promise<unknown[]> {
   return zestPositions;
 }
 
-async function gatherPositions(address: string[]): Promise<Record<string, unknown>> {
+async function gatherPositions(address: string[], maxZestAssets: number = 10): Promise<Record<string, unknown>> {
   const positions: Record<string, unknown> = {};
 
-  positions.zest = await gatherZestPositions(address);
+  positions.zest = await gatherZestPositions(address, maxZestAssets);
 
   try {
     positions.pillar = await runSkill("pillar/pillar-direct.ts", ["direct-position"]);
@@ -180,12 +178,14 @@ program
 program
   .command("dashboard")
   .description("Full dashboard: positions + optional YieldAgent opportunities + rebalance suggestions")
-  .option("--include-yieldagent", "Fetch yield opportunities from YieldAgent (x402 payment)")
+  .option("--include-yieldagent", "Fetch yield opportunities from YieldAgent (x402 payment ~100 sats sBTC)")
   .option("--address <addr>", "Stacks address (uses active wallet if omitted)")
-  .action(async (opts: { includeYieldagent?: boolean; address?: string }) => {
+  .option("--max-assets <n>", "Max Zest assets to query (0 = no limit)", "10")
+  .action(async (opts: { includeYieldagent?: boolean; address?: string; maxAssets?: string }) => {
     try {
       const address = validateAddress(opts.address);
-      const positions = await gatherPositions(address);
+      const maxAssets = Math.max(0, parseInt(opts.maxAssets ?? "10", 10) || 10);
+      const positions = await gatherPositions(address, maxAssets);
 
       let opportunities: unknown = null;
       if (opts.includeYieldagent) {
@@ -214,13 +214,11 @@ program
         network: process.env.NETWORK ?? "mainnet",
         address: opts.address ?? "active-wallet",
         positions,
-        opportunities: opts.includeYieldagent
-          ? opportunities
-          : "Omit --include-yieldagent to skip",
-        rebalanceSuggestions:
-          rebalanceSuggestions.length > 0
-            ? rebalanceSuggestions
-            : "Run with --include-yieldagent for suggestions",
+        opportunities: opts.includeYieldagent ? opportunities : null,
+        rebalanceSuggestions,
+        ...(!opts.includeYieldagent && {
+          note: "Run with --include-yieldagent for YieldAgent opportunities and rebalance suggestions",
+        }),
       });
     } catch (e) {
       printJson({ error: String(e) });
@@ -232,10 +230,12 @@ program
   .command("positions")
   .description("Positions only — no YieldAgent, no rebalance logic")
   .option("--address <addr>", "Stacks address")
-  .action(async (opts: { address?: string }) => {
+  .option("--max-assets <n>", "Max Zest assets to query (0 = no limit)", "10")
+  .action(async (opts: { address?: string; maxAssets?: string }) => {
     try {
       const address = validateAddress(opts.address);
-      const positions = await gatherPositions(address);
+      const maxAssets = Math.max(0, parseInt(opts.maxAssets ?? "10", 10) || 10);
+      const positions = await gatherPositions(address, maxAssets);
       printJson({
         network: process.env.NETWORK ?? "mainnet",
         address: opts.address ?? "active-wallet",

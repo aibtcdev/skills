@@ -33,36 +33,25 @@ bun run yield-dashboard/yield-dashboard.ts <subcommand> [options]
 Full dashboard: positions from all protocols, YieldAgent opportunities (if --include-yieldagent), rebalance suggestions.
 
 ```
-bun run yield-dashboard/yield-dashboard.ts dashboard [--include-yieldagent] [--address <addr>]
+bun run yield-dashboard/yield-dashboard.ts dashboard [--include-yieldagent] [--address <addr>] [--max-assets <n>]
 ```
 
 Options:
 - `--include-yieldagent` — Fetch yield opportunities from api.yieldagentx402.app (x402 payment required, ~100 sats sBTC)
 - `--address` — Stacks address (uses active wallet if omitted)
+- `--max-assets` — Max Zest assets to query (default 10; 0 = no limit)
 
-Output:
-```json
-{
-  "network": "mainnet",
-  "address": "SP2...",
-  "positions": {
-    "zest": [...],
-    "pillar": {...},
-    "bitflow": {...},
-    "stacking": {...}
-  },
-  "opportunities": {...} | "Omit --include-yieldagent to skip",
-  "rebalanceSuggestions": [...]
-}
-```
+Output: `network`, `address`, `positions` (zest, pillar, bitflow, stacking), `opportunities` (null or object; null when not using --include-yieldagent), `rebalanceSuggestions` (always array), optional `note` when YieldAgent not included.
 
 ### positions
 
 Positions only — no YieldAgent fetch, no rebalance logic.
 
 ```
-bun run yield-dashboard/yield-dashboard.ts positions [--address <addr>]
+bun run yield-dashboard/yield-dashboard.ts positions [--address <addr>] [--max-assets <n>]
 ```
+
+Options: `--address`, `--max-assets` (default 10, 0 = no limit).
 
 ### opportunities
 
