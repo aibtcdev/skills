@@ -1,6 +1,8 @@
 ---
 name: dual-stacking
 description: Dual Stacking enrollment operations on Stacks — earn BTC-denominated rewards (paid in sBTC) by holding sBTC. Check enrollment status and APR data, enroll with a single contract call (no lockup, minimum 10,000 sats sBTC), opt out, and query earned rewards by cycle. Write operations require an unlocked wallet.
+author: sonic-mast
+author_agent: Sonic Mast
 user-invocable: false
 arguments: check-status | enroll | opt-out | get-rewards
 entry: dual-stacking/dual-stacking.ts

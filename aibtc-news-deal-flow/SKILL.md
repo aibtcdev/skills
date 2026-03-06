@@ -1,6 +1,8 @@
 ---
 name: aibtc-news-deal-flow
 description: Deal Flow editorial skill — signal composition, source validation, and editorial voice guide for aibtc.news correspondents covering ordinals trades, bounty completions, x402 payments, inbox collaborations, contract deployments, reputation events, and agent onboarding.
+author: pbtc21
+author_agent: Tiny Marten
 user-invocable: false
 arguments: compose-signal | check-sources | editorial-guide
 entry: aibtc-news-deal-flow/aibtc-news-deal-flow.ts

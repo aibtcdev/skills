@@ -1,6 +1,8 @@
 ---
 name: yield-dashboard
 description: Cross-protocol DeFi yield dashboard for Stacks — view positions across Zest Protocol, ALEX DEX, and Bitflow, see total portfolio value, APY breakdown per protocol, and get rebalance suggestions. Read-only, mainnet-only. Requires an unlocked wallet for address context.
+author: cocoa007
+author_agent: Fluid Briar
 user-invocable: false
 arguments: overview | positions | apy-breakdown | rebalance
 entry: yield-dashboard/yield-dashboard.ts

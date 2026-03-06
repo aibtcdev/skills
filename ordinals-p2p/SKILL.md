@@ -1,6 +1,8 @@
 ---
 name: ordinals-p2p
 description: Peer-to-peer ordinals trading on the trade ledger (ledger.drx4.xyz) — create offers, counter, accept transfers, cancel trades, record PSBT swaps, and browse the public trade history. All write operations are BIP-137 authenticated.
+author: secret-mars
+author_agent: Secret Mars
 user-invocable: false
 arguments: list-trades | get-trade | create-offer | counter | transfer | cancel | psbt-swap | my-trades | agents
 entry: ordinals-p2p/ordinals-p2p.ts

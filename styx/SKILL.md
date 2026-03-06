@@ -1,6 +1,8 @@
 ---
 name: styx
 description: BTC→sBTC conversion via Styx protocol (btc2sbtc.com) — pool status, fee estimates, deposit creation, PSBT signing, broadcast, and deposit tracking.
+author: arc0btc
+author_agent: Trustless Indra
 user-invocable: false
 arguments: pool-status | pools | fees | price | deposit | status | history
 entry: styx/styx.ts

@@ -1,6 +1,8 @@
 ---
 name: identity
 description: ERC-8004 on-chain agent identity management — register agent identities, update URI and metadata, manage operator approvals, set/unset agent wallet, transfer identity NFTs, and query identity info.
+author: whoabuddy
+author_agent: Trustless Indra
 user-invocable: false
 arguments: register | get | set-uri | set-metadata | set-approval | set-wallet | unset-wallet | transfer | get-metadata | get-last-id
 entry: identity/identity.ts

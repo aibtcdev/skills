@@ -1,6 +1,6 @@
 {
-  "version": "0.15.0",
-  "generated": "2026-03-06T19:43:59.700Z",
+  "version": "0.17.0",
+  "generated": "2026-03-06T20:33:00.009Z",
   "skills": [
     {
       "name": "aibtc-news",
@@ -24,7 +24,9 @@
         "write",
         "infrastructure"
       ],
-      "userInvocable": false
+      "userInvocable": false,
+      "author": "whoabuddy",
+      "authorAgent": "Trustless Indra"
     },
     {
       "name": "aibtc-news-deal-flow",
@@ -43,7 +45,9 @@
         "infrastructure",
         "l2"
       ],
-      "userInvocable": false
+      "userInvocable": false,
+      "author": "pbtc21",
+      "authorAgent": "Tiny Marten"
     },
     {
       "name": "aibtc-news-protocol",
@@ -62,7 +66,9 @@
         "infrastructure",
         "l2"
       ],
-      "userInvocable": false
+      "userInvocable": false,
+      "author": "whoabuddy",
+      "authorAgent": "Trustless Indra"
     },
     {
       "name": "bitflow",
@@ -118,7 +124,9 @@
         "write",
         "requires-funds"
       ],
-      "userInvocable": false
+      "userInvocable": false,
+      "author": "whoabuddy",
+      "authorAgent": "Trustless Indra"
     },
     {
       "name": "btc",
@@ -141,7 +149,9 @@
         "write",
         "requires-funds"
       ],
-      "userInvocable": false
+      "userInvocable": false,
+      "author": "whoabuddy",
+      "authorAgent": "Trustless Indra"
     },
     {
       "name": "business-dev",
@@ -201,7 +211,9 @@
         "infrastructure",
         "sensitive"
       ],
-      "userInvocable": false
+      "userInvocable": false,
+      "author": "whoabuddy",
+      "authorAgent": "Trustless Indra"
     },
     {
       "name": "defi",
@@ -230,7 +242,9 @@
         "mainnet-only",
         "requires-funds"
       ],
-      "userInvocable": false
+      "userInvocable": false,
+      "author": "whoabuddy",
+      "authorAgent": "Trustless Indra"
     },
     {
       "name": "dual-stacking",
@@ -251,7 +265,9 @@
         "requires-funds",
         "defi"
       ],
-      "userInvocable": false
+      "userInvocable": false,
+      "author": "sonic-mast",
+      "authorAgent": "Sonic Mast"
     },
     {
       "name": "identity",
@@ -276,7 +292,9 @@
         "l2",
         "write"
       ],
-      "userInvocable": false
+      "userInvocable": false,
+      "author": "whoabuddy",
+      "authorAgent": "Trustless Indra"
     },
     {
       "name": "nft",
@@ -297,7 +315,9 @@
         "l2",
         "write"
       ],
-      "userInvocable": false
+      "userInvocable": false,
+      "author": "whoabuddy",
+      "authorAgent": "Trustless Indra"
     },
     {
       "name": "nostr",
@@ -323,8 +343,14 @@
         "write"
       ],
       "userInvocable": false,
-      "author": "cocoa007",
-      "authorAgent": "Fluid Briar"
+      "author": [
+        "cocoa007",
+        "sonic-mast"
+      ],
+      "authorAgent": [
+        "Fluid Briar",
+        "Sonic Mast"
+      ]
     },
     {
       "name": "onboarding",
@@ -366,11 +392,13 @@
         "write",
         "requires-funds"
       ],
-      "userInvocable": false
+      "userInvocable": false,
+      "author": "whoabuddy",
+      "authorAgent": "Trustless Indra"
     },
     {
       "name": "ordinals-p2p",
-      "description": "Peer-to-peer ordinals trading on the trade ledger (ledger.drx4.xyz) \u2014 create offers, counter, accept transfers, cancel trades, record PSBT swaps, and browse the public trade history. All write operations are BIP-137 authenticated.",
+      "description": "Peer-to-peer ordinals trading on the trade ledger (ledger.drx4.xyz) — create offers, counter, accept transfers, cancel trades, record PSBT swaps, and browse the public trade history. All write operations are BIP-137 authenticated.",
       "entry": "ordinals-p2p/ordinals-p2p.ts",
       "arguments": [
         "list-trades",
@@ -393,7 +421,9 @@
         "requires-funds",
         "defi"
       ],
-      "userInvocable": false
+      "userInvocable": false,
+      "author": "secret-mars",
+      "authorAgent": "Secret Mars"
     },
     {
       "name": "pillar",
@@ -452,7 +482,9 @@
         "write",
         "mainnet-only"
       ],
-      "userInvocable": false
+      "userInvocable": false,
+      "author": "whoabuddy",
+      "authorAgent": "Trustless Indra"
     },
     {
       "name": "query",
@@ -474,7 +506,9 @@
         "l2",
         "read-only"
       ],
-      "userInvocable": false
+      "userInvocable": false,
+      "author": "whoabuddy",
+      "authorAgent": "Trustless Indra"
     },
     {
       "name": "reputation",
@@ -500,7 +534,9 @@
         "l2",
         "write"
       ],
-      "userInvocable": false
+      "userInvocable": false,
+      "author": "whoabuddy",
+      "authorAgent": "Trustless Indra"
     },
     {
       "name": "sbtc",
@@ -522,7 +558,9 @@
         "write",
         "requires-funds"
       ],
-      "userInvocable": false
+      "userInvocable": false,
+      "author": "whoabuddy",
+      "authorAgent": "Trustless Indra"
     },
     {
       "name": "settings",
@@ -542,7 +580,9 @@
       "tags": [
         "infrastructure"
       ],
-      "userInvocable": false
+      "userInvocable": false,
+      "author": "whoabuddy",
+      "authorAgent": "Trustless Indra"
     },
     {
       "name": "signing",
@@ -567,7 +607,9 @@
         "l2",
         "l1"
       ],
-      "userInvocable": false
+      "userInvocable": false,
+      "author": "whoabuddy",
+      "authorAgent": "Trustless Indra"
     },
     {
       "name": "stacking",
@@ -587,7 +629,9 @@
         "write",
         "requires-funds"
       ],
-      "userInvocable": false
+      "userInvocable": false,
+      "author": "whoabuddy",
+      "authorAgent": "Trustless Indra"
     },
     {
       "name": "stacks-market",
@@ -616,7 +660,9 @@
         "mainnet-only",
         "requires-funds"
       ],
-      "userInvocable": false
+      "userInvocable": false,
+      "author": "whoabuddy",
+      "authorAgent": "Trustless Indra"
     },
     {
       "name": "stackspot",
@@ -639,7 +685,9 @@
         "mainnet-only",
         "requires-funds"
       ],
-      "userInvocable": false
+      "userInvocable": false,
+      "author": "whoabuddy",
+      "authorAgent": "Trustless Indra"
     },
     {
       "name": "stx",
@@ -661,7 +709,9 @@
         "write",
         "requires-funds"
       ],
-      "userInvocable": false
+      "userInvocable": false,
+      "author": "whoabuddy",
+      "authorAgent": "Trustless Indra"
     },
     {
       "name": "styx",
@@ -686,7 +736,9 @@
         "requires-funds",
         "defi"
       ],
-      "userInvocable": false
+      "userInvocable": false,
+      "author": "arc0btc",
+      "authorAgent": "Trustless Indra"
     },
     {
       "name": "taproot-multisig",
@@ -707,7 +759,9 @@
         "requires-funds",
         "sensitive"
       ],
-      "userInvocable": false
+      "userInvocable": false,
+      "author": "arc0btc",
+      "authorAgent": "Trustless Indra"
     },
     {
       "name": "tokens",
@@ -727,7 +781,9 @@
         "l2",
         "write"
       ],
-      "userInvocable": false
+      "userInvocable": false,
+      "author": "whoabuddy",
+      "authorAgent": "Trustless Indra"
     },
     {
       "name": "validation",
@@ -748,7 +804,9 @@
         "l2",
         "write"
       ],
-      "userInvocable": false
+      "userInvocable": false,
+      "author": "whoabuddy",
+      "authorAgent": "Trustless Indra"
     },
     {
       "name": "wallet",
@@ -799,7 +857,9 @@
         "l2",
         "write"
       ],
-      "userInvocable": false
+      "userInvocable": false,
+      "author": "whoabuddy",
+      "authorAgent": "Trustless Indra"
     },
     {
       "name": "yield-dashboard",
@@ -820,7 +880,9 @@
         "read-only",
         "mainnet-only"
       ],
-      "userInvocable": false
+      "userInvocable": false,
+      "author": "cocoa007",
+      "authorAgent": "Fluid Briar"
     },
     {
       "name": "yield-hunter",
@@ -842,7 +904,9 @@
         "mainnet-only",
         "requires-funds"
       ],
-      "userInvocable": false
+      "userInvocable": false,
+      "author": "whoabuddy",
+      "authorAgent": "Trustless Indra"
     }
   ]
 }

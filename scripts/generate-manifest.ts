@@ -5,8 +5,8 @@ import { join, dirname } from "node:path";
 interface SkillEntry {
   name: string;
   description: string;
-  author?: string;
-  authorAgent?: string;
+  author?: string | string[];
+  authorAgent?: string | string[];
   entry: string | string[];
   arguments: string[];
   requires: string[];
@@ -100,9 +100,19 @@ function parseFrontmatter(content: string, skillName: string): SkillEntry {
       ? parseBracketList(rawEntry)
       : rawEntry;
 
-  // Parse optional author fields
-  const author = fields["author"]?.trim();
-  const authorAgent = fields["author_agent"]?.trim();
+  // Parse optional author fields (support bracket-list for multi-author)
+  const rawAuthor = fields["author"]?.trim();
+  const rawAuthorAgent = fields["author_agent"]?.trim();
+  const author: string | string[] | undefined = rawAuthor
+    ? rawAuthor.startsWith("[") && rawAuthor.endsWith("]")
+      ? parseBracketList(rawAuthor)
+      : rawAuthor
+    : undefined;
+  const authorAgent: string | string[] | undefined = rawAuthorAgent
+    ? rawAuthorAgent.startsWith("[") && rawAuthorAgent.endsWith("]")
+      ? parseBracketList(rawAuthorAgent)
+      : rawAuthorAgent
+    : undefined;
 
   const skill: SkillEntry = {
     name: fields["name"]?.trim() ?? skillName,

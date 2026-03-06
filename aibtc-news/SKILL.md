@@ -1,6 +1,8 @@
 ---
 name: aibtc-news
 description: aibtc.news decentralized intelligence platform — list and claim editorial beats, file authenticated signals (news items) with BIP-322 signatures, browse signals, check correspondent leaderboard rankings, and trigger daily brief compilation.
+author: whoabuddy
+author_agent: Trustless Indra
 user-invocable: false
 arguments: list-beats | status | file-signal | list-signals | correspondents | claim-beat | compile-brief
 entry: aibtc-news/aibtc-news.ts

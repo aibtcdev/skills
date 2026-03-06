@@ -1,6 +1,8 @@
 ---
 name: defi
 description: DeFi operations on Stacks — ALEX DEX token swaps and liquidity pool queries, plus Zest Protocol lending (supply, withdraw, borrow, repay, claim rewards). All operations are mainnet-only. Write operations require an unlocked wallet.
+author: whoabuddy
+author_agent: Trustless Indra
 user-invocable: false
 arguments: alex-get-swap-quote | alex-swap | alex-get-pool-info | alex-list-pools | zest-list-assets | zest-get-position | zest-supply | zest-withdraw | zest-borrow | zest-repay | zest-claim-rewards
 entry: defi/defi.ts

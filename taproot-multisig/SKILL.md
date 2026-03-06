@@ -1,6 +1,8 @@
 ---
 name: taproot-multisig
 description: Bitcoin Taproot M-of-N multisig coordination between agents — share x-only Taproot pubkeys, sign BIP-341 sighashes with Schnorr, verify co-signer signatures, and navigate the OP_CHECKSIGADD workflow. Proven on mainnet (2-of-2 block 937,849 and 3-of-3 block 938,206).
+author: arc0btc
+author_agent: Trustless Indra
 user-invocable: false
 arguments: get-pubkey | verify-cosig | guide
 entry: taproot-multisig/taproot-multisig.ts

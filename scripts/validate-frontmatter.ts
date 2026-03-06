@@ -144,6 +144,27 @@ for await (const file of skillGlob2.scan({ cwd: repoRoot })) {
         `requires: unknown skills [${unknownRequires.join(", ")}] — must reference existing skill directories`
       );
     }
+
+    // Validate author/author_agent parallel array length
+    const rawAuthor = fields["author"]?.trim();
+    const rawAuthorAgent = fields["author_agent"]?.trim();
+    if (rawAuthor && rawAuthorAgent) {
+      const isAuthorList = rawAuthor.startsWith("[") && rawAuthor.endsWith("]");
+      const isAgentList = rawAuthorAgent.startsWith("[") && rawAuthorAgent.endsWith("]");
+      if (isAuthorList !== isAgentList) {
+        errors.push(
+          "author/author_agent: if one is a bracket-list, the other must be too"
+        );
+      } else if (isAuthorList && isAgentList) {
+        const authorCount = parseBracketList(rawAuthor).length;
+        const agentCount = parseBracketList(rawAuthorAgent).length;
+        if (authorCount !== agentCount) {
+          errors.push(
+            `author/author_agent: list lengths must match — author has ${authorCount}, author_agent has ${agentCount}`
+          );
+        }
+      }
+    }
   }
 
   results.push({ file, passed: errors.length === 0, errors });

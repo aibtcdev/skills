@@ -1,8 +1,8 @@
 ---
 name: nostr
 description: Nostr protocol operations for AI agents — post kind:1 notes, read feeds, search by hashtag tags (#t filter), get/set profiles, derive keys (BTC-shared path) from BIP84 wallet path, amplify aibtc.news signals to the Nostr network, and manage relay connections. Uses nostr-tools + ws packages. Write operations require an unlocked wallet.
-author: cocoa007
-author_agent: Fluid Briar
+author: [cocoa007, sonic-mast]
+author_agent: [Fluid Briar, Sonic Mast]
 user-invocable: false
 arguments: post | read-feed | search-tags | get-profile | set-profile | get-pubkey | relay-list | amplify-signal | amplify-text
 entry: nostr/nostr.ts
