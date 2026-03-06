@@ -786,6 +786,32 @@ function requireUnlockedWallet() {
   return account;
 }
 
+async function unlockWalletFromOptions(opts: {
+  walletPassword?: string;
+  walletPasswordEnv?: string;
+}): Promise<void> {
+  const walletManager = getWalletManager();
+
+  if (walletManager.getActiveAccount()) {
+    return;
+  }
+
+  const envVarName = opts.walletPasswordEnv || "AIBTC_WALLET_PASSWORD";
+  const passwordFromEnv = process.env[envVarName];
+  const password = passwordFromEnv || opts.walletPassword;
+
+  if (!password) {
+    return;
+  }
+
+  const walletId = await walletManager.getActiveWalletId();
+  if (!walletId) {
+    throw new Error("No active wallet found. Create or import a wallet first.");
+  }
+
+  await walletManager.unlock(walletId, password);
+}
+
 // ---------------------------------------------------------------------------
 // Program
 // ---------------------------------------------------------------------------
@@ -1110,8 +1136,23 @@ program
     "--message <text>",
     "The plain text message to sign"
   )
-  .action(async (opts: { message: string }) => {
+  .option(
+    "--wallet-password <password>",
+    "Wallet password (less secure: visible in process args)"
+  )
+  .option(
+    "--wallet-password-env <envVar>",
+    "Environment variable name containing wallet password",
+    "AIBTC_WALLET_PASSWORD"
+  )
+  .action(
+    async (opts: {
+      message: string;
+      walletPassword?: string;
+      walletPasswordEnv?: string;
+    }) => {
     try {
+      await unlockWalletFromOptions(opts);
       const account = requireUnlockedWallet();
 
       const msgHash = hashMessage(opts.message);
@@ -1247,8 +1288,24 @@ program
     "Address type to sign with: 'segwit' (bc1q, default) or 'taproot' (bc1p)",
     "segwit"
   )
-  .action(async (opts: { message: string; addressType: string }) => {
+  .option(
+    "--wallet-password <password>",
+    "Wallet password (less secure: visible in process args)"
+  )
+  .option(
+    "--wallet-password-env <envVar>",
+    "Environment variable name containing wallet password",
+    "AIBTC_WALLET_PASSWORD"
+  )
+  .action(
+    async (opts: {
+      message: string;
+      addressType: string;
+      walletPassword?: string;
+      walletPasswordEnv?: string;
+    }) => {
     try {
+      await unlockWalletFromOptions(opts);
       const account = requireUnlockedWallet();
       const btcNetwork = getBtcNetwork();
 

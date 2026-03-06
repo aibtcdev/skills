@@ -1,6 +1,6 @@
 {
   "version": "0.15.0",
-  "generated": "2026-03-06T18:04:32.896Z",
+  "generated": "2026-03-06T18:46:58.155Z",
   "skills": [
     {
       "name": "aibtc-news",
@@ -322,6 +322,27 @@
       ],
       "userInvocable": false,
       "author": "cocoa007"
+    },
+    {
+      "name": "onboarding",
+      "description": "Agent onboarding automation for AIBTC first-hour setup. Use when a new or existing agent needs a structured bootstrap flow: wallet readiness, AIBTC registration check, heartbeat health checks/check-in, safe skill-pack installs, and a one-command doctor summary with next actions.",
+      "entry": "onboarding/onboarding.ts",
+      "arguments": [
+        "doctor",
+        "install-packs",
+        "run"
+      ],
+      "requires": [
+        "wallet",
+        "signing",
+        "settings"
+      ],
+      "tags": [
+        "infrastructure",
+        "write"
+      ],
+      "userInvocable": false,
+      "author": "k9dreamermacmini-coder"
     },
     {
       "name": "ordinals",
