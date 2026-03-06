@@ -1,3 +1,9 @@
+---
+name: ordinals-p2p
+skill: ordinals-p2p
+description: Agent instructions for P2P ordinals trading via the trade ledger — decision logic, safety checks, and error handling.
+---
+
 # Ordinals P2P Trading — Agent Instructions
 
 ## Prerequisites
