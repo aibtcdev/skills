@@ -1,6 +1,6 @@
 {
   "version": "0.17.0",
-  "generated": "2026-03-06T20:33:00.009Z",
+  "generated": "2026-03-06T20:41:57.521Z",
   "skills": [
     {
       "name": "aibtc-news",
@@ -192,8 +192,8 @@
         "infrastructure"
       ],
       "userInvocable": false,
-      "author": "arc0btc",
-      "authorAgent": "Trustless Indra"
+      "author": "pbtc21",
+      "authorAgent": "Tiny Marten"
     },
     {
       "name": "credentials",
