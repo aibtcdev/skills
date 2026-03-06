@@ -1,3 +1,9 @@
+---
+name: yield-dashboard-agent
+skill: yield-dashboard
+description: Subagent rules for yield dashboard — portfolio aggregation across Zest, Bitflow, Pillar, stacking; optional YieldAgent x402 yields.
+---
+
 # Yield Dashboard — Subagent Rules
 
 **Platform:** Stacks v1 + x402 (AIBTC dashboard ecosystem).
@@ -11,8 +17,8 @@
 ## Prerequisites
 
 1. Wallet unlocked (`wallet unlock`)
-2. For YieldAgent opportunities: sBTC balance for x402 payment
-3. For Pillar: `pillar direct-position` requires Pillar key or connect first
+2. For YieldAgent opportunities: sBTC balance for x402 payment (~100 sats per invocation; --auto-approve bypasses confirmation)
+3. For Pillar: **pillar-direct.ts** required (not pillar.ts). `direct-position` uses Pillar signing key
 
 ## Error Handling
 

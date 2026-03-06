@@ -15,7 +15,7 @@ Aggregates DeFi positions from Zest, Bitflow, Pillar, and stacking into a single
 ## Data Sources
 
 - **Zest Protocol** — Lending positions (supply/borrow) via defi zest-get-position
-- **Pillar** — Smart wallet balances and Zest positions via pillar direct-position (uses Pillar signing key, not --address; may differ from other sources)
+- **Pillar** — Smart wallet balances and Zest positions via **pillar-direct.ts** `direct-position` (requires pillar-direct, not pillar.ts; uses Pillar signing key, not --address; may differ from other sources)
 - **Bitflow** — Keeper orders and DEX positions via bitflow get-keeper-user
 - **Stacking** — STX stacking status via stacking get-stacking-status
 - **YieldAgent** — x402 API at api.yieldagentx402.app/api/yields (optional, requires sBTC payment via x402 execute-endpoint)
@@ -83,7 +83,8 @@ bun run yield-dashboard/yield-dashboard.ts rebalance-suggestions
 ## Notes
 
 - **Stacks v1 + x402** — AIBTC dashboard ecosystem; all addresses and APIs are Stacks v1 mainnet.
+- **Pillar path** — Requires `pillar-direct.ts` (agent-signed mode). If the MCP server ships only `pillar.ts` (browser-handoff), direct-position will fail.
 - Mainnet-only. Requires unlocked wallet for position queries.
-- YieldAgent integration uses x402 execute-endpoint; requires sBTC for payment.
+- YieldAgent integration uses x402 execute-endpoint with --auto-approve; requires sBTC (~100 sats per call). No cost confirmation — ensure sufficient balance.
 - Rebalance suggestions are heuristic: compares current APY to top opportunities.
 - Integrates with existing defi, bitflow, pillar, stacking skills — no duplicate protocol logic.

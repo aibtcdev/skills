@@ -99,6 +99,20 @@ function printJson(obj: unknown) {
   console.log(JSON.stringify(obj, null, 2));
 }
 
+// Stacks mainnet address: SP (single-sig) or ST (multisig), base58check, 34–43 chars
+function isValidStacksAddress(addr: string): boolean {
+  if (!addr || typeof addr !== "string") return false;
+  return /^S[PQ][1-9A-HJ-NP-Za-km-z]{32,41}$/.test(addr.trim());
+}
+
+function validateAddress(addr: string | undefined): string[] {
+  if (!addr) return [];
+  if (!isValidStacksAddress(addr)) {
+    throw new Error(`Invalid Stacks address: ${addr}. Expected SP... or ST... (mainnet, 34–43 chars).`);
+  }
+  return ["--address", addr];
+}
+
 type ZestResponse = { position?: { asset: string; supplied: string; borrowed: string } };
 
 async function gatherZestPositions(address: string[]): Promise<unknown[]> {
@@ -170,7 +184,7 @@ program
   .option("--address <addr>", "Stacks address (uses active wallet if omitted)")
   .action(async (opts: { includeYieldagent?: boolean; address?: string }) => {
     try {
-      const address = opts.address ? ["--address", opts.address] : [];
+      const address = validateAddress(opts.address);
       const positions = await gatherPositions(address);
 
       let opportunities: unknown = null;
@@ -220,7 +234,7 @@ program
   .option("--address <addr>", "Stacks address")
   .action(async (opts: { address?: string }) => {
     try {
-      const address = opts.address ? ["--address", opts.address] : [];
+      const address = validateAddress(opts.address);
       const positions = await gatherPositions(address);
       printJson({
         network: process.env.NETWORK ?? "mainnet",
