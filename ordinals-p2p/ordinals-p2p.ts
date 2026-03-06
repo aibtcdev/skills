@@ -27,6 +27,12 @@ const LEDGER_BASE =
 
 const BITCOIN_MSG_PREFIX = "\x18Bitcoin Signed Message:\n";
 
+function parseIntSafe(value: string, name: string): number {
+  const n = parseInt(value, 10);
+  if (isNaN(n) || n < 0) throw new Error(`Invalid ${name}: ${value}`);
+  return n;
+}
+
 const BIP137_HEADER_BASE = {
   P2PKH_COMPRESSED: 31,
   P2SH_P2WPKH: 35,
@@ -222,7 +228,7 @@ program
         ...auth,
         inscription_id: opts.inscription,
       };
-      if (opts.amount) body.amount_sats = parseInt(opts.amount, 10);
+      if (opts.amount) body.amount_sats = parseIntSafe(opts.amount, "amount");
       if (opts.to) body.to_agent = opts.to;
       if (opts.metadata) body.metadata = opts.metadata;
       const data = await ledgerPost("/api/trades", body);
@@ -251,8 +257,8 @@ program
         type: "counter",
         ...auth,
         inscription_id: opts.inscription,
-        parent_trade_id: parseInt(opts.parent, 10),
-        amount_sats: parseInt(opts.amount, 10),
+        parent_trade_id: parseIntSafe(opts.parent, "parent trade ID"),
+        amount_sats: parseIntSafe(opts.amount, "amount"),
       };
       if (opts.metadata) body.metadata = opts.metadata;
       const data = await ledgerPost("/api/trades", body);
@@ -286,8 +292,8 @@ program
         to_agent: opts.to,
       };
       if (opts.txHash) body.tx_hash = opts.txHash;
-      if (opts.parent) body.parent_trade_id = parseInt(opts.parent, 10);
-      if (opts.amount) body.amount_sats = parseInt(opts.amount, 10);
+      if (opts.parent) body.parent_trade_id = parseIntSafe(opts.parent, "parent trade ID");
+      if (opts.amount) body.amount_sats = parseIntSafe(opts.amount, "amount");
       if (opts.metadata) body.metadata = opts.metadata;
       const data = await ledgerPost("/api/trades", body);
       printJson({ success: true, ...data });
@@ -314,7 +320,7 @@ program
         type: "cancel",
         ...auth,
         inscription_id: opts.inscription,
-        parent_trade_id: parseInt(opts.parent, 10),
+        parent_trade_id: parseIntSafe(opts.parent, "parent trade ID"),
       };
       if (opts.metadata) body.metadata = opts.metadata;
       const data = await ledgerPost("/api/trades", body);
@@ -345,7 +351,7 @@ program
         ...auth,
         inscription_id: opts.inscription,
         to_agent: opts.to,
-        amount_sats: parseInt(opts.amount, 10),
+        amount_sats: parseIntSafe(opts.amount, "amount"),
         tx_hash: opts.txHash,
       };
       if (opts.metadata) body.metadata = opts.metadata;
@@ -368,7 +374,15 @@ program
   .option("--limit <n>", "Results per page", "50")
   .action(async (opts) => {
     try {
-      const addr = opts.address || getSignedAccount().btcAddress!;
+      let addr = opts.address;
+      if (!addr) {
+        try {
+          addr = getSignedAccount().btcAddress!;
+        } catch {
+          handleError(new Error("Provide --address <btcAddr> or unlock your wallet first."));
+          return;
+        }
+      }
       const params = new URLSearchParams();
       params.set("agent", addr);
       if (opts.status) params.set("status", opts.status);
