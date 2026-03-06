@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.0](https://github.com/aibtcdev/skills/compare/skills-v0.16.0...skills-v0.17.0) (2026-03-06)
+
+
+### Features
+
+* **ordinals-p2p:** P2P ordinals trading skill ([#79](https://github.com/aibtcdev/skills/issues/79)) ([a138596](https://github.com/aibtcdev/skills/commit/a138596b7867949dee77e93beff206ecc1ab1865))
+
 ## [0.16.0](https://github.com/aibtcdev/skills/compare/skills-v0.15.0...skills-v0.16.0) (2026-03-06)
 
 
