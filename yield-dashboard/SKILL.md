@@ -71,7 +71,7 @@ Output:
   "timestamp": "2026-03-06T03:00:00.000Z",
   "rates": [
     { "protocol": "Zest Protocol", "asset": "sBTC", "supplyApyPct": 5.0, "riskScore": 20 },
-    { "protocol": "ALEX DEX", "asset": "sBTC/STX LP", "apyPct": 3.5, "riskScore": 50 },
+    { "protocol": "ALEX DEX", "asset": "aBTC/STX LP", "apyPct": 3.5, "riskScore": 50 },
     { "protocol": "Bitflow", "asset": "sBTC", "apyPct": 2.8, "riskScore": 35 },
     { "protocol": "STX Stacking", "asset": "STX", "apyPct": 8.0, "riskScore": 10 }
   ],
@@ -101,6 +101,14 @@ Output:
   ]
 }
 ```
+
+## Known Limitations
+
+- **ALEX LP positions**: User LP token balance reading is not yet implemented — `valueSats` will show 0 even if you hold LP tokens. APY is read correctly.
+- **Bitflow LP positions**: Same as ALEX — LP balance reading is a TODO. APY falls back to a 2.8% estimate if the Bitflow API is unavailable (output includes `apySource: "fallback estimate"`).
+- **ALEX asset**: The ALEX pool uses aBTC (ALEX wrapped BTC), not native sBTC. Different trust assumptions — labeled as "aBTC/STX LP" in output.
+- **Stacking value**: STX stacking is denominated in microSTX, not sats. The `overview` command separates these: `totalValueSats` (BTC-denominated) vs `totalValueStx` (STX stacking).
+- **Bitflow API**: Uses `https://app.bitflow.finance/api` — undocumented endpoint, may change without notice.
 
 ## Notes
 

@@ -17,6 +17,7 @@ import {
   hexToCV,
   cvToValue,
   contractPrincipalCV,
+  standardPrincipalCV,
   uintCV,
   serializeCV,
 } from "@stacks/transactions";
@@ -121,6 +122,7 @@ interface ProtocolPosition {
   protocol: string;
   asset: string;
   valueSats: number;
+  valueUnit: "sats" | "microSTX";
   apyPct: number;
   riskScore: number;
   details: Record<string, unknown>;
@@ -133,6 +135,7 @@ async function readZestPosition(
     protocol: "Zest Protocol",
     asset: "sBTC",
     valueSats: 0,
+    valueUnit: "sats",
     apyPct: 0,
     riskScore: 20,
     details: {},
@@ -182,7 +185,7 @@ async function readZestPosition(
                   serializeCV(
                     // standard principal for wallet
                     (() => {
-                      const { standardPrincipalCV } = require("@stacks/transactions");
+
                       return standardPrincipalCV(walletAddress);
                     })()
                   )
@@ -220,8 +223,9 @@ async function readAlexPosition(
 ): Promise<ProtocolPosition> {
   const pos: ProtocolPosition = {
     protocol: "ALEX DEX",
-    asset: "sBTC/STX LP",
+    asset: "aBTC/STX LP",
     valueSats: 0,
+    valueUnit: "sats",
     apyPct: 0,
     riskScore: 50,
     details: {},
@@ -263,6 +267,7 @@ async function readBitflowPosition(
     protocol: "Bitflow",
     asset: "sBTC",
     valueSats: 0,
+    valueUnit: "sats",
     apyPct: 0,
     riskScore: 35,
     details: {},
@@ -313,13 +318,14 @@ async function readStackingPosition(
     protocol: "STX Stacking",
     asset: "STX",
     valueSats: 0,
+    valueUnit: "microSTX",
     apyPct: 0,
     riskScore: 10,
     details: {},
   };
 
   try {
-    const { standardPrincipalCV } = require("@stacks/transactions");
+
     const principalArg =
       "0x" +
       Buffer.from(serializeCV(standardPrincipalCV(walletAddress))).toString(
@@ -427,13 +433,21 @@ program
         ]);
 
       const positions = [zest, alex, bitflow, stacking];
-      const totalValueSats = positions.reduce(
+      // Separate sats-denominated and microSTX-denominated positions
+      const satsPositions = positions.filter((p) => p.valueUnit === "sats");
+      const stxPositions = positions.filter((p) => p.valueUnit === "microSTX");
+      const totalValueSats = satsPositions.reduce(
         (sum, p) => sum + p.valueSats,
         0
       );
+      const totalValueMicroStx = stxPositions.reduce(
+        (sum, p) => sum + p.valueSats,
+        0
+      );
+      // Weighted APY only across sats-denominated positions (comparable units)
       const weightedApyPct =
         totalValueSats > 0
-          ? positions.reduce(
+          ? satsPositions.reduce(
               (sum, p) => sum + p.apyPct * (p.valueSats / totalValueSats),
               0
             )
@@ -443,7 +457,10 @@ program
         walletAddress,
         totalValueSats,
         totalValueBtc: formatBtc(totalValueSats),
+        totalValueMicroStx,
+        totalValueStx: totalValueMicroStx / 1_000_000,
         weightedApyPct: Math.round(weightedApyPct * 100) / 100,
+        note: "totalValueSats excludes STX stacking (different unit). See totalValueStx separately.",
         protocols: {
           zest: {
             valueSats: zest.valueSats,
@@ -458,7 +475,8 @@ program
             apyPct: bitflow.apyPct,
           },
           stacking: {
-            valueSats: stacking.valueSats,
+            valueMicroStx: stacking.valueSats,
+            valueStx: stacking.valueSats / 1_000_000,
             apyPct: stacking.apyPct,
           },
         },
@@ -532,7 +550,7 @@ program
           },
           {
             protocol: "ALEX DEX",
-            asset: "sBTC/STX LP",
+            asset: "aBTC/STX LP",
             apyPct: alex.apyPct,
             riskScore: alex.riskScore,
           },
