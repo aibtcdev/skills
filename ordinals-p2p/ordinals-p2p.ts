@@ -70,13 +70,10 @@ function signBip137(message: string, privateKey: Uint8Array, btcAddress: string)
   const formatted = formatBitcoinMessage(message);
   const msgHash = doubleSha256(formatted);
 
-  // @noble/curves v2: format "recovered" returns Uint8Array(65) = [recovery, r(32), s(32)]
-  const recovered = secp256k1.sign(msgHash, privateKey, {
-    lowS: true,
-    format: "recovered",
-  } as any);
+  const sig = secp256k1.sign(msgHash, privateKey, { lowS: true });
+  const recoveryId = sig.recovery;
+  const compact = sig.toCompactRawBytes(); // 64 bytes: r(32) + s(32)
 
-  const recoveryId = recovered[0];
   const prefix = btcAddress[0];
   let headerBase: number;
   if (prefix === "1" || prefix === "m" || prefix === "n") {
@@ -89,8 +86,7 @@ function signBip137(message: string, privateKey: Uint8Array, btcAddress: string)
 
   const bip137Sig = new Uint8Array(65);
   bip137Sig[0] = headerBase + recoveryId;
-  bip137Sig.set(recovered.slice(1, 33), 1);   // r
-  bip137Sig.set(recovered.slice(33, 65), 33);  // s
+  bip137Sig.set(compact, 1); // r(32) + s(32)
 
   return Buffer.from(bip137Sig).toString("base64");
 }
