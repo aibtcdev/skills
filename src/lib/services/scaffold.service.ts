@@ -1,5 +1,5 @@
-import fs from "fs/promises";
-import path from "path";
+import fs from "node:fs/promises";
+import path from "node:path";
 
 export type PricingTier = "free" | "simple" | "standard" | "ai" | "heavy_ai" | "storage_read" | "storage_write";
 
