@@ -11,6 +11,7 @@ Each skill is a self-contained directory with a `SKILL.md` (used by Claude Code 
 | [wallet](./wallet/) | `wallet/wallet.ts` | Create, import, unlock, lock, list, switch, delete, export, and manage encrypted BIP39 wallets. Derives Stacks + Bitcoin (SegWit + Taproot) addresses. |
 | [settings](./settings/) | `settings/settings.ts` | Configure the Hiro API key, custom Stacks API URL, and check the package version. Settings stored at `~/.aibtc/config.json`. |
 | [btc](./btc/) | `btc/btc.ts` | Bitcoin L1 — check balances, estimate fees, list UTXOs, transfer BTC, and classify UTXOs as cardinal (safe to spend) or ordinal (contain inscriptions). |
+| [mempool-watch](./mempool-watch/) | `mempool-watch/mempool-watch.ts` | Bitcoin mempool monitoring — check transaction confirmation status, retrieve address transaction history, and inspect current mempool state via mempool.space. |
 | [ordinals](./ordinals/) | `ordinals/ordinals.ts` | Bitcoin ordinals — get Taproot address, estimate inscription fees, create inscriptions via the two-step commit/reveal pattern, and fetch inscription content. |
 | [signing](./signing/) | `signing/signing.ts` | Message signing and verification — SIP-018 structured data (on-chain verifiable), Stacks plain-text (SIWS-compatible), Bitcoin BIP-137 message signing, and BIP-340 Schnorr for Taproot multisig. |
 | [stx](./stx/) | `stx/stx.ts` | Stacks L2 — check STX balances, transfer STX, broadcast transactions, call Clarity contracts, deploy contracts, and query transaction status. |
