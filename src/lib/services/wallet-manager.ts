@@ -18,6 +18,9 @@ import {
   backupKeystore,
   restoreKeystoreBackup,
   deleteKeystoreBackup,
+  writeSessionFile,
+  readSessionFile,
+  deleteSessionFile,
   type WalletMetadata,
   type KeystoreFile,
   type WalletAddresses,
@@ -271,14 +274,20 @@ class WalletManager {
     config.activeWalletId = walletId;
     await writeAppConfig(config);
 
+    // Persist session to disk for cross-process access
+    await this.saveSessionToDisk();
+
     return account;
   }
 
   /**
-   * Lock the wallet (clear session)
+   * Lock the wallet (clear session) and remove any on-disk session file
    */
   lock(): void {
     this.clearAutoLockTimer();
+
+    const walletId = this.session?.walletId;
+
     // Zero out sensitive key buffers before dropping references
     if (this.session?.account) {
       const acct = this.session.account;
@@ -288,6 +297,96 @@ class WalletManager {
       if (acct.taprootPublicKey) acct.taprootPublicKey.fill(0);
     }
     this.session = null;
+
+    // Remove session file (best-effort — do not block on failure)
+    if (walletId) {
+      deleteSessionFile(walletId).catch(() => {});
+    }
+  }
+
+  /**
+   * Persist the active session to disk so other processes can restore it.
+   * Called automatically at the end of a successful unlock().
+   * The session is encrypted with a machine-local key stored in ~/.aibtc/sessions/.session-key.
+   */
+  private async saveSessionToDisk(): Promise<void> {
+    if (!this.session) return;
+
+    const { walletId, account, expiresAt } = this.session;
+
+    // Serialize Uint8Array / Buffer fields to hex for JSON round-trip
+    const serialized = {
+      address: account.address,
+      btcAddress: account.btcAddress,
+      taprootAddress: account.taprootAddress,
+      privateKey: account.privateKey,
+      btcPrivateKey: account.btcPrivateKey
+        ? Buffer.from(account.btcPrivateKey).toString("hex")
+        : undefined,
+      btcPublicKey: account.btcPublicKey
+        ? Buffer.from(account.btcPublicKey).toString("hex")
+        : undefined,
+      taprootPrivateKey: account.taprootPrivateKey
+        ? Buffer.from(account.taprootPrivateKey).toString("hex")
+        : undefined,
+      taprootPublicKey: account.taprootPublicKey
+        ? Buffer.from(account.taprootPublicKey).toString("hex")
+        : undefined,
+      sponsorApiKey: account.sponsorApiKey,
+      network: account.network,
+    };
+
+    try {
+      await writeSessionFile(walletId, serialized, expiresAt);
+    } catch {
+      // Non-fatal — in-memory session still works for this process
+    }
+  }
+
+  /**
+   * Attempt to restore a previously saved session from disk.
+   * Returns the restored Account if a valid, non-expired session exists,
+   * or null if no session file is found / the session has expired.
+   * Called by getAccount() in x402.service.ts before falling back to CLIENT_MNEMONIC.
+   */
+  async restoreSessionFromDisk(walletId: string): Promise<Account | null> {
+    const result = await readSessionFile(walletId).catch(() => null);
+    if (!result) return null;
+
+    const { account: s, expiresAt } = result;
+
+    // Reconstruct typed key buffers from hex
+    const account: Account = {
+      address: s.address,
+      btcAddress: s.btcAddress,
+      taprootAddress: s.taprootAddress,
+      privateKey: s.privateKey,
+      btcPrivateKey: s.btcPrivateKey
+        ? Buffer.from(s.btcPrivateKey, "hex")
+        : undefined,
+      btcPublicKey: s.btcPublicKey
+        ? Buffer.from(s.btcPublicKey, "hex")
+        : undefined,
+      taprootPrivateKey: s.taprootPrivateKey
+        ? Buffer.from(s.taprootPrivateKey, "hex")
+        : undefined,
+      taprootPublicKey: s.taprootPublicKey
+        ? Buffer.from(s.taprootPublicKey, "hex")
+        : undefined,
+      sponsorApiKey: s.sponsorApiKey,
+      network: s.network,
+    };
+
+    // Restore the in-memory session so subsequent in-process calls also work
+    const now = new Date();
+    this.session = {
+      walletId,
+      account,
+      unlockedAt: now,
+      expiresAt,
+    };
+
+    return account;
   }
 
   /**

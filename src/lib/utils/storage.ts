@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
+import crypto from "node:crypto";
 import type { EncryptedData } from "./encryption.js";
 import type { Network } from "../config/networks.js";
 
@@ -13,6 +14,8 @@ const STORAGE_DIR = path.join(os.homedir(), ".aibtc");
 const WALLETS_DIR = path.join(STORAGE_DIR, "wallets");
 const WALLET_INDEX_FILE = path.join(STORAGE_DIR, "wallets.json");
 const CONFIG_FILE = path.join(STORAGE_DIR, "config.json");
+const SESSIONS_DIR = path.join(STORAGE_DIR, "sessions");
+const SESSION_KEY_FILE = path.join(SESSIONS_DIR, ".session-key");
 
 /**
  * Migrate storage from ~/.stx402/ to ~/.aibtc/ (one-time migration)
@@ -305,6 +308,193 @@ export async function deleteKeystoreBackup(walletId: string): Promise<void> {
   const backupPath = `${keystorePath}.backup`;
   try {
     await fs.unlink(backupPath);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+      throw err;
+    }
+  }
+}
+
+// ============================================================================
+// Session Persistence (cross-process wallet session)
+// ============================================================================
+
+/**
+ * Serializable session data written to disk.
+ * Private keys are stored as hex strings so they round-trip through JSON.
+ */
+export interface SessionFile {
+  version: number;
+  walletId: string;
+  /** AES-256-GCM encrypted JSON of the account fields */
+  encrypted: {
+    ciphertext: string;
+    iv: string;
+    authTag: string;
+  };
+  createdAt: string;
+  expiresAt: string | null;
+}
+
+/**
+ * Serialized account payload (private keys as hex).
+ * Matches the Account interface from transactions/builder.ts.
+ */
+interface SerializedAccount {
+  address: string;
+  btcAddress?: string;
+  taprootAddress?: string;
+  privateKey: string;
+  btcPrivateKey?: string;
+  btcPublicKey?: string;
+  taprootPrivateKey?: string;
+  taprootPublicKey?: string;
+  sponsorApiKey?: string;
+  network: Network;
+}
+
+/**
+ * Get or create a machine-local 256-bit session encryption key.
+ * The key is stored in ~/.aibtc/sessions/.session-key (mode 0o600).
+ * It never leaves the machine and is not derived from the wallet password,
+ * so it cannot be used to decrypt the keystore — only the short-lived session file.
+ */
+async function getOrCreateSessionKey(): Promise<Buffer> {
+  // Ensure sessions directory exists
+  await fs.mkdir(SESSIONS_DIR, { recursive: true, mode: 0o700 });
+
+  try {
+    const raw = await fs.readFile(SESSION_KEY_FILE);
+    if (raw.length === 32) return raw;
+    // Corrupted — regenerate
+  } catch {
+    // File does not exist yet
+  }
+
+  const key = crypto.randomBytes(32);
+  const tempPath = `${SESSION_KEY_FILE}.tmp`;
+  await fs.writeFile(tempPath, key, { mode: 0o600 });
+  await fs.rename(tempPath, SESSION_KEY_FILE);
+  return key;
+}
+
+function getSessionFilePath(walletId: string): string {
+  return path.join(SESSIONS_DIR, `${walletId}.json`);
+}
+
+/**
+ * Write an encrypted session file for the given wallet.
+ * accountData contains all private-key material as Uint8Array / Buffer.
+ */
+export async function writeSessionFile(
+  walletId: string,
+  accountData: SerializedAccount,
+  expiresAt: Date | null
+): Promise<void> {
+  await fs.mkdir(SESSIONS_DIR, { recursive: true, mode: 0o700 });
+
+  const key = await getOrCreateSessionKey();
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv("aes-256-gcm", key, iv);
+
+  const plaintext = JSON.stringify(accountData);
+  const ciphertext = Buffer.concat([
+    cipher.update(plaintext, "utf8"),
+    cipher.final(),
+  ]);
+  const authTag = cipher.getAuthTag();
+
+  const sessionFile: SessionFile = {
+    version: 1,
+    walletId,
+    encrypted: {
+      ciphertext: ciphertext.toString("base64"),
+      iv: iv.toString("base64"),
+      authTag: authTag.toString("base64"),
+    },
+    createdAt: new Date().toISOString(),
+    expiresAt: expiresAt ? expiresAt.toISOString() : null,
+  };
+
+  const sessionPath = getSessionFilePath(walletId);
+  const tempPath = `${sessionPath}.tmp`;
+  await fs.writeFile(tempPath, JSON.stringify(sessionFile, null, 2), {
+    mode: 0o600,
+  });
+  await fs.rename(tempPath, sessionPath);
+}
+
+/**
+ * Read and decrypt a session file.
+ * Returns the decrypted account payload and expiry, or null if:
+ *   - file does not exist
+ *   - session is expired
+ *   - decryption fails (tampered or key changed)
+ */
+export async function readSessionFile(
+  walletId: string
+): Promise<{ account: SerializedAccount; expiresAt: Date | null } | null> {
+  const sessionPath = getSessionFilePath(walletId);
+
+  let raw: string;
+  try {
+    raw = await fs.readFile(sessionPath, "utf8");
+  } catch {
+    return null; // File not found
+  }
+
+  let sessionFile: SessionFile;
+  try {
+    sessionFile = JSON.parse(raw) as SessionFile;
+  } catch {
+    return null; // Corrupted JSON
+  }
+
+  // Check expiry before attempting decryption
+  if (sessionFile.expiresAt) {
+    const expiresAt = new Date(sessionFile.expiresAt);
+    if (new Date() > expiresAt) {
+      // Best-effort cleanup of expired session
+      await deleteSessionFile(walletId).catch(() => {});
+      return null;
+    }
+  }
+
+  let key: Buffer;
+  try {
+    key = await getOrCreateSessionKey();
+  } catch {
+    return null;
+  }
+
+  try {
+    const iv = Buffer.from(sessionFile.encrypted.iv, "base64");
+    const authTag = Buffer.from(sessionFile.encrypted.authTag, "base64");
+    const ciphertext = Buffer.from(sessionFile.encrypted.ciphertext, "base64");
+
+    const decipher = crypto.createDecipheriv("aes-256-gcm", key, iv);
+    decipher.setAuthTag(authTag);
+
+    const decrypted = Buffer.concat([
+      decipher.update(ciphertext),
+      decipher.final(),
+    ]);
+
+    const account = JSON.parse(decrypted.toString("utf8")) as SerializedAccount;
+    const expiresAt = sessionFile.expiresAt ? new Date(sessionFile.expiresAt) : null;
+    return { account, expiresAt };
+  } catch {
+    return null; // Decryption failed — tampered or session key regenerated
+  }
+}
+
+/**
+ * Delete the session file for a wallet (idempotent).
+ */
+export async function deleteSessionFile(walletId: string): Promise<void> {
+  const sessionPath = getSessionFilePath(walletId);
+  try {
+    await fs.unlink(sessionPath);
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
       throw err;

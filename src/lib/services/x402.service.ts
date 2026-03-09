@@ -276,18 +276,35 @@ export async function getWalletAddress(): Promise<string> {
 }
 
 /**
- * Get account - checks managed wallet first, then env mnemonic
+ * Get account - checks managed wallet first, then env mnemonic.
+ * If no in-process session exists, attempts to restore a persisted session
+ * from disk (written by a previous `wallet unlock` process) before falling
+ * back to CLIENT_MNEMONIC.
  */
 export async function getAccount(): Promise<Account> {
-  // Check managed wallet session first
   const walletManager = getWalletManager();
-  const sessionAccount = walletManager.getActiveAccount();
 
+  // 1. Check in-process session (fastest path)
+  const sessionAccount = walletManager.getActiveAccount();
   if (sessionAccount) {
     return sessionAccount;
   }
 
-  // Fall back to environment mnemonic
+  // 2. Attempt to restore session from disk (cross-process persistence)
+  try {
+    const { readAppConfig } = await import("../utils/storage.js");
+    const config = await readAppConfig();
+    if (config.activeWalletId) {
+      const restored = await walletManager.restoreSessionFromDisk(config.activeWalletId);
+      if (restored) {
+        return restored;
+      }
+    }
+  } catch {
+    // Non-fatal — fall through to CLIENT_MNEMONIC
+  }
+
+  // 3. Fall back to environment mnemonic
   const mnemonic = process.env.CLIENT_MNEMONIC || "";
   if (!mnemonic) {
     throw new Error(
