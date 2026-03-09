@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.1](https://github.com/aibtcdev/skills/compare/skills-v0.18.0...skills-v0.18.1) (2026-03-09)
+
+
+### Bug Fixes
+
+* **lib:** add node: prefix to bare stdlib imports in src/lib ([#103](https://github.com/aibtcdev/skills/issues/103)) ([615f3bf](https://github.com/aibtcdev/skills/commit/615f3bf2350cc0c4eba838eea46b7aacafd4e95c)), closes [#94](https://github.com/aibtcdev/skills/issues/94)
+
 ## [0.18.0](https://github.com/aibtcdev/skills/compare/skills-v0.17.0...skills-v0.18.0) (2026-03-06)
 
 
