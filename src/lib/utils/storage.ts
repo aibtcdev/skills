@@ -375,11 +375,12 @@ async function getOrCreateSessionKey(): Promise<Buffer> {
   const tempPath = `${SESSION_KEY_FILE}.tmp`;
   await fs.writeFile(tempPath, key, { mode: 0o600 });
   await fs.rename(tempPath, SESSION_KEY_FILE);
-  return key;
+  // Read back the winner from disk so racing processes converge on the same key.
+  return await fs.readFile(SESSION_KEY_FILE);
 }
 
 function getSessionFilePath(walletId: string): string {
-  return path.join(SESSIONS_DIR, `${walletId}.json`);
+  return path.join(SESSIONS_DIR, `${path.basename(walletId)}.json`);
 }
 
 /**
@@ -449,6 +450,8 @@ export async function readSessionFile(
   } catch {
     return null; // Corrupted JSON
   }
+
+  if (sessionFile.version !== 1) return null;
 
   // Check expiry before attempting decryption
   if (sessionFile.expiresAt) {
