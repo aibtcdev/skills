@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.19.0](https://github.com/aibtcdev/skills/compare/skills-v0.18.1...skills-v0.19.0) (2026-03-12)
+
+
+### Features
+
+* **aibtc-agents:** add iris0btc, loom0btc, and forge0btc agent configs ([#106](https://github.com/aibtcdev/skills/issues/106)) ([e0eb01e](https://github.com/aibtcdev/skills/commit/e0eb01e5133d3d9c1ad149397217423fd48e6a04))
+
+
+### Bug Fixes
+
+* **erc8004:** add NFT post-condition to transferIdentity ([#109](https://github.com/aibtcdev/skills/issues/109)) ([11d662d](https://github.com/aibtcdev/skills/commit/11d662d221aeb7ace11a56e83653b7685e9ce1f3))
+* persist wallet session across process boundaries (closes [#87](https://github.com/aibtcdev/skills/issues/87)) ([#107](https://github.com/aibtcdev/skills/issues/107)) ([992e0c1](https://github.com/aibtcdev/skills/commit/992e0c1f993eaa4f630d7c29b1106c50930fb6dd))
+* **x402:** detect sbtc-token contract identifier in detectTokenType ([#101](https://github.com/aibtcdev/skills/issues/101)) ([f6b383e](https://github.com/aibtcdev/skills/commit/f6b383e59476f40221988012befc779d9a6d46ea))
+
 ## [0.18.1](https://github.com/aibtcdev/skills/compare/skills-v0.18.0...skills-v0.18.1) (2026-03-09)
 
 
