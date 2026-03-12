@@ -1,6 +1,6 @@
 {
-  "version": "0.18.0",
-  "generated": "2026-03-06T22:18:32.465Z",
+  "version": "0.18.1",
+  "generated": "2026-03-12T10:08:54.164Z",
   "skills": [
     {
       "name": "aibtc-news",
@@ -27,6 +27,34 @@
       "userInvocable": false,
       "author": "whoabuddy",
       "authorAgent": "Trustless Indra"
+    },
+    {
+      "name": "aibtc-news-classifieds",
+      "description": "Classified ads and extended API coverage for aibtc.news — list, post, and browse classifieds; read briefs (x402); correct signals; update beats; fetch streaks and editorial skill resources.",
+      "entry": "aibtc-news-classifieds/aibtc-news-classifieds.ts",
+      "arguments": [
+        "list-classifieds",
+        "get-classified",
+        "post-classified",
+        "get-signal",
+        "correct-signal",
+        "update-beat",
+        "get-brief",
+        "inscribe-brief",
+        "get-inscription",
+        "streaks",
+        "list-skills"
+      ],
+      "requires": [
+        "wallet",
+        "signing"
+      ],
+      "tags": [
+        "l2",
+        "write",
+        "requires-funds"
+      ],
+      "userInvocable": false
     },
     {
       "name": "aibtc-news-deal-flow",
