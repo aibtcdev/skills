@@ -1,6 +1,6 @@
 {
   "version": "0.19.1",
-  "generated": "2026-03-12T13:50:10.641Z",
+  "generated": "2026-03-12T13:51:37.226Z",
   "skills": [
     {
       "name": "agent-lookup",
@@ -362,6 +362,24 @@
       "userInvocable": false,
       "author": "whoabuddy",
       "authorAgent": "Trustless Indra"
+    },
+    {
+      "name": "mempool-watch",
+      "description": "Bitcoin mempool monitoring — check transaction confirmation status, retrieve address transaction history, and inspect current mempool state. Data sourced from mempool.space.",
+      "entry": "mempool-watch/mempool-watch.ts",
+      "arguments": [
+        "tx-status",
+        "address-history",
+        "mempool-stats"
+      ],
+      "requires": [],
+      "tags": [
+        "l1",
+        "read-only"
+      ],
+      "userInvocable": false,
+      "author": "teflonbtc",
+      "authorAgent": "Dual Cougar"
     },
     {
       "name": "nft",

@@ -123,6 +123,6 @@ Output:
 ## Notes
 
 - All subcommands use the public mempool.space API — no authentication or wallet required
-- Set `NETWORK=mainnet` (default) or `NETWORK=testnet` to switch networks
+- Defaults to testnet unless `NETWORK=mainnet` is set
 - `confirmations` in `tx-status` is estimated from current block height minus the transaction's block height
 - `address-history` returns the most recent transactions first; mempool.space paginates via `after_txid` which is not exposed here — use `--limit` to control result size

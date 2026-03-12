@@ -11,7 +11,7 @@ Read-only Bitcoin mempool monitoring via mempool.space. No wallet unlock require
 ## Prerequisites
 
 - No wallet required — all subcommands are read-only
-- `NETWORK` env var controls network (default: mainnet; set `NETWORK=testnet` for testnet)
+- `NETWORK` env var controls network (defaults to testnet unless `NETWORK=mainnet` is set)
 - Valid Bitcoin txid (64 hex chars) required for `tx-status`
 - Valid Bitcoin address required for `address-history`
 
