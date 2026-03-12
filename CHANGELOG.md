@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.20.0](https://github.com/aibtcdev/skills/compare/skills-v0.19.1...skills-v0.20.0) (2026-03-12)
+
+
+### Features
+
+* **agent-lookup:** add agent-lookup skill ([#123](https://github.com/aibtcdev/skills/issues/123)) ([12af974](https://github.com/aibtcdev/skills/commit/12af9742d15bc5e5f77fb55b6b74c28710d0cb5a))
+* **aibtc-agents:** add SKILL.md and update manifest ([#120](https://github.com/aibtcdev/skills/issues/120)) ([221e4b5](https://github.com/aibtcdev/skills/commit/221e4b5a79cd58ad499aa0b04cb0596739a09b21))
+* **bitflow:** unify SDK and HODLMM routing and ranking ([#111](https://github.com/aibtcdev/skills/issues/111)) ([fea9df6](https://github.com/aibtcdev/skills/commit/fea9df6940e751a2c2d825e924a7edb6120c5156))
+* **mempool-watch:** add mempool-watch skill ([#105](https://github.com/aibtcdev/skills/issues/105)) ([a803503](https://github.com/aibtcdev/skills/commit/a803503f78cb42230818b7ae9ffe0fa74557aee7))
+
 ## [0.19.1](https://github.com/aibtcdev/skills/compare/skills-v0.19.0...skills-v0.19.1) (2026-03-12)
 
 
