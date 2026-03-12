@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.1](https://github.com/aibtcdev/skills/compare/skills-v0.19.0...skills-v0.19.1) (2026-03-12)
+
+
+### Bug Fixes
+
+* **defi:** read Zest supply from LP token balance, not reserve data ([#117](https://github.com/aibtcdev/skills/issues/117)) ([6b2c2a6](https://github.com/aibtcdev/skills/commit/6b2c2a6133cde485e9b05c2897cc9b45bf34e47b))
+
 ## [0.19.0](https://github.com/aibtcdev/skills/compare/skills-v0.18.1...skills-v0.19.0) (2026-03-12)
 
 
