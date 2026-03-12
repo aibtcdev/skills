@@ -561,7 +561,7 @@ program
   .command("scaffold-endpoint")
   .description(
     "Create a complete x402 paid API project as a Cloudflare Worker. " +
-      "Generates a new project folder with Hono.js app, x402 payment middleware, wrangler config, and README."
+      "Generates a new project folder with Hono.js app, x402 payment middleware, wrangler.jsonc config, and README."
   )
   .requiredOption("--output-dir <dir>", "Directory where the project folder will be created")
   .requiredOption(
@@ -666,7 +666,7 @@ program
   .command("scaffold-ai-endpoint")
   .description(
     "Create a complete x402 paid AI API project with OpenRouter integration as a Cloudflare Worker. " +
-      "Generates a new project folder with Hono.js app, x402 middleware, OpenRouter client, and wrangler config."
+      "Generates a new project folder with Hono.js app, x402 middleware, OpenRouter client, and wrangler.jsonc config."
   )
   .requiredOption("--output-dir <dir>", "Directory where the project folder will be created")
   .requiredOption(

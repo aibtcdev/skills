@@ -555,17 +555,30 @@ function getWranglerTemplate(projectName: string, network: string, relayUrl: str
   const mainnetRelay = "https://x402-relay.aibtc.com";
   const testnetRelay = "https://x402-relay.aibtc.dev";
   return `{
+  // wrangler.jsonc — Cloudflare Workers configuration
+  // Docs: https://developers.cloudflare.com/workers/wrangler/configuration/
   "$schema": "node_modules/wrangler/config-schema.json",
+
+  // Worker identity
   "name": "${projectName}",
   "main": "src/index.ts",
+
+  // Runtime compatibility
   "compatibility_date": "2026-01-14",
   "compatibility_flags": ["nodejs_compat_v2"],
+
+  // Default: deploy to workers.dev subdomain
   "workers_dev": true,
+
+  // Default environment variables (development)
   "vars": {
     "NETWORK": "${network}",
     "RELAY_URL": "${relayUrl}"
   },
+
+  // Named environments — override vars and worker name per target
   "env": {
+    // Staging: testnet payments, workers.dev URL
     "staging": {
       "name": "${projectName}-staging",
       "workers_dev": true,
@@ -574,6 +587,7 @@ function getWranglerTemplate(projectName: string, network: string, relayUrl: str
         "RELAY_URL": "${testnetRelay}"
       }
     },
+    // Production: mainnet payments, custom domain
     "production": {
       "name": "${projectName}",
       "workers_dev": false,

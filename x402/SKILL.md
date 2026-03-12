@@ -148,7 +148,7 @@ Output:
 
 ### scaffold-endpoint
 
-Create a complete x402 paid API project as a Cloudflare Worker. Generates a new project folder with Hono.js app, x402 payment middleware, wrangler config, and README.
+Create a complete x402 paid API project as a Cloudflare Worker. Generates a new project folder with Hono.js app, x402 payment middleware, wrangler.jsonc config, and README.
 
 ```
 bun run x402/x402.ts scaffold-endpoint \
