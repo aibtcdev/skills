@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.21.0](https://github.com/aibtcdev/skills/compare/skills-v0.20.1...skills-v0.21.0) (2026-03-13)
+
+
+### Features
+
+* **skills:** add mcp-tools field to SKILL.md frontmatter ([#128](https://github.com/aibtcdev/skills/issues/128)) ([#129](https://github.com/aibtcdev/skills/issues/129)) ([28d8d83](https://github.com/aibtcdev/skills/commit/28d8d835ca62b549361cbea596b29760519b213e))
+* **tenero:** add tenero market analytics skill ([#125](https://github.com/aibtcdev/skills/issues/125)) ([#130](https://github.com/aibtcdev/skills/issues/130)) ([93cc20d](https://github.com/aibtcdev/skills/commit/93cc20d8e5ff9a925370906cb1bdc81b1fc063da))
+
 ## [0.20.1](https://github.com/aibtcdev/skills/compare/skills-v0.20.0...skills-v0.20.1) (2026-03-13)
 
 
