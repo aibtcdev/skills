@@ -91,7 +91,24 @@ async function readState(): Promise<YieldHunterState> {
     STATE_FILE_NAME,
     STATE_VERSION
   );
-  return envelope ? envelope.state : { ...DEFAULT_STATE };
+  if (envelope) return envelope.state;
+
+  // Migrate legacy flat-format state files (pre-envelope) on first run.
+  // Old files had YieldHunterState at the top level without version/updatedAt/state wrapper.
+  try {
+    const legacyPath = path.join(STATE_DIR, STATE_FILE_NAME);
+    const raw = await fs.readFile(legacyPath, "utf-8");
+    const parsed = JSON.parse(raw);
+    if ("config" in parsed && "stats" in parsed && !("state" in parsed)) {
+      const migrated = parsed as YieldHunterState;
+      await writeState(migrated);
+      return migrated;
+    }
+  } catch {
+    // No legacy file or parse failure — use defaults
+  }
+
+  return { ...DEFAULT_STATE };
 }
 
 async function writeState(state: YieldHunterState): Promise<void> {
@@ -108,7 +125,7 @@ async function readPid(): Promise<number | null> {
 }
 
 async function writePid(pid: number): Promise<void> {
-  await ensureStateDir();
+  await fs.mkdir(STATE_DIR, { recursive: true });
   await fs.writeFile(PID_FILE, String(pid), "utf-8");
 }
 
