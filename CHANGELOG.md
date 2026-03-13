@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.22.0](https://github.com/aibtcdev/skills/compare/skills-v0.21.0...skills-v0.22.0) (2026-03-13)
+
+
+### Features
+
+* **src:** add normalized state file envelope ([#132](https://github.com/aibtcdev/skills/issues/132)) ([56c1346](https://github.com/aibtcdev/skills/commit/56c1346a1be4271c5a6ac8eed4edc0ef065e2c26))
+
 ## [0.21.0](https://github.com/aibtcdev/skills/compare/skills-v0.20.1...skills-v0.21.0) (2026-03-13)
 
 
