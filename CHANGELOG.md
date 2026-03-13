@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.20.1](https://github.com/aibtcdev/skills/compare/skills-v0.20.0...skills-v0.20.1) (2026-03-13)
+
+
+### Bug Fixes
+
+* **aibtc-news:** migrate to v2 API auth headers and snake_case bodies ([#127](https://github.com/aibtcdev/skills/issues/127)) ([acb4c75](https://github.com/aibtcdev/skills/commit/acb4c7555d8de2972b54d7e2919e65049a5e4858))
+* **x402:** migrate wrangler.jsonc template to use JSONC comments ([#124](https://github.com/aibtcdev/skills/issues/124)) ([431e727](https://github.com/aibtcdev/skills/commit/431e727a591837f888a2706c18c73332fdba7270)), closes [#115](https://github.com/aibtcdev/skills/issues/115)
+
 ## [0.20.0](https://github.com/aibtcdev/skills/compare/skills-v0.19.1...skills-v0.20.0) (2026-03-12)
 
 
