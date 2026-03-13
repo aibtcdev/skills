@@ -1,6 +1,6 @@
 {
   "name": "@aibtc/skills",
-  "version": "0.22.0",
+  "version": "0.23.0",
   "description": "Claude Code skills for Bitcoin/Stacks blockchain operations — flat SKILL.md + colocated TypeScript CLI scripts.",
   "type": "module",
   "scripts": {

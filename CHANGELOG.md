@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.23.0](https://github.com/aibtcdev/skills/compare/skills-v0.22.0...skills-v0.23.0) (2026-03-13)
+
+
+### Features
+
+* **skills:** migrate to agentskills.io spec compliance ([#135](https://github.com/aibtcdev/skills/issues/135)) ([03adaab](https://github.com/aibtcdev/skills/commit/03adaab6a0795727fd668a9aa895998387889365))
+
 ## [0.22.0](https://github.com/aibtcdev/skills/compare/skills-v0.21.0...skills-v0.22.0) (2026-03-13)
 
 
