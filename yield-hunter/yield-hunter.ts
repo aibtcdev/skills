@@ -25,13 +25,15 @@ import {
   contractPrincipalCV,
 } from "@stacks/transactions";
 import { printJson, handleError } from "../src/lib/utils/cli.js";
+import { readStateFile, writeStateFile } from "../src/lib/utils/state.js";
 
 // ---------------------------------------------------------------------------
 // State file management
 // ---------------------------------------------------------------------------
 
 const STATE_DIR = path.join(os.homedir(), ".aibtc");
-const STATE_FILE = path.join(STATE_DIR, "yield-hunter-state.json");
+const STATE_FILE_NAME = "yield-hunter-state.json";
+const STATE_VERSION = 1;
 const PID_FILE = path.join(STATE_DIR, "yield-hunter.pid");
 
 interface YieldHunterConfig {
@@ -84,23 +86,16 @@ const DEFAULT_STATE: YieldHunterState = {
   logs: [],
 };
 
-async function ensureStateDir(): Promise<void> {
-  await fs.mkdir(STATE_DIR, { recursive: true });
-}
-
 async function readState(): Promise<YieldHunterState> {
-  try {
-    await ensureStateDir();
-    const raw = await fs.readFile(STATE_FILE, "utf-8");
-    return JSON.parse(raw) as YieldHunterState;
-  } catch {
-    return { ...DEFAULT_STATE };
-  }
+  const envelope = await readStateFile<YieldHunterState>(
+    STATE_FILE_NAME,
+    STATE_VERSION
+  );
+  return envelope ? envelope.state : { ...DEFAULT_STATE };
 }
 
 async function writeState(state: YieldHunterState): Promise<void> {
-  await ensureStateDir();
-  await fs.writeFile(STATE_FILE, JSON.stringify(state, null, 2), "utf-8");
+  await writeStateFile(STATE_FILE_NAME, STATE_VERSION, state);
 }
 
 async function readPid(): Promise<number | null> {
