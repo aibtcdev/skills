@@ -635,7 +635,7 @@ program
   )
   .requiredOption(
     "--token-y <tokenId>",
-    "Output token ID (e.g. 'token-sbtc', 'token-aeusdc')"
+    "Output token ID (e.g. 'token-sbtc', 'token-USDCx-auto'; use 'token-aeusdc' only for explicit aeUSDC requests)"
   )
   .requiredOption(
     "--amount-in <decimal>",
@@ -696,7 +696,7 @@ program
   )
   .requiredOption(
     "--token-y <tokenId>",
-    "Output token ID (e.g. 'token-sbtc', 'token-aeusdc')"
+    "Output token ID (e.g. 'token-sbtc', 'token-USDCx-auto'; use 'token-aeusdc' only for explicit aeUSDC requests)"
   )
   .option(
     "--amount-in <decimal>",

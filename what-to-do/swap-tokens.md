@@ -38,7 +38,7 @@ NETWORK=mainnet bun run bitflow/bitflow.ts get-tokens
 
 Expected output: Array of tokens with `id` (the value used for `--token-x` / `--token-y`), `symbol`, `name`.
 
-Common token IDs: `token-stx` (STX), `token-sbtc` (sBTC), `token-aeusdc` (USDCx), `token-alex` (ALEX).
+Common token IDs: `token-stx` (STX), `token-sbtc` (sBTC), `token-USDCx-auto` (USDCx / default `USDC`), `token-aeusdc` (aeUSDC, only when explicitly requested), `token-alex` (ALEX).
 
 ### 3. Check Swap Targets
 

@@ -155,6 +155,23 @@ export interface BitflowToken {
   symbol: string;
   contractId: string;
   decimals: number;
+  aliases?: string[];
+}
+
+function normalizeBitflowToken(token: Token): BitflowToken {
+  const normalized: BitflowToken = {
+    id: token.tokenId,
+    name: token.name,
+    symbol: token.symbol,
+    contractId: token.tokenContract || token.tokenId,
+    decimals: token.tokenDecimals,
+  };
+
+  if (token.tokenId === "token-USDCx-auto") {
+    normalized.aliases = ["USDC"];
+  }
+
+  return normalized;
 }
 
 export interface HodlmmPoolInfo {
@@ -672,13 +689,7 @@ export class BitflowService {
     if (!this.tokenCache) {
       this.tokenCache = await sdk.getAvailableTokens();
     }
-    return this.tokenCache.map((t: Token) => ({
-      id: t.tokenId,
-      name: t.name,
-      symbol: t.symbol,
-      contractId: t.tokenContract || t.tokenId,
-      decimals: t.tokenDecimals,
-    }));
+    return this.tokenCache.map((t: Token) => normalizeBitflowToken(t));
   }
 
   private async ensureTokenCache(): Promise<Token[]> {

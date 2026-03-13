@@ -36,6 +36,7 @@ bun run bitflow/bitflow.ts <subcommand> [options]
 - `STX` uses 6 decimals: `1 STX = 1,000,000` micro-STX
 - `sBTC` uses 8 decimals: `1 sBTC = 100,000,000` sats
 - `USDCx` and `aeUSDC` use 6 decimals
+- Naming convention: when a user says `USDC` on Bitflow, treat that as `USDCx` (`token-USDCx-auto`) by default. Only use `aeUSDC` (`token-aeusdc`) when the user explicitly asks for `aeUSDC`.
 - `get-quote`, `get-routes --amount-in`, and `swap --amount-in` use human-readable token amounts
 - HODLMM `reserve_x` and `reserve_y` come from on-chain atomic units; this skill displays them in human-readable token units
 - HODLMM `bin.price` is a raw API value; this skill also shows an approximate human-readable `tokenY per tokenX` interpretation
@@ -98,6 +99,14 @@ Output:
       "symbol": "STX",
       "contractId": "token-stx",
       "decimals": 6
+    },
+    {
+      "id": "token-USDCx-auto",
+      "name": "USDCx",
+      "symbol": "USDCx",
+      "contractId": "SP120SBRBQJ00MCWS7TM5R8WJNTTKD5K0HFRC2CNE.usdcx",
+      "decimals": 6,
+      "aliases": ["USDC"]
     }
   ]
 }
@@ -120,7 +129,7 @@ Output:
   "network": "mainnet",
   "inputToken": "token-stx",
   "targetCount": 8,
-  "targets": ["token-sbtc", "token-aeusdc", "token-alex"]
+  "targets": ["token-sbtc", "token-USDCx-auto", "token-alex"]
 }
 ```
 
@@ -163,7 +172,7 @@ bun run bitflow/bitflow.ts get-quote --token-x <tokenId> --token-y <tokenId> --a
 
 Options:
 - `--token-x` (required) — Input token ID (e.g. `token-stx`, `token-sbtc`)
-- `--token-y` (required) — Output token ID (e.g. `token-sbtc`, `token-aeusdc`)
+- `--token-y` (required) — Output token ID (e.g. `token-sbtc`, `token-USDCx-auto`; use `token-aeusdc` only when the user explicitly wants `aeUSDC`)
 - `--amount-in` (required) — Amount of input token in human-readable decimal (e.g. `0.00015` for 15,000 sats sBTC, `21.0` for 21 STX). The SDK auto-scales by `10^decimals` internally.
 
 Output:
@@ -209,7 +218,7 @@ bun run bitflow/bitflow.ts get-routes --token-x <tokenId> --token-y <tokenId> [-
 
 Options:
 - `--token-x` (required) — Input token ID
-- `--token-y` (required) — Output token ID
+- `--token-y` (required) — Output token ID (`token-USDCx-auto` when the user asks for USDC, `token-aeusdc` only for explicit aeUSDC requests)
 - `--amount-in` (optional) — When provided, ranks routes by expected output for that trade size
 
 Output:

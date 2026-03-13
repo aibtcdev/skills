@@ -21,6 +21,7 @@ This agent handles DEX operations on the Bitflow aggregated liquidity protocol o
 - `STX`: 6 decimals (`1 STX = 1,000,000` micro-STX)
 - `sBTC`: 8 decimals (`1 sBTC = 100,000,000` sats)
 - `USDCx` / `aeUSDC`: 6 decimals
+- Naming default: if the user says `USDC` on Bitflow, interpret that as `USDCx` (`token-USDCx-auto`). Use `aeUSDC` (`token-aeusdc`) only when the user explicitly says `aeUSDC`.
 - `get-quote`, `get-routes --amount-in`, and `swap --amount-in` use human-readable token amounts
 - HODLMM bin reserves are raw on-chain atomic values; the CLI now shows human-readable token units too
 - HODLMM `bin.price` is a raw API field; interpret the derived `approxPrice` output instead of guessing from `rawPrice`
@@ -73,6 +74,7 @@ This agent handles DEX operations on the Bitflow aggregated liquidity protocol o
 - `get-quote`: `selectedRoute` is the best overall quote; `bestExecutableRoute` is the route `swap` can use today
 - `get-quote`: `executionWarning` means the best HODLMM quote is not directly executable, so `swap` will use the best executable fallback
 - `get-quote`: if `highImpactWarning` is present, the trade is large relative to pool liquidity
+- `get-tokens`: prefer `token-USDCx-auto` when the user asks for `USDC`; reserve `token-aeusdc` for explicit aeUSDC requests
 - `get-hodlmm-bins`: prefer `approxPrice` over `rawPrice` when answering users in natural language
 - `get-ticker`: prefer the derived `pair`, `baseSymbol`, and `targetSymbol` fields over raw contract IDs
 - Do not ask the user for a Bitflow API key unless they explicitly want higher-rate-limit private usage; the public path is the default
