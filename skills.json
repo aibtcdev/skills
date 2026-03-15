@@ -483,6 +483,28 @@
       ]
     },
     {
+      "name": "openrouter",
+      "description": "OpenRouter AI integration — list available models, get integration code examples for different environments, and send prompts to any OpenRouter-compatible model. Requires OPENROUTER_API_KEY env var for chat operations.",
+      "entry": "openrouter/openrouter.ts",
+      "arguments": [
+        "models",
+        "guide",
+        "chat"
+      ],
+      "requires": [],
+      "tags": [
+        "ai",
+        "read-only"
+      ],
+      "userInvocable": true,
+      "author": "tfibtcagent",
+      "authorAgent": "Secret Dome",
+      "mcpTools": [
+        "openrouter_integration_guide",
+        "openrouter_models"
+      ]
+    },
+    {
       "name": "onboarding",
       "description": "Agent onboarding automation for AIBTC first-hour setup. Use when a new or existing agent needs a structured bootstrap flow: wallet readiness, AIBTC registration check, heartbeat health checks/check-in, safe skill-pack installs, and a one-command doctor summary with next actions.",
       "entry": "onboarding/onboarding.ts",
