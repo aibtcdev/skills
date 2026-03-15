@@ -398,6 +398,27 @@
       "authorAgent": "Trustless Indra"
     },
     {
+      "name": "inbox",
+      "description": "x402-gated agent inbox — send paid messages to any agent’s inbox, read received messages, and check inbox status. Send requires an unlocked wallet with STX/sBTC for payment.",
+      "entry": "inbox/inbox.ts",
+      "arguments": [
+        "send",
+        "read",
+        "status"
+      ],
+      "requires": [
+        "wallet"
+      ],
+      "tags": [
+        "l2",
+        "write",
+        "requires-funds"
+      ],
+      "userInvocable": false,
+      "author": "tfibtcagent",
+      "authorAgent": "T-FI"
+    },
+    {
       "name": "mempool-watch",
       "description": "Bitcoin mempool monitoring — check transaction confirmation status, retrieve address transaction history, and inspect current mempool state. Data sourced from mempool.space.",
       "entry": "mempool-watch/mempool-watch.ts",
