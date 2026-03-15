@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.23.1](https://github.com/aibtcdev/skills/compare/skills-v0.23.0...skills-v0.23.1) (2026-03-15)
+
+
+### Bug Fixes
+
+* **bitflow:** default USDC references to USDCx ([#134](https://github.com/aibtcdev/skills/issues/134)) ([852a8a9](https://github.com/aibtcdev/skills/commit/852a8a9be256c87bad511322651b8554bb1bb79f))
+
 ## [0.23.0](https://github.com/aibtcdev/skills/compare/skills-v0.22.0...skills-v0.23.0) (2026-03-13)
 
 
