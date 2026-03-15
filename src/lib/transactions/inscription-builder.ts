@@ -9,6 +9,7 @@
 
 import * as btc from "@scure/btc-signer";
 import { p2tr_ord_reveal } from "micro-ordinals";
+import type { Tags } from "micro-ordinals";
 import type { Network } from "../config/networks.js";
 import {
   P2WPKH_INPUT_VBYTES,
@@ -62,6 +63,12 @@ export interface BuildCommitTransactionOptions {
    * Network (mainnet or testnet)
    */
   network: Network;
+  /**
+   * Optional parent inscription ID for child inscription binding (format: {txid}i{index}).
+   * When set, the inscription is encoded as a child of the specified parent per the
+   * Ordinals protocol specification (parent tag in the inscription envelope).
+   */
+  parentInscriptionId?: string;
 }
 
 /**
@@ -182,7 +189,7 @@ function getBtcNetwork(network: Network): typeof btc.NETWORK {
 export function buildCommitTransaction(
   options: BuildCommitTransactionOptions
 ): BuildCommitTransactionResult {
-  const { utxos, inscription, feeRate, senderPubKey, senderAddress, network } =
+  const { utxos, inscription, feeRate, senderPubKey, senderAddress, network, parentInscriptionId } =
     options;
 
   // Validate inputs
@@ -214,8 +221,20 @@ export function buildCommitTransaction(
   // Create inscription reveal script using micro-ordinals
   // p2tr_ord_reveal returns { type: 'tr', script: Uint8Array }
   const btcNetwork = getBtcNetwork(network);
+
+  // Build inscription tags — include parent tag for child inscription binding if provided.
+  // Tags.parent is typed as P.Coder<string, Uint8Array> due to a micro-ordinals type
+  // inconsistency (UnwrapCoder doesn't unwrap plain Coder<A,B>), but at runtime the field
+  // holds the decoded string value. We cast through unknown to satisfy the type checker.
+  const tags: Tags = {
+    contentType: inscription.contentType,
+    ...(parentInscriptionId
+      ? { parent: parentInscriptionId as unknown as Tags["parent"] }
+      : {}),
+  };
+
   const inscriptionData = {
-    tags: { contentType: inscription.contentType },
+    tags,
     body: inscription.body,
   };
 

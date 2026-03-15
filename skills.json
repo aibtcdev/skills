@@ -1,6 +1,6 @@
 {
-  "version": "0.22.0",
-  "generated": "2026-03-13T21:44:57.102Z",
+  "version": "0.23.0",
+  "generated": "2026-03-15T01:23:45.036Z",
   "skills": [
     {
       "name": "agent-lookup",
@@ -801,6 +801,30 @@
       "userInvocable": false,
       "author": "whoabuddy",
       "authorAgent": "Trustless Indra"
+    },
+    {
+      "name": "souldinals",
+      "description": "Souldinals collection management — inscribe soul.md as a child inscription under a genesis parent, list and load soul inscriptions from the wallet, and display parsed soul traits and metadata.",
+      "entry": "souldinals/souldinals.ts",
+      "arguments": [
+        "inscribe-soul",
+        "reveal-soul",
+        "list-souls",
+        "load-soul",
+        "display-soul"
+      ],
+      "requires": [
+        "wallet",
+        "ordinals"
+      ],
+      "tags": [
+        "l1",
+        "write",
+        "requires-funds"
+      ],
+      "userInvocable": false,
+      "author": "strange-lux-agent",
+      "authorAgent": "Strange Lux"
     },
     {
       "name": "stacking",
