@@ -7,7 +7,6 @@
  * Usage: bun run contract/contract.ts <subcommand> [options]
  */
 
-import { readFileSync } from "node:fs";
 import { Command } from "commander";
 import { PostConditionMode, PostCondition } from "@stacks/transactions";
 import { NETWORK, getExplorerTxUrl } from "../src/lib/config/networks.js";
@@ -189,12 +188,10 @@ program
       try {
         let codeBody: string;
         try {
-          codeBody = readFileSync(opts.source, "utf8");
+          codeBody = await Bun.file(opts.source).text();
         } catch (err) {
           throw new Error(
-            `--source file not found or unreadable: ${opts.source} — ${
-              err instanceof Error ? err.message : String(err)
-            }`
+            `Failed to read contract source file '${opts.source}': ${err instanceof Error ? err.message : String(err)}`
           );
         }
 

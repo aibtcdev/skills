@@ -140,6 +140,6 @@ Output:
 - Contract names must be unique per deployer address. Deploying a contract that already exists will fail.
 - Deployment is irreversible — the contract lives on-chain permanently once confirmed.
 - Pre-simulate contract calls on [stxer.xyz](https://stxer.xyz) before deploying or calling to catch Clarity errors and estimate fees without spending STX.
-- Post condition format: `{"type":"stx","principal":"SP2...","conditionCode":"eq","amount":"1000000"}` for STX; `{"type":"ft","principal":"SP2...","asset":"SP2....my-token","assetName":"my-token","conditionCode":"eq","amount":"100"}` for fungible tokens.
+- Post condition format: `{"type":"stx","principal":"SP2...","conditionCode":"eq","amount":"1000000"}` for STX; `{"type":"ft","principal":"SP2...","asset":"SP2....my-token","assetName":"my-token","conditionCode":"eq","amount":"100"}` for fungible tokens; `{"type":"nft","principal":"SP2...","asset":"SP2....my-nft","assetName":"my-nft","tokenId":1}` for NFTs — NFT conditions are binary (send/not-send), so `conditionCode` is not applicable; use `"notSend":true` to assert the NFT must NOT leave the principal.
 - `--post-condition-mode allow` skips post condition checks entirely — use only when you fully trust the contract logic and have verified the source code.
 - Wallet operations require an unlocked wallet (use `bun run wallet/wallet.ts unlock --password <password>` first).
