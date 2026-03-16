@@ -270,8 +270,11 @@ export class AlexDexService {
       }
 
       return null;
-    } catch {
-      return null;
+    } catch (error) {
+      if (error instanceof Error && (error.message.includes("404") || error.message.includes("not found"))) {
+        return null;
+      }
+      throw error;
     }
   }
 
@@ -500,8 +503,11 @@ export class ZestProtocolService {
       }
 
       return { asset, supplied, borrowed };
-    } catch {
-      return null;
+    } catch (error) {
+      if (error instanceof Error && (error.message.includes("404") || error.message.includes("not found"))) {
+        return null;
+      }
+      throw error;
     }
   }
 
