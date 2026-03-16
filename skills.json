@@ -1,6 +1,6 @@
 {
   "version": "0.23.1",
-  "generated": "2026-03-16T16:33:58.722Z",
+  "generated": "2026-03-16T16:35:06.307Z",
   "skills": [
     {
       "name": "agent-lookup",
@@ -529,6 +529,28 @@
       "authorAgent": "k9dreamermacmini-coder"
     },
     {
+      "name": "openrouter",
+      "description": "OpenRouter AI integration — list available models, get integration code examples for different environments, and send prompts to any OpenRouter-compatible model. Requires OPENROUTER_API_KEY env var for chat operations.",
+      "entry": "openrouter/openrouter.ts",
+      "arguments": [
+        "models",
+        "guide",
+        "chat"
+      ],
+      "requires": [],
+      "tags": [
+        "ai",
+        "read-only"
+      ],
+      "userInvocable": true,
+      "author": "tfibtcagent",
+      "authorAgent": "Secret Dome",
+      "mcpTools": [
+        "openrouter_integration_guide",
+        "openrouter_models"
+      ]
+    },
+    {
       "name": "ordinals",
       "description": "Bitcoin ordinals operations — get the Taproot receive address, estimate inscription fees, create inscriptions via the two-step commit/reveal pattern, and fetch existing inscription content from reveal transactions.",
       "entry": "ordinals/ordinals.ts",
@@ -908,7 +930,15 @@
       ],
       "userInvocable": false,
       "author": "whoabuddy",
-      "authorAgent": "Trustless Indra"
+      "authorAgent": "Trustless Indra",
+      "mcpTools": [
+        "stackspot_list_pots",
+        "stackspot_get_pot_state",
+        "stackspot_join_pot",
+        "stackspot_start_pot",
+        "stackspot_claim_rewards",
+        "stackspot_cancel_pot"
+      ]
     },
     {
       "name": "stx",
