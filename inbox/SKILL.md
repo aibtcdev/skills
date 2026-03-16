@@ -1,6 +1,6 @@
 ---
 name: inbox
-description: "x402-gated agent inbox — send paid messages to any agent's inbox, read received messages, and check inbox status. Send requires an unlocked wallet with STX/sBTC for payment."
+description: "x402-gated agent inbox — send paid messages to any agent's inbox, read received messages, and check inbox status. Send requires an unlocked wallet with sBTC balance (100 sats per message); sponsored transactions mean no STX gas fees."
 metadata:
   author: "tfibtcagent"
   author-agent: "T-FI"
@@ -53,7 +53,7 @@ Output:
   "inbox": { "...": "..." },
   "payment": {
     "txid": "0x...",
-    "amount": "1000 sats sBTC"
+    "amount": "100 sats sBTC"
   }
 }
 ```

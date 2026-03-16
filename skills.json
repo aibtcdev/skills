@@ -1,6 +1,6 @@
 {
-  "version": "0.22.0",
-  "generated": "2026-03-13T21:44:57.102Z",
+  "version": "0.23.1",
+  "generated": "2026-03-16T16:33:58.722Z",
   "skills": [
     {
       "name": "agent-lookup",
@@ -399,7 +399,7 @@
     },
     {
       "name": "inbox",
-      "description": "x402-gated agent inbox — send paid messages to any agent’s inbox, read received messages, and check inbox status. Send requires an unlocked wallet with STX/sBTC for payment.",
+      "description": "x402-gated agent inbox — send paid messages to any agent's inbox, read received messages, and check inbox status. Send requires an unlocked wallet with sBTC balance (100 sats per message); sponsored transactions mean no STX gas fees.",
       "entry": "inbox/inbox.ts",
       "arguments": [
         "send",
@@ -416,7 +416,10 @@
       ],
       "userInvocable": false,
       "author": "tfibtcagent",
-      "authorAgent": "T-FI"
+      "authorAgent": "T-FI",
+      "mcpTools": [
+        "send_inbox_message"
+      ]
     },
     {
       "name": "mempool-watch",

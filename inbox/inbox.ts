@@ -62,7 +62,7 @@ program
 
         const account = await getAccount();
 
-        const inboxUrl = `${INBOX_BASE}/${opts.recipientBtcAddress}`;
+        const inboxUrl = `${INBOX_BASE}/${opts.recipientStxAddress}`;
         const body = {
           toBtcAddress: opts.recipientBtcAddress,
           toStxAddress: opts.recipientStxAddress,
@@ -270,13 +270,21 @@ program
         throw new Error(`Failed to read inbox (${res.status}): ${responseText}`);
       }
 
-      const messageArray = Array.isArray(messages) ? messages : [];
+      const data = messages as Record<string, unknown>;
+      const inboxData = data?.inbox as Record<string, unknown> | undefined;
+      const messageArray: unknown[] = Array.isArray(inboxData?.messages)
+        ? (inboxData!.messages as unknown[])
+        : [];
 
       printJson({
         address,
         status: opts.status,
         messages: messageArray,
         count: messageArray.length,
+        ...(inboxData && {
+          unreadCount: inboxData.unreadCount,
+          totalCount: inboxData.totalCount,
+        }),
       });
     } catch (error) {
       handleError(error);
@@ -297,60 +305,37 @@ program
     try {
       const address = await getWalletAddress();
 
-      // Fetch both unread and all messages to compute counts
-      const [unreadRes, allRes] = await Promise.all([
-        fetch(`${INBOX_BASE}/${address}?status=unread`, {
-          method: "GET",
-          headers: { "Content-Type": "application/json" },
-        }),
-        fetch(`${INBOX_BASE}/${address}`, {
-          method: "GET",
-          headers: { "Content-Type": "application/json" },
-        }),
-      ]);
+      // Single fetch — the API returns unreadCount and totalCount in one call
+      const res = await fetch(`${INBOX_BASE}/${address}`, {
+        method: "GET",
+      });
 
-      let unreadMessages: unknown[] = [];
-      let allMessages: unknown[] = [];
-
-      if (unreadRes.ok) {
-        const text = await unreadRes.text();
-        try {
-          const parsed = JSON.parse(text);
-          unreadMessages = Array.isArray(parsed) ? parsed : [];
-        } catch {
-          unreadMessages = [];
-        }
+      const responseText = await res.text();
+      if (!res.ok) {
+        throw new Error(
+          `Failed to fetch inbox status (${res.status}): ${responseText}`
+        );
       }
 
-      if (allRes.ok) {
-        const text = await allRes.text();
-        try {
-          const parsed = JSON.parse(text);
-          allMessages = Array.isArray(parsed) ? parsed : [];
-        } catch {
-          allMessages = [];
-        }
+      let data: Record<string, unknown> = {};
+      try {
+        data = JSON.parse(responseText) as Record<string, unknown>;
+      } catch {
+        data = { raw: responseText };
       }
 
-      // Find the most recent message timestamp
-      let lastReceived: string | null = null;
-      for (const msg of allMessages) {
-        const m = msg as Record<string, unknown>;
-        const ts = m["timestamp"] ?? m["createdAt"] ?? m["created_at"];
-        if (typeof ts === "string") {
-          if (!lastReceived || ts > lastReceived) {
-            lastReceived = ts;
-          }
-        }
-      }
+      const inboxData = data?.inbox as Record<string, unknown> | undefined;
+      const messages = Array.isArray(inboxData?.messages)
+        ? (inboxData!.messages as Array<Record<string, unknown>>)
+        : [];
 
       printJson({
         address,
         network: NETWORK,
         inbox: {
-          total: allMessages.length,
-          unread: unreadMessages.length,
-          ...(lastReceived && { lastReceived }),
+          total: inboxData?.totalCount ?? messages.length,
+          unread: inboxData?.unreadCount ?? 0,
+          lastReceived: messages[0]?.sentAt ?? null,
         },
       });
     } catch (error) {
