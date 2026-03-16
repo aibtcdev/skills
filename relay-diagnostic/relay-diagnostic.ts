@@ -76,16 +76,22 @@ async function getNonceInfo(
   address: string
 ): Promise<HiroNonceInfo> {
   const baseUrl = getApiBaseUrl(network);
-  const res = await fetch(
-    `${baseUrl}/extended/v1/address/${address}/nonces`,
-    { headers: { "Content-Type": "application/json" } }
-  );
-  if (!res.ok) {
-    throw new Error(
-      `Failed to fetch nonce info for ${address}: HTTP ${res.status}`
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30000);
+  try {
+    const res = await fetch(
+      `${baseUrl}/extended/v1/address/${address}/nonces`,
+      { signal: controller.signal }
     );
+    if (!res.ok) {
+      throw new Error(
+        `Failed to fetch nonce info for ${address}: HTTP ${res.status}`
+      );
+    }
+    return (await res.json()) as HiroNonceInfo;
+  } finally {
+    clearTimeout(timeout);
   }
-  return (await res.json()) as HiroNonceInfo;
 }
 
 async function checkRelayHealth(
@@ -95,21 +101,29 @@ async function checkRelayHealth(
   const issues: string[] = [];
 
   try {
-    const healthRes = await fetch(`${relayUrl}/health`, {
-      method: "GET",
-      headers: { "Content-Type": "application/json" },
-    });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000);
+    let healthData: { status?: string; version?: string };
+    try {
+      const healthRes = await fetch(`${relayUrl}/health`, {
+        method: "GET",
+        signal: controller.signal,
+      });
 
-    if (!healthRes.ok) {
-      issues.push(`Relay health check failed: HTTP ${healthRes.status}`);
-      const status: RelayHealthStatus = { healthy: false, network, issues };
-      return { ...status, formatted: formatRelayHealthStatus(status) };
+      if (!healthRes.ok) {
+        issues.push(`Relay health check failed: HTTP ${healthRes.status}`);
+        const status: RelayHealthStatus = { healthy: false, network, issues };
+        return { ...status, formatted: formatRelayHealthStatus(status) };
+      }
+
+      healthData = (await healthRes.json()) as {
+        status?: string;
+        version?: string;
+      };
+    } finally {
+      clearTimeout(timeout);
     }
 
-    const healthData = (await healthRes.json()) as {
-      status?: string;
-      version?: string;
-    };
     const version = healthData.version;
 
     if (healthData.status !== "ok") {
@@ -175,7 +189,7 @@ async function checkRelayHealth(
       });
       const nowSeconds = Math.floor(Date.now() / 1000);
       const stuck = mempoolRes.results
-        .filter((tx) => nowSeconds - tx.receipt_time > 60)
+        .filter((tx) => nowSeconds - tx.receipt_time > 600)
         .map((tx) => ({
           txid: tx.tx_id,
           nonce: tx.nonce,
