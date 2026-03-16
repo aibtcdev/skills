@@ -82,6 +82,8 @@ function estimatePsbtVsize(tx: btc.Transaction): number {
       const input = tx.getInput(i);
       const scriptType = detectInputScriptType(input);
       if (scriptType === "tr" || scriptType === "tr_ms" || scriptType === "tr_ns") {
+        // P2TR_INPUT_BASE_VBYTES (~41) + 16 witness vbytes = ~57 vbytes total
+        // (41 non-witness bytes + ~16.5 witness bytes at 0.25 weight = ~57 vbytes for a key-path spend)
         inputVbytes += Math.ceil(P2TR_INPUT_BASE_VBYTES + 16);
       } else {
         // Default to P2WPKH
@@ -266,7 +268,8 @@ program
           // Attempt with P2WPKH key
           if (account.btcPrivateKey) {
             try {
-              signed = tx.signIdx(account.btcPrivateKey, idx) || signed;
+              tx.signIdx(account.btcPrivateKey, idx);
+              signed = true;
             } catch (e) {
               errors.push(`btc key: ${String(e)}`);
             }
@@ -275,7 +278,8 @@ program
           // Attempt with Taproot key if P2WPKH signing did not succeed
           if (!signed && account.taprootPrivateKey) {
             try {
-              signed = tx.signIdx(account.taprootPrivateKey, idx) || signed;
+              tx.signIdx(account.taprootPrivateKey, idx);
+              signed = true;
             } catch (e) {
               errors.push(`taproot key: ${String(e)}`);
             }
