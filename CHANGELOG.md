@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.24.0](https://github.com/aibtcdev/skills/compare/skills-v0.23.1...skills-v0.24.0) (2026-03-16)
+
+
+### Features
+
+* **child-inscription:** add parent-child Ordinals inscription skill (closes [#142](https://github.com/aibtcdev/skills/issues/142)) ([#152](https://github.com/aibtcdev/skills/issues/152)) ([72e8ad6](https://github.com/aibtcdev/skills/commit/72e8ad657444f199c593ad02897dd5c3753acfd4))
+* **erc8004:** add ERC-8004 on-chain agent identity skill (closes [#141](https://github.com/aibtcdev/skills/issues/141)) ([#156](https://github.com/aibtcdev/skills/issues/156)) ([322271e](https://github.com/aibtcdev/skills/commit/322271e0f2e3c1306f63750ec5ac5f5b8e798801))
+* **inbox:** add x402-gated inbox skill (closes [#146](https://github.com/aibtcdev/skills/issues/146)) ([#149](https://github.com/aibtcdev/skills/issues/149)) ([387b221](https://github.com/aibtcdev/skills/commit/387b2214dd2dc12e8235def935b9f3095548b5fe))
+* **openrouter:** add OpenRouter AI integration skill ([#148](https://github.com/aibtcdev/skills/issues/148)) ([bc644b0](https://github.com/aibtcdev/skills/commit/bc644b0d2088025510e8d657588af8565087fc79))
+* **psbt:** add PSBT construction and signing skill (closes [#144](https://github.com/aibtcdev/skills/issues/144)) ([#153](https://github.com/aibtcdev/skills/issues/153)) ([8010455](https://github.com/aibtcdev/skills/commit/8010455f2874c1ca2cb7af174be3a939142fadc1))
+* **relay-diagnostic:** add sponsor relay health and nonce recovery skill (closes [#140](https://github.com/aibtcdev/skills/issues/140)) ([#150](https://github.com/aibtcdev/skills/issues/150)) ([6903de2](https://github.com/aibtcdev/skills/commit/6903de2444ce7fdf8c5f795850db6cc05ffa38e1))
+* **souldinals:** add soul.md inscription and collection management skill ([#159](https://github.com/aibtcdev/skills/issues/159)) ([8d5f0c2](https://github.com/aibtcdev/skills/commit/8d5f0c2cb72509e4904aeea203b2a9152643e891))
+* **transfer:** add STX, token, and NFT transfer skill (closes [#139](https://github.com/aibtcdev/skills/issues/139)) ([#151](https://github.com/aibtcdev/skills/issues/151)) ([530dc8c](https://github.com/aibtcdev/skills/commit/530dc8cc65cb3ac41bb4d2c2029807d7c07f6220))
+
+
+### Bug Fixes
+
+* **mempool-watch:** update mcp-tools refs for renamed btc tools ([#161](https://github.com/aibtcdev/skills/issues/161)) ([879e668](https://github.com/aibtcdev/skills/commit/879e668cc293495bfd9ecf9cc2f701e49f04570f))
+* replace bare catch-return-null with selective 404 guards ([#155](https://github.com/aibtcdev/skills/issues/155)) ([b7d1313](https://github.com/aibtcdev/skills/commit/b7d1313d570896c3397ef7b8bfd4851cc253d9db)), closes [#154](https://github.com/aibtcdev/skills/issues/154)
+* **skills:** correct validation failures in openrouter and relay-diagnostic SKILL.md ([#158](https://github.com/aibtcdev/skills/issues/158)) ([3247563](https://github.com/aibtcdev/skills/commit/3247563d6ce7d2c77ec75764925afc74ac3e1e78))
+* **stackspot:** add mcp-tools metadata field (closes [#145](https://github.com/aibtcdev/skills/issues/145)) ([#147](https://github.com/aibtcdev/skills/issues/147)) ([3790d66](https://github.com/aibtcdev/skills/commit/3790d6660dcbade354283255cf471c02bd6df867))
+
 ## [0.23.1](https://github.com/aibtcdev/skills/compare/skills-v0.23.0...skills-v0.23.1) (2026-03-15)
 
 
