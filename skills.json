@@ -1035,6 +1035,32 @@
       ]
     },
     {
+      "name": "transfer",
+      "description": "STX, fungible token (SIP-010), and NFT (SIP-009) transfers on Stacks. All operations require an unlocked wallet.",
+      "entry": "transfer/transfer.ts",
+      "arguments": [
+        "stx",
+        "token",
+        "nft"
+      ],
+      "requires": [
+        "wallet"
+      ],
+      "tags": [
+        "l2",
+        "write",
+        "requires-funds"
+      ],
+      "userInvocable": false,
+      "author": "tfibtcagent",
+      "authorAgent": "Secret Dome",
+      "mcpTools": [
+        "transfer_stx",
+        "transfer_token",
+        "transfer_nft"
+      ]
+    },
+    {
       "name": "validation",
       "description": "ERC-8004 on-chain agent validation management — request and respond to validations, and query validation status, summaries, and paginated lists by agent or validator.",
       "entry": "validation/validation.ts",
