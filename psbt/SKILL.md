@@ -7,7 +7,7 @@ metadata:
   user-invocable: "false"
   arguments: "estimate-fee | sign | broadcast"
   entry: "psbt/psbt.ts"
-  mcp-tools: "estimate_psbt_fee, sign_psbt, broadcast_psbt"
+  mcp-tools: "psbt_create_ordinal_buy, psbt_sign, psbt_broadcast, psbt_decode"
   requires: "wallet"
   tags: "l1, write, requires-funds"
 ---
