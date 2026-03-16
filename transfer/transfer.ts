@@ -23,13 +23,14 @@ import { printJson, handleError } from "../src/lib/utils/cli.js";
  * Format micro-STX as a human-readable STX string.
  */
 function formatStx(microStx: string): string {
-  const stx = BigInt(microStx) / BigInt(1_000_000);
-  const remainder = BigInt(microStx) % BigInt(1_000_000);
+  const micro = BigInt(microStx);
+  const stx = micro / BigInt(1_000_000);
+  const remainder = micro % BigInt(1_000_000);
   if (remainder === 0n) {
     return stx.toString() + " STX";
   }
-  const decimal = (Number(microStx) / 1_000_000).toFixed(6).replace(/\.?0+$/, "");
-  return decimal + " STX";
+  const padded = remainder.toString().padStart(6, "0").replace(/0+$/, "");
+  return `${stx}.${padded} STX`;
 }
 
 // ---------------------------------------------------------------------------
@@ -80,7 +81,12 @@ program
       fee?: string;
     }) => {
       try {
-        const amountBigInt = BigInt(opts.amount);
+        let amountBigInt: bigint;
+        try {
+          amountBigInt = BigInt(opts.amount);
+        } catch {
+          throw new Error("--amount must be a positive integer (whole micro-STX, no decimals)");
+        }
         if (amountBigInt <= 0n) {
           throw new Error("--amount must be a positive integer");
         }
@@ -152,7 +158,12 @@ program
       fee?: string;
     }) => {
       try {
-        const amountBigInt = BigInt(opts.amount);
+        let amountBigInt: bigint;
+        try {
+          amountBigInt = BigInt(opts.amount);
+        } catch {
+          throw new Error("--amount must be a positive integer (whole token atoms, no decimals)");
+        }
         if (amountBigInt <= 0n) {
           throw new Error("--amount must be a positive integer");
         }
@@ -221,9 +232,14 @@ program
       fee?: string;
     }) => {
       try {
-        const tokenId = parseInt(opts.tokenId, 10);
-
-        if (isNaN(tokenId) || tokenId < 0) {
+        let tokenId: number;
+        try {
+          const tokenIdBigInt = BigInt(opts.tokenId);
+          if (tokenIdBigInt < 0n) {
+            throw new Error("--token-id must be a non-negative integer");
+          }
+          tokenId = Number(tokenIdBigInt);
+        } catch {
           throw new Error("--token-id must be a non-negative integer");
         }
 
