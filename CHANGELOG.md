@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.25.0](https://github.com/aibtcdev/skills/compare/skills-v0.24.0...skills-v0.25.0) (2026-03-16)
+
+
+### Features
+
+* **contract:** add contract deployment and interaction skill (closes [#138](https://github.com/aibtcdev/skills/issues/138)) ([#160](https://github.com/aibtcdev/skills/issues/160)) ([0b88f36](https://github.com/aibtcdev/skills/commit/0b88f36d63814bf7bdadafdc7e96bbc1575aabcb))
+* **jingswap:** add blind batch auction skill for STX/sBTC ([#162](https://github.com/aibtcdev/skills/issues/162)) ([df91241](https://github.com/aibtcdev/skills/commit/df9124161a18741c2ef9ceb73f3bbe102c27a517))
+
 ## [0.24.0](https://github.com/aibtcdev/skills/compare/skills-v0.23.1...skills-v0.24.0) (2026-03-16)
 
 
