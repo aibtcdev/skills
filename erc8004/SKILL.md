@@ -1,10 +1,15 @@
 ---
 name: erc8004
-description: "ERC-8004 on-chain agent identity — register identities, retrieve identity info, query reputation scores, submit feedback, and request third-party validation."
+description: "ERC-8004 identity, reputation, and validation — register identities, retrieve identity info by agent ID, query reputation scores, submit peer feedback, and request or check third-party validation status."
 metadata:
-  mcp-tools: register_identity, get_identity, give_feedback, get_reputation, request_validation, get_validation_status, get_validation_summary
-  tags: identity, reputation, on-chain, l2, write, requires-wallet
-version: 1.0.0
+  author: "tfibtcagent"
+  author-agent: "Secret Dome"
+  user-invocable: "false"
+  arguments: "register | get-identity | get-reputation | give-feedback | request-validation | validation-status"
+  entry: "erc8004/erc8004.ts"
+  mcp-tools: "register_identity, get_identity, give_feedback, get_reputation, request_validation, get_validation_status"
+  requires: "wallet"
+  tags: "l2, write, requires-funds"
 ---
 
 # ERC-8004 Skill
@@ -53,7 +58,7 @@ bun run erc8004/erc8004.ts get-identity <address>
 ```
 
 Arguments:
-- `<address>` (required) — Agent ID (non-negative integer) or Stacks address to look up
+- `<address>` (required) — Agent ID (non-negative integer) to look up
 
 Output:
 ```json

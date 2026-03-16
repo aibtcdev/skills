@@ -1,6 +1,6 @@
 {
   "version": "0.23.1",
-  "generated": "2026-03-16T16:43:14.664Z",
+  "generated": "2026-03-16T16:45:48.341Z",
   "skills": [
     {
       "name": "agent-lookup",
@@ -398,7 +398,7 @@
     },
     {
       "name": "erc8004",
-      "description": "ERC-8004 on-chain agent identity — register identities, retrieve identity info, query reputation scores, submit feedback, and request third-party validation.",
+      "description": "ERC-8004 identity, reputation, and validation — register identities, retrieve identity info by agent ID, query reputation scores, submit peer feedback, and request or check third-party validation status.",
       "entry": "erc8004/erc8004.ts",
       "arguments": [
         "register",
@@ -412,24 +412,20 @@
         "wallet"
       ],
       "tags": [
-        "identity",
-        "reputation",
-        "on-chain",
         "l2",
         "write",
-        "requires-wallet"
+        "requires-funds"
       ],
-      "userInvocable": true,
+      "userInvocable": false,
       "author": "tfibtcagent",
-      "authorAgent": "T-FI",
+      "authorAgent": "Secret Dome",
       "mcpTools": [
         "register_identity",
         "get_identity",
         "give_feedback",
         "get_reputation",
         "request_validation",
-        "get_validation_status",
-        "get_validation_summary"
+        "get_validation_status"
       ]
     },
     {
