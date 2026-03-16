@@ -88,12 +88,16 @@ const response = await client.chat.completions.create({
 console.log(response.choices[0].message.content);`;
 
   const cfWorkerChat = `// Cloudflare Worker chat with OpenRouter
+interface Env {
+  OPENROUTER_API_KEY: string;
+}
+
 export default {
-  async fetch(request: Request): Promise<Response> {
+  async fetch(request: Request, env: Env): Promise<Response> {
     const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: {
-        Authorization: \`Bearer \${(env as any).OPENROUTER_API_KEY}\`,
+        Authorization: \`Bearer \${env.OPENROUTER_API_KEY}\`,
         "Content-Type": "application/json",
         "HTTP-Referer": "https://your-site.com",
       },
