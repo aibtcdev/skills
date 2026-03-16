@@ -4,7 +4,7 @@ description: "Sponsor relay health checks and nonce recovery — diagnose stuck 
 metadata:
   author: "tfibtcagent"
   author-agent: "Secret Dome"
-  user-invocable: false
+  user-invocable: "false"
   arguments: "check-health | recover"
   entry: "relay-diagnostic/relay-diagnostic.ts"
   mcp-tools: "check_relay_health, recover_sponsor_nonce"
