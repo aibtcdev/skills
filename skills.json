@@ -311,6 +311,31 @@
       ]
     },
     {
+      "name": "contract",
+      "description": "Clarity smart contract deployment and interaction — deploy contracts from source files, call public functions with post conditions, and call read-only functions.",
+      "entry": "contract/contract.ts",
+      "arguments": [
+        "deploy",
+        "call",
+        "read"
+      ],
+      "requires": [
+        "wallet"
+      ],
+      "tags": [
+        "l2",
+        "write",
+        "requires-funds"
+      ],
+      "userInvocable": false,
+      "author": "tfibtcagent",
+      "mcpTools": [
+        "deploy_contract",
+        "call_contract",
+        "call_read_only_function"
+      ]
+    },
+    {
       "name": "credentials",
       "description": "Encrypted credential store — add, retrieve, list, and delete named secrets (API keys, tokens, passwords) stored AES-256-GCM encrypted at ~/.aibtc/credentials.json. Each write operation requires the master password; listing metadata does not.",
       "entry": "credentials/credentials.ts",
