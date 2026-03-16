@@ -121,9 +121,13 @@ program
     "--content-type <mime>",
     "MIME type of the child content (e.g. text/plain, image/png)"
   )
-  .requiredOption(
+  .option(
     "--content <string>",
-    "Child content as a UTF-8 string"
+    "Child content as a UTF-8 string (use --content-file for binary)"
+  )
+  .option(
+    "--content-file <path>",
+    "Path to a file whose bytes will be used as child content (for binary/large content)"
   )
   .option(
     "--fee-rate <sats-per-vbyte>",
@@ -133,14 +137,21 @@ program
     async (opts: {
       parentId: string;
       contentType: string;
-      content: string;
+      content?: string;
+      contentFile?: string;
       feeRate?: string;
     }) => {
       try {
+        if (!opts.content && !opts.contentFile) {
+          throw new Error("Either --content or --content-file is required");
+        }
+
         const mempoolApi = new MempoolApi(NETWORK);
         const actualFeeRate = await resolveFeeRate(opts.feeRate, mempoolApi);
 
-        const body = Buffer.from(opts.content, "utf8");
+        const body = opts.contentFile
+          ? readFileSync(resolve(opts.contentFile))
+          : Buffer.from(opts.content!, "utf8");
 
         // Commit tx size: 2 P2WPKH inputs + 1 P2TR output + 1 P2WPKH change
         const commitInputs = 2;
@@ -205,7 +216,14 @@ program
     "--content-type <mime>",
     "MIME type of the child content (e.g. text/plain, image/png)"
   )
-  .requiredOption("--content <string>", "Child content as a UTF-8 string")
+  .option(
+    "--content <string>",
+    "Child content as a UTF-8 string (use --content-file for binary)"
+  )
+  .option(
+    "--content-file <path>",
+    "Path to a file whose bytes will be used as child content (for binary/large content)"
+  )
   .option(
     "--fee-rate <rate>",
     "Fee rate: fast (~10 min), medium (~30 min), slow (~1 hr), or sat/vB integer (default: medium)"
@@ -214,10 +232,15 @@ program
     async (opts: {
       parentId: string;
       contentType: string;
-      content: string;
+      content?: string;
+      contentFile?: string;
       feeRate?: string;
     }) => {
       try {
+        if (!opts.content && !opts.contentFile) {
+          throw new Error("Either --content or --content-file is required");
+        }
+
         // Wallet check
         const walletManager = getWalletManager();
         const sessionInfo = walletManager.getSessionInfo();
@@ -255,7 +278,9 @@ program
         const mempoolApi = new MempoolApi(NETWORK);
         const actualFeeRate = await resolveFeeRate(opts.feeRate, mempoolApi);
 
-        const body = Buffer.from(opts.content, "utf8");
+        const body = opts.contentFile
+          ? readFileSync(resolve(opts.contentFile))
+          : Buffer.from(opts.content!, "utf8");
         const inscription: InscriptionData = {
           contentType: opts.contentType,
           body,
@@ -288,7 +313,7 @@ program
         const commitExplorerUrl = getMempoolTxUrl(commitTxid, NETWORK);
 
         // Persist state for the reveal step
-        const contentBase64 = Buffer.from(opts.content, "utf8").toString("base64");
+        const contentBase64 = body.toString("base64");
         saveState({
           parentInscriptionId: opts.parentId,
           contentType: opts.contentType,
@@ -413,7 +438,10 @@ program
         };
 
         const mempoolApi = new MempoolApi(NETWORK);
-        const actualFeeRate = await resolveFeeRate(undefined, mempoolApi);
+        // Use the stored fee rate (or current rate if higher) to ensure
+        // the locked revealAmount is sufficient for the reveal tx fees.
+        const currentFeeRate = await resolveFeeRate(undefined, mempoolApi);
+        const actualFeeRate = Math.max(state.feeRate, currentFeeRate);
 
         // Derive the same reveal script as was used in the commit
         const p2trReveal = deriveChildRevealScript({
