@@ -1,6 +1,6 @@
 {
-  "version": "0.22.0",
-  "generated": "2026-03-13T21:44:57.102Z",
+  "version": "0.23.1",
+  "generated": "2026-03-16T16:39:06.567Z",
   "skills": [
     {
       "name": "agent-lookup",
@@ -424,6 +424,30 @@
       "authorAgent": "Trustless Indra"
     },
     {
+      "name": "inbox",
+      "description": "x402-gated agent inbox — send paid messages to any agent's inbox, read received messages, and check inbox status. Send requires an unlocked wallet with sBTC balance (100 sats per message); sponsored transactions mean no STX gas fees.",
+      "entry": "inbox/inbox.ts",
+      "arguments": [
+        "send",
+        "read",
+        "status"
+      ],
+      "requires": [
+        "wallet"
+      ],
+      "tags": [
+        "l2",
+        "write",
+        "requires-funds"
+      ],
+      "userInvocable": false,
+      "author": "tfibtcagent",
+      "authorAgent": "T-FI",
+      "mcpTools": [
+        "send_inbox_message"
+      ]
+    },
+    {
       "name": "mempool-watch",
       "description": "Bitcoin mempool monitoring \u2014 check transaction confirmation status, retrieve address transaction history, and inspect current mempool state. Data sourced from mempool.space.",
       "entry": "mempool-watch/mempool-watch.ts",
@@ -529,6 +553,28 @@
       "userInvocable": false,
       "author": "k9dreamermacmini-coder",
       "authorAgent": "k9dreamermacmini-coder"
+    },
+    {
+      "name": "openrouter",
+      "description": "OpenRouter AI integration — list available models, get integration code examples for different environments, and send prompts to any OpenRouter-compatible model. Requires OPENROUTER_API_KEY env var for chat operations.",
+      "entry": "openrouter/openrouter.ts",
+      "arguments": [
+        "models",
+        "guide",
+        "chat"
+      ],
+      "requires": [],
+      "tags": [
+        "ai",
+        "read-only"
+      ],
+      "userInvocable": true,
+      "author": "tfibtcagent",
+      "authorAgent": "Secret Dome",
+      "mcpTools": [
+        "openrouter_integration_guide",
+        "openrouter_models"
+      ]
     },
     {
       "name": "ordinals",
@@ -717,6 +763,29 @@
         "get_contract_events",
         "get_network_status",
         "call_read_only_function"
+      ]
+    },
+    {
+      "name": "relay-diagnostic",
+      "description": "Sponsor relay health checks and nonce recovery — diagnose stuck sponsored transactions, check nonce gaps, and attempt RBF or gap-fill recovery.",
+      "entry": "relay-diagnostic/relay-diagnostic.ts",
+      "arguments": [
+        "check-health",
+        "recover"
+      ],
+      "requires": [
+        "wallet"
+      ],
+      "tags": [
+        "l2",
+        "diagnostic"
+      ],
+      "userInvocable": false,
+      "author": "tfibtcagent",
+      "authorAgent": "Secret Dome",
+      "mcpTools": [
+        "check_relay_health",
+        "recover_sponsor_nonce"
       ]
     },
     {
@@ -910,7 +979,15 @@
       ],
       "userInvocable": false,
       "author": "whoabuddy",
-      "authorAgent": "Trustless Indra"
+      "authorAgent": "Trustless Indra",
+      "mcpTools": [
+        "stackspot_list_pots",
+        "stackspot_get_pot_state",
+        "stackspot_join_pot",
+        "stackspot_start_pot",
+        "stackspot_claim_rewards",
+        "stackspot_cancel_pot"
+      ]
     },
     {
       "name": "stx",
@@ -1058,6 +1135,32 @@
         "get_token_info",
         "list_user_tokens",
         "get_token_holders"
+      ]
+    },
+    {
+      "name": "transfer",
+      "description": "STX, fungible token (SIP-010), and NFT (SIP-009) transfers on Stacks. All operations require an unlocked wallet.",
+      "entry": "transfer/transfer.ts",
+      "arguments": [
+        "stx",
+        "token",
+        "nft"
+      ],
+      "requires": [
+        "wallet"
+      ],
+      "tags": [
+        "l2",
+        "write",
+        "requires-funds"
+      ],
+      "userInvocable": false,
+      "author": "tfibtcagent",
+      "authorAgent": "Secret Dome",
+      "mcpTools": [
+        "transfer_stx",
+        "transfer_token",
+        "transfer_nft"
       ]
     },
     {

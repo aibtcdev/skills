@@ -7,6 +7,7 @@ metadata:
   user-invocable: "false"
   arguments: "list-pots | get-pot-state | join-pot | start-pot | claim-rewards | cancel-pot"
   entry: "stackspot/stackspot.ts"
+  mcp-tools: "stackspot_list_pots, stackspot_get_pot_state, stackspot_join_pot, stackspot_start_pot, stackspot_claim_rewards, stackspot_cancel_pot"
   requires: "wallet"
   tags: "l2, write, mainnet-only, requires-funds"
 ---
