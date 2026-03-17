@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.26.0](https://github.com/aibtcdev/skills/compare/skills-v0.25.0...skills-v0.26.0) (2026-03-17)
+
+
+### Features
+
+* **jingswap:** add multi-market support (sbtc-stx + sbtc-usdcx) ([#166](https://github.com/aibtcdev/skills/issues/166)) ([6a64491](https://github.com/aibtcdev/skills/commit/6a644918350fecc1a0a996797c0af2205ea94d33))
+* **skills:** add jingswap to skills.json manifest ([#168](https://github.com/aibtcdev/skills/issues/168)) ([56144be](https://github.com/aibtcdev/skills/commit/56144beb14a36840064d66f49f2694007824b09a)), closes [#165](https://github.com/aibtcdev/skills/issues/165)
+
 ## [0.25.0](https://github.com/aibtcdev/skills/compare/skills-v0.24.0...skills-v0.25.0) (2026-03-16)
 
 
