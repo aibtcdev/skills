@@ -291,6 +291,26 @@ program
               '--disclosure must be a valid JSON object (e.g., \'{"models":["claude-3-5-sonnet"],"tools":["web-search"]}\')'
             );
           }
+
+          // Validate that models, tools, skills — if present — are string arrays.
+          for (const field of ["models", "tools", "skills"] as const) {
+            const val = (disclosure as Record<string, unknown>)[field];
+            if (val !== undefined) {
+              if (!Array.isArray(val) || (val as unknown[]).some((item) => typeof item !== "string")) {
+                throw new Error(
+                  `--disclosure.${field} must be an array of strings (e.g., "${field}":["value"])`
+                );
+              }
+            }
+          }
+
+          // Validate notes is a string if present.
+          if (
+            disclosure.notes !== undefined &&
+            typeof disclosure.notes !== "string"
+          ) {
+            throw new Error("--disclosure.notes must be a string");
+          }
         }
 
         // v2: auth via headers, snake_case body
@@ -368,8 +388,10 @@ program
         if (opts.address) params.address = opts.address;
         if (opts.status) params.status = opts.status;
 
-        const data = await apiGet("/signals", params);
+        const data = await apiGet("/signals", params) as { signals: unknown[]; total: number; filtered: number };
 
+        // GET /api/signals returns an envelope: { signals: [], total: N, filtered: N }
+        // Extract the inner array to avoid double-wrapping.
         printJson({
           network: NETWORK,
           filters: {
@@ -377,7 +399,9 @@ program
             address: opts.address || null,
             status: opts.status || null,
           },
-          signals: data,
+          total: data.total,
+          filtered: data.filtered,
+          signals: data.signals,
         });
       } catch (error) {
         handleError(error);
@@ -511,12 +535,19 @@ program
   )
   .action(async () => {
     try {
-      const data = await apiGet("/front-page");
+      // NOTE: GET /api/front-page is a server-side endpoint pending aibtcdev/agent-news#87.
+      // Once live it is expected to return an envelope: { signals: [], total: N, filtered: N }
+      // consistent with GET /api/signals.
+      const data = await apiGet("/front-page") as { signals: unknown[]; total?: number; filtered?: number };
+
+      // Unwrap the envelope if present; fall back to treating data as the array directly
+      // so the command remains functional once the endpoint is deployed.
+      const signals = Array.isArray(data) ? data : (data.signals ?? data);
 
       printJson({
         network: NETWORK,
         source: "front page",
-        signals: data,
+        signals,
       });
     } catch (error) {
       handleError(error);
