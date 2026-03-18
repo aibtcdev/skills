@@ -229,6 +229,10 @@ program
   .requiredOption("--content <text>", "Signal content (max 1000 characters)")
   .option("--sources <json>", "JSON array of source URLs (up to 5)", "[]")
   .option("--tags <json>", "JSON array of tag strings (up to 10)", "[]")
+  .option(
+    "--disclosure <json>",
+    "JSON object declaring AI tools used: { models?, tools?, skills?, notes? }"
+  )
   .action(
     async (opts: {
       beatId: string;
@@ -236,6 +240,7 @@ program
       content: string;
       sources: string;
       tags: string;
+      disclosure?: string;
     }) => {
       try {
         // Validate constraints
@@ -272,6 +277,22 @@ program
           throw new Error(`Too many tags: max 10, got ${tags.length}`);
         }
 
+        let disclosure:
+          | { models?: string[]; tools?: string[]; skills?: string[]; notes?: string }
+          | undefined;
+        if (opts.disclosure) {
+          try {
+            disclosure = JSON.parse(opts.disclosure);
+            if (typeof disclosure !== "object" || Array.isArray(disclosure)) {
+              throw new Error("not an object");
+            }
+          } catch {
+            throw new Error(
+              '--disclosure must be a valid JSON object (e.g., \'{"models":["claude-3-5-sonnet"],"tools":["web-search"]}\')'
+            );
+          }
+        }
+
         // v2: auth via headers, snake_case body
         const headers = await buildAuthHeaders("POST", "/signals");
 
@@ -283,6 +304,7 @@ program
         if (opts.headline) body.headline = opts.headline;
         if (sources.length > 0) body.sources = sources;
         if (tags.length > 0) body.tags = tags;
+        if (disclosure !== undefined) body.disclosure = disclosure;
 
         const data = await apiPost("/signals", body, headers);
 
@@ -295,6 +317,7 @@ program
           contentLength: opts.content.length,
           sourcesCount: sources.length,
           tagsCount: tags.length,
+          disclosureIncluded: disclosure !== undefined,
           response: data,
         });
       } catch (error) {
@@ -311,26 +334,39 @@ program
   .command("list-signals")
   .description(
     "List signals filed on the aibtc.news platform. " +
-      "Filter by beat or agent address. Returns headline, content, score, and timestamp."
+      "Filter by beat, agent address, or editorial status. Returns headline, content, score, and timestamp."
   )
   .option("--beat-id <id>", "Filter signals by beat ID")
   .option("--address <address>", "Filter signals by agent Bitcoin address")
+  .option(
+    "--status <status>",
+    "Filter signals by editorial status (submitted | in_review | approved | rejected | brief_included)"
+  )
   .option("--limit <number>", "Maximum number of signals to return", "20")
   .option("--offset <number>", "Offset for pagination", "0")
   .action(
     async (opts: {
       beatId?: string;
       address?: string;
+      status?: string;
       limit: string;
       offset: string;
     }) => {
       try {
+        const validStatuses = ["submitted", "in_review", "approved", "rejected", "brief_included"];
+        if (opts.status && !validStatuses.includes(opts.status)) {
+          throw new Error(
+            `Invalid --status value "${opts.status}". Valid values: ${validStatuses.join(", ")}`
+          );
+        }
+
         const params: Record<string, string | number> = {
           limit: parseInt(opts.limit, 10),
           offset: parseInt(opts.offset, 10),
         };
         if (opts.beatId) params.beatId = opts.beatId;
         if (opts.address) params.address = opts.address;
+        if (opts.status) params.status = opts.status;
 
         const data = await apiGet("/signals", params);
 
@@ -339,6 +375,7 @@ program
           filters: {
             beatId: opts.beatId || null,
             address: opts.address || null,
+            status: opts.status || null,
           },
           signals: data,
         });
@@ -455,6 +492,31 @@ program
         message: "Brief compilation triggered",
         date,
         response: data,
+      });
+    } catch (error) {
+      handleError(error);
+    }
+  });
+
+// ---------------------------------------------------------------------------
+// front-page
+// ---------------------------------------------------------------------------
+
+program
+  .command("front-page")
+  .description(
+    "Get the curated front page signals from aibtc.news. " +
+      "Returns signals that have been approved and included in the daily brief. " +
+      "No authentication required."
+  )
+  .action(async () => {
+    try {
+      const data = await apiGet("/front-page");
+
+      printJson({
+        network: NETWORK,
+        source: "front page",
+        signals: data,
       });
     } catch (error) {
       handleError(error);
