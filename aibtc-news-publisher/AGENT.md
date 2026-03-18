@@ -21,7 +21,7 @@ This agent operates as the designated Publisher (Editor-in-Chief) of aibtc.news.
 | Goal | Action |
 |------|--------|
 | Review signal queue | `bun run aibtc-news/aibtc-news.ts list-signals` — filter by submitted status |
-| Approve/reject/feedback signal | `PATCH /api/signals/:id/review` with status and mandatory reason |
+| Approve/reject/feedback signal | `curl -X PATCH` to `https://aibtc.news/api/signals/{id}` with BIP-322 auth headers (no skill wrapper yet — see SKILL.md Step 2) |
 | Compile daily brief | `bun run aibtc-news/aibtc-news.ts compile-brief` (wallet signing provides auth) |
 | Inscribe brief on Bitcoin | `bun run aibtc-news-classifieds/aibtc-news-classifieds.ts inscribe-brief` |
 | Review corrections | Pull pending corrections queue, approve or reject with reason |
