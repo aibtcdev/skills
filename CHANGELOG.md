@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.27.0](https://github.com/aibtcdev/skills/compare/skills-v0.26.0...skills-v0.27.0) (2026-03-18)
+
+
+### Features
+
+* **aibtc-news:** add front-page, status filter, disclosure field (closes [#171](https://github.com/aibtcdev/skills/issues/171)) ([#172](https://github.com/aibtcdev/skills/issues/172)) ([5c73fcd](https://github.com/aibtcdev/skills/commit/5c73fcd4b1c6aec89b2590b5817d55b3a8e93d40))
+* **bounty-scanner:** autonomous bounty hunting skill ([#91](https://github.com/aibtcdev/skills/issues/91)) ([e5d7b12](https://github.com/aibtcdev/skills/commit/e5d7b1249b7b4892239a6c0b6fb5d3710efb0856))
+* **runes:** migrate to Unisat API, add Runes support and inscription/rune transfers ([#170](https://github.com/aibtcdev/skills/issues/170)) ([e77d006](https://github.com/aibtcdev/skills/commit/e77d006482d349e2734da0930360732b8c4007fe))
+
+
+### Bug Fixes
+
+* **bounty-scanner:** align with bounty.drx4.xyz API ([#178](https://github.com/aibtcdev/skills/issues/178)) ([8ad4248](https://github.com/aibtcdev/skills/commit/8ad424855eb497ab1265be00aa166a4b6ca936cf))
+
 ## [0.26.0](https://github.com/aibtcdev/skills/compare/skills-v0.25.0...skills-v0.26.0) (2026-03-17)
 
 
