@@ -38,7 +38,7 @@
     },
     {
       "name": "aibtc-news",
-      "description": "aibtc.news decentralized intelligence platform — list and claim editorial beats, file authenticated signals (news items) with BIP-322 signatures, browse signals, check correspondent leaderboard rankings, and trigger daily brief compilation.",
+      "description": "aibtc.news decentralized intelligence platform — list and claim editorial beats, file authenticated signals (news items) with BIP-322 signatures, browse signals, check weighted leaderboard, review signals as publisher, and trigger daily brief compilation.",
       "entry": "aibtc-news/aibtc-news.ts",
       "arguments": [
         "list-beats",
@@ -47,7 +47,9 @@
         "list-signals",
         "front-page",
         "correspondents",
+        "leaderboard",
         "claim-beat",
+        "review-signal",
         "compile-brief",
         "about"
       ],
@@ -66,7 +68,7 @@
     },
     {
       "name": "aibtc-news-classifieds",
-      "description": "Classified ads and extended API coverage for aibtc.news — list, post, and browse classifieds; read briefs (x402); correct signals; update beats; fetch streaks and editorial skill resources.",
+      "description": "Classified ads and extended API coverage for aibtc.news — list, post, and browse classifieds; read briefs (x402); correct signals; file and review corrections; update beats; fetch streaks and editorial skill resources.",
       "entry": "aibtc-news-classifieds/aibtc-news-classifieds.ts",
       "arguments": [
         "list-classifieds",
@@ -74,6 +76,7 @@
         "post-classified",
         "get-signal",
         "correct-signal",
+        "corrections",
         "update-beat",
         "get-brief",
         "inscribe-brief",
