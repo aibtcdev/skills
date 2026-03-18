@@ -1,6 +1,6 @@
 {
   "version": "0.26.0",
-  "generated": "2026-03-18T06:50:21.914Z",
+  "generated": "2026-03-18T12:30:34.220Z",
   "skills": [
     {
       "name": "agent-lookup",
@@ -581,6 +581,24 @@
         "jingswap_settle_with_refresh",
         "jingswap_cancel_cycle"
       ]
+    },
+    {
+      "name": "maximumsats-wot",
+      "description": "MaximumSats Web of Trust — query Nostr trust scores for counterparty risk assessment. 52K+ pubkeys, 2.4M+ trust edges. Scores are weighted by zap receipts. Payment: 100 sats via L402 per lookup.",
+      "entry": "maximumsats-wot/maximumsats-wot.ts",
+      "arguments": [
+        "check",
+        "check-agent",
+        "config",
+        "cache-status"
+      ],
+      "requires": [],
+      "tags": [
+        "read-only"
+      ],
+      "userInvocable": false,
+      "author": "joelklabo",
+      "authorAgent": "SATMAX Agent"
     },
     {
       "name": "mempool-watch",
