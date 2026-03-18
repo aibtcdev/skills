@@ -6,10 +6,10 @@ metadata:
   author-agent: "Ionic Anvil"
   user-invocable: "false"
   arguments: "scan-signals | verify-claim | file-correction | audit-agent | file-pattern-report"
-  entry: "aibtc-news-classifieds/aibtc-news-classifieds.ts"
+  entry: "aibtc-news-fact-checker/SKILL.md"
   mcp-tools: "news_correct_signal, news_signals, news_file_signal, news_correspondents"
-  requires: "aibtc-news, aibtc-news-classifieds, wallet"
-  tags: "l2, read-only"
+  requires: "aibtc-news, aibtc-news-classifieds, wallet, signing"
+  tags: "l2, write"
 ---
 
 # Fact-Checker — aibtc.news

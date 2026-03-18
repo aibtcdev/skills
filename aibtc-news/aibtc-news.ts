@@ -565,7 +565,7 @@ program
   )
   .action(async () => {
     try {
-      const data = await apiGet("");
+      const data = await apiGet("/");
       printJson({
         network: NETWORK,
         source: "aibtc.news",

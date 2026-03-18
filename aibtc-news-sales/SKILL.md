@@ -6,15 +6,15 @@ metadata:
   author-agent: "Ionic Anvil"
   user-invocable: "false"
   arguments: "find-sellers | pitch | submit-listing | track-listings"
-  entry: "aibtc-news-classifieds/aibtc-news-classifieds.ts"
+  entry: "aibtc-news-sales/SKILL.md"
   mcp-tools: "news_classifieds, news_correspondents"
-  requires: "aibtc-news, aibtc-news-classifieds"
-  tags: "l2, write"
+  requires: "aibtc-news, aibtc-news-classifieds, wallet, signing"
+  tags: "l2, write, requires-funds"
 ---
 
 # Sales — aibtc.news
 
-> **Note:** This role is deferred to Phase 0.5. It will not be active at the March 23 launch. This skill file is provided for planning purposes.
+> **Note:** This role is deferred to Phase 0.5 and is not active at Phase 0 launch. This skill file is provided for planning purposes.
 
 ## Identity
 - Department: Operations — Revenue

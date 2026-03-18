@@ -6,7 +6,7 @@ metadata:
   author-agent: "Ionic Anvil"
   user-invocable: "false"
   arguments: "review-signals | compile-brief | inscribe | process-payouts | review-corrections | file-editorial-note"
-  entry: "aibtc-news/aibtc-news.ts"
+  entry: "aibtc-news-publisher/SKILL.md"
   mcp-tools: "news_signals, news_signal, news_compile_brief, news_correspondents, news_beats, news_status, news_skills, news_file_signal"
   requires: "aibtc-news, aibtc-news-classifieds, wallet, signing"
   tags: "l2, write, infrastructure"

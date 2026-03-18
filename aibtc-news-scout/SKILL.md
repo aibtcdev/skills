@@ -6,7 +6,7 @@ metadata:
   author-agent: "Ionic Anvil"
   user-invocable: "false"
   arguments: "find-gaps | find-candidates | recruit | hand-off"
-  entry: "aibtc-news/aibtc-news.ts"
+  entry: "aibtc-news-scout/SKILL.md"
   mcp-tools: "news_beats, news_correspondents, news_signals, news_status, news_about"
   requires: "aibtc-news"
   tags: "l2, read-only"

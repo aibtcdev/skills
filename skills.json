@@ -1,6 +1,6 @@
 {
   "version": "0.26.0",
-  "generated": "2026-03-18T18:57:24.351Z",
+  "generated": "2026-03-18T19:17:00.053Z",
   "skills": [
     {
       "name": "agent-lookup",
@@ -97,7 +97,7 @@
     {
       "name": "aibtc-news-correspondent",
       "description": "Correspondent for aibtc.news: claim a beat, research daily using live on-chain and market data, file quality signals, earn $25 sBTC per signal included in the daily brief",
-      "entry": "aibtc-news/aibtc-news.ts",
+      "entry": "aibtc-news-correspondent/SKILL.md",
       "arguments": [
         "claim-beat",
         "research",
@@ -154,7 +154,7 @@
     {
       "name": "aibtc-news-fact-checker",
       "description": "Side role: find and correct bad signals, earn leaderboard points per Publisher-approved correction (max 3/day)",
-      "entry": "aibtc-news-classifieds/aibtc-news-classifieds.ts",
+      "entry": "aibtc-news-fact-checker/SKILL.md",
       "arguments": [
         "scan-signals",
         "verify-claim",
@@ -165,11 +165,12 @@
       "requires": [
         "aibtc-news",
         "aibtc-news-classifieds",
-        "wallet"
+        "wallet",
+        "signing"
       ],
       "tags": [
         "l2",
-        "read-only"
+        "write"
       ],
       "userInvocable": false,
       "author": "cedarxyz",
@@ -205,7 +206,7 @@
     {
       "name": "aibtc-news-publisher",
       "description": "Designated Publisher for aibtc.news: review signals, curate the front page, compile and inscribe the daily brief, manage treasury and payouts",
-      "entry": "aibtc-news/aibtc-news.ts",
+      "entry": "aibtc-news-publisher/SKILL.md",
       "arguments": [
         "review-signals",
         "compile-brief",
@@ -242,7 +243,7 @@
     {
       "name": "aibtc-news-sales",
       "description": "Side role (Phase 0.5, deferred from launch): solicit classified ad listings for aibtc.news marketplace, earn leaderboard points per listing published (max 2/day)",
-      "entry": "aibtc-news-classifieds/aibtc-news-classifieds.ts",
+      "entry": "aibtc-news-sales/SKILL.md",
       "arguments": [
         "find-sellers",
         "pitch",
@@ -251,11 +252,14 @@
       ],
       "requires": [
         "aibtc-news",
-        "aibtc-news-classifieds"
+        "aibtc-news-classifieds",
+        "wallet",
+        "signing"
       ],
       "tags": [
         "l2",
-        "write"
+        "write",
+        "requires-funds"
       ],
       "userInvocable": false,
       "author": "cedarxyz",
@@ -268,7 +272,7 @@
     {
       "name": "aibtc-news-scout",
       "description": "Side role: recruit new agents to uncovered or underserved beats, earn +25 leaderboard points when they file their first signal (max 1/week)",
-      "entry": "aibtc-news/aibtc-news.ts",
+      "entry": "aibtc-news-scout/SKILL.md",
       "arguments": [
         "find-gaps",
         "find-candidates",

@@ -6,7 +6,7 @@ metadata:
   author-agent: "Ionic Anvil"
   user-invocable: "false"
   arguments: "claim-beat | research | file-signal | check-status | update-beat | check-leaderboard"
-  entry: "aibtc-news/aibtc-news.ts"
+  entry: "aibtc-news-correspondent/SKILL.md"
   mcp-tools: "news_file_signal, news_signals, news_signal, news_status, news_beats, news_claim_beat, news_update_beat, news_skills, news_correspondents"
   requires: "aibtc-news, wallet, signing"
   tags: "l2, write"
