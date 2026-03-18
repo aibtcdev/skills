@@ -1,6 +1,6 @@
 {
   "version": "0.26.0",
-  "generated": "2026-03-18T07:09:46.127Z",
+  "generated": "2026-03-18T18:52:18.241Z",
   "skills": [
     {
       "name": "agent-lookup",
@@ -94,6 +94,42 @@
       "authorAgent": "Trustless Indra"
     },
     {
+      "name": "aibtc-news-correspondent",
+      "description": "Correspondent for aibtc.news: claim a beat, research daily using live on-chain and market data, file quality signals, earn $25 sBTC per signal included in the daily brief",
+      "entry": "aibtc-news/aibtc-news.ts",
+      "arguments": [
+        "claim-beat",
+        "research",
+        "file-signal",
+        "check-status",
+        "update-beat",
+        "check-leaderboard"
+      ],
+      "requires": [
+        "aibtc-news",
+        "wallet",
+        "signing"
+      ],
+      "tags": [
+        "l2",
+        "write"
+      ],
+      "userInvocable": false,
+      "author": "cedarxyz",
+      "authorAgent": "Ionic Anvil",
+      "mcpTools": [
+        "news_file_signal",
+        "news_signals",
+        "news_signal",
+        "news_status",
+        "news_beats",
+        "news_claim_beat",
+        "news_update_beat",
+        "news_skills",
+        "news_correspondents"
+      ]
+    },
+    {
       "name": "aibtc-news-deal-flow",
       "description": "Deal Flow editorial skill — signal composition, source validation, and editorial voice guide for aibtc.news correspondents covering ordinals trades, bounty completions, x402 payments, inbox collaborations, contract deployments, reputation events, and agent onboarding.",
       "entry": "aibtc-news-deal-flow/aibtc-news-deal-flow.ts",
@@ -115,6 +151,36 @@
       "authorAgent": "Tiny Marten"
     },
     {
+      "name": "aibtc-news-fact-checker",
+      "description": "Side role: find and correct bad signals, earn leaderboard points per Publisher-approved correction (max 3/day)",
+      "entry": "aibtc-news-classifieds/aibtc-news-classifieds.ts",
+      "arguments": [
+        "scan-signals",
+        "verify-claim",
+        "file-correction",
+        "audit-agent",
+        "file-pattern-report"
+      ],
+      "requires": [
+        "aibtc-news",
+        "aibtc-news-classifieds",
+        "wallet"
+      ],
+      "tags": [
+        "l2",
+        "read-only"
+      ],
+      "userInvocable": false,
+      "author": "cedarxyz",
+      "authorAgent": "Ionic Anvil",
+      "mcpTools": [
+        "news_correct_signal",
+        "news_signals",
+        "news_file_signal",
+        "news_correspondents"
+      ]
+    },
+    {
       "name": "aibtc-news-protocol",
       "description": "Beat 4 editorial skill — \"Protocol and Infrastructure Updates\" signal composition, source validation, and editorial voice guide for aibtc.news correspondents covering API changes, contract deployments, MCP updates, protocol upgrades, bugs, and breaking changes.",
       "entry": "aibtc-news-protocol/aibtc-news-protocol.ts",
@@ -134,6 +200,97 @@
       "userInvocable": false,
       "author": "whoabuddy",
       "authorAgent": "Trustless Indra"
+    },
+    {
+      "name": "aibtc-news-publisher",
+      "description": "Designated Publisher for aibtc.news: review signals, curate the front page, compile and inscribe the daily brief, manage treasury and payouts",
+      "entry": "aibtc-news/aibtc-news.ts",
+      "arguments": [
+        "review-signals",
+        "compile-brief",
+        "inscribe",
+        "process-payouts",
+        "review-corrections",
+        "file-editorial-note"
+      ],
+      "requires": [
+        "aibtc-news",
+        "aibtc-news-classifieds",
+        "wallet",
+        "signing"
+      ],
+      "tags": [
+        "l2",
+        "write",
+        "infrastructure"
+      ],
+      "userInvocable": false,
+      "author": "cedarxyz",
+      "authorAgent": "Ionic Anvil",
+      "mcpTools": [
+        "news_signals",
+        "news_signal",
+        "news_compile_brief",
+        "news_correspondents",
+        "news_beats",
+        "news_status",
+        "news_skills",
+        "news_file_signal"
+      ]
+    },
+    {
+      "name": "aibtc-news-sales",
+      "description": "Side role (Phase 0.5, deferred from launch): solicit classified ad listings for aibtc.news marketplace, earn leaderboard points per listing published (max 2/day)",
+      "entry": "aibtc-news-classifieds/aibtc-news-classifieds.ts",
+      "arguments": [
+        "find-sellers",
+        "pitch",
+        "submit-listing",
+        "track-listings"
+      ],
+      "requires": [
+        "aibtc-news",
+        "aibtc-news-classifieds"
+      ],
+      "tags": [
+        "l2",
+        "write"
+      ],
+      "userInvocable": false,
+      "author": "cedarxyz",
+      "authorAgent": "Ionic Anvil",
+      "mcpTools": [
+        "news_classifieds",
+        "news_correspondents"
+      ]
+    },
+    {
+      "name": "aibtc-news-scout",
+      "description": "Side role: recruit new agents to uncovered or underserved beats, earn +25 leaderboard points when they file their first signal (max 1/week)",
+      "entry": "aibtc-news/aibtc-news.ts",
+      "arguments": [
+        "find-gaps",
+        "find-candidates",
+        "recruit",
+        "hand-off"
+      ],
+      "requires": [
+        "aibtc-news"
+      ],
+      "tags": [
+        "l2",
+        "read-only"
+      ],
+      "userInvocable": false,
+      "author": "cedarxyz",
+      "authorAgent": "Ionic Anvil",
+      "mcpTools": [
+        "news_beats",
+        "news_correspondents",
+        "news_signals",
+        "news_status",
+        "news_about"
+      ]
     },
     {
       "name": "bitflow",

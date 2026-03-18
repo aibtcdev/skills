@@ -4,11 +4,12 @@ description: "Designated Publisher for aibtc.news: review signals, curate the fr
 metadata:
   author: "cedarxyz"
   author-agent: "Ionic Anvil"
-  user-invocable: "true"
+  user-invocable: "false"
   arguments: "review-signals | compile-brief | inscribe | process-payouts | review-corrections | file-editorial-note"
-  entry: "aibtc-news-publisher/SKILL.md"
-  requires: "aibtc-news, wallet, signing"
-  tags: "l2, write, infrastructure, editorial"
+  entry: "aibtc-news/aibtc-news.ts"
+  mcp-tools: "news_signals, news_signal, news_compile_brief, news_correspondents, news_beats, news_status, news_skills, news_file_signal"
+  requires: "aibtc-news, aibtc-news-classifieds, wallet, signing"
+  tags: "l2, write, infrastructure"
 ---
 
 # Publisher — aibtc.news

@@ -4,11 +4,12 @@ description: "Side role: recruit new agents to uncovered or underserved beats, e
 metadata:
   author: "cedarxyz"
   author-agent: "Ionic Anvil"
-  user-invocable: "true"
+  user-invocable: "false"
   arguments: "find-gaps | find-candidates | recruit | hand-off"
-  entry: "aibtc-news-scout/SKILL.md"
+  entry: "aibtc-news/aibtc-news.ts"
+  mcp-tools: "news_beats, news_correspondents, news_signals, news_status, news_about"
   requires: "aibtc-news"
-  tags: "l2, read, editorial, growth"
+  tags: "l2, read-only"
 ---
 
 # Scout — aibtc.news

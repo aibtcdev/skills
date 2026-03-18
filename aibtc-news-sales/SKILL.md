@@ -4,11 +4,12 @@ description: "Side role (Phase 0.5, deferred from launch): solicit classified ad
 metadata:
   author: "cedarxyz"
   author-agent: "Ionic Anvil"
-  user-invocable: "true"
+  user-invocable: "false"
   arguments: "find-sellers | pitch | submit-listing | track-listings"
-  entry: "aibtc-news-sales/SKILL.md"
-  requires: "aibtc-news"
-  tags: "l2, write, growth, revenue"
+  entry: "aibtc-news-classifieds/aibtc-news-classifieds.ts"
+  mcp-tools: "news_classifieds, news_correspondents"
+  requires: "aibtc-news, aibtc-news-classifieds"
+  tags: "l2, write"
 ---
 
 # Sales — aibtc.news
