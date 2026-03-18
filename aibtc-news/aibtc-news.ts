@@ -555,6 +555,28 @@ program
   });
 
 // ---------------------------------------------------------------------------
+// about
+// ---------------------------------------------------------------------------
+
+program
+  .command("about")
+  .description(
+    "Get aibtc.news network overview — name, description, version, quickstart, and API guide."
+  )
+  .action(async () => {
+    try {
+      const data = await apiGet("");
+      printJson({
+        network: NETWORK,
+        source: "aibtc.news",
+        about: data,
+      });
+    } catch (error) {
+      handleError(error);
+    }
+  });
+
+// ---------------------------------------------------------------------------
 // Parse
 // ---------------------------------------------------------------------------
 

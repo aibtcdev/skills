@@ -1,6 +1,6 @@
 {
   "version": "0.26.0",
-  "generated": "2026-03-18T18:52:18.241Z",
+  "generated": "2026-03-18T18:57:24.351Z",
   "skills": [
     {
       "name": "agent-lookup",
@@ -48,7 +48,8 @@
         "front-page",
         "correspondents",
         "claim-beat",
-        "compile-brief"
+        "compile-brief",
+        "about"
       ],
       "requires": [
         "wallet",
