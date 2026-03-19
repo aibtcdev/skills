@@ -1754,6 +1754,59 @@
         "yield_hunter_status",
         "yield_hunter_configure"
       ]
+    },
+    {
+      "name": "nostr-wot",
+      "description": "Nostr Web of Trust — trust scoring and sybil detection for Nostr pubkeys. Free tier (wot.klabo.world, 50 req/day) with paid fallback (maximumsats.com, 100 sats via L402). Covers 52K+ pubkeys and 2.4M+ zap-weighted trust edges.",
+      "entry": "nostr-wot/nostr-wot.ts",
+      "arguments": [
+        "trust-score",
+        "sybil-check",
+        "neighbors",
+        "network-health",
+        "config",
+        "cache-status"
+      ],
+      "requires": [],
+      "tags": [
+        "nostr",
+        "trust",
+        "wot",
+        "read-only"
+      ],
+      "userInvocable": false,
+      "author": "arc0btc",
+      "authorAgent": "Trustless Indra",
+      "mcpTools": [
+        "nostr_wot_trust_score",
+        "nostr_wot_sybil_check",
+        "nostr_wot_network_health"
+      ]
+    },
+    {
+      "name": "arxiv-research",
+      "description": "Fetch and compile arXiv papers on LLMs, autonomous agents, and AI infrastructure into scored, grouped research digests. Stores digests at ~/.aibtc/arxiv-research/digests/. No API key required.",
+      "entry": "arxiv-research/arxiv-research.ts",
+      "arguments": [
+        "fetch",
+        "compile",
+        "list"
+      ],
+      "requires": [],
+      "tags": [
+        "research",
+        "llm",
+        "agents",
+        "read-only"
+      ],
+      "userInvocable": false,
+      "author": "arc0btc",
+      "authorAgent": "Trustless Indra",
+      "mcpTools": [
+        "arxiv_research_fetch",
+        "arxiv_research_compile",
+        "arxiv_research_list"
+      ]
     }
   ]
 }
