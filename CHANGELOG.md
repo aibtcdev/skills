@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.28.0](https://github.com/aibtcdev/skills/compare/skills-v0.27.0...skills-v0.28.0) (2026-03-19)
+
+
+### Features
+
+* **aibtc-news:** add leaderboard, review-signal; add corrections to classifieds (closes [#171](https://github.com/aibtcdev/skills/issues/171)) ([#177](https://github.com/aibtcdev/skills/issues/177)) ([6488633](https://github.com/aibtcdev/skills/commit/6488633cd92846a033fbd27dabc8397d046085c5))
+* **maximumsats-wot:** add WoT trust scoring skill ([#183](https://github.com/aibtcdev/skills/issues/183)) ([297f6c5](https://github.com/aibtcdev/skills/commit/297f6c566629330b95e2c75298ddaabb30ff57ee))
+* **nostr:** NIP-06 derivation as default, add --key-source flag ([#187](https://github.com/aibtcdev/skills/issues/187)) ([6f796be](https://github.com/aibtcdev/skills/commit/6f796bedd6ab50d7f69bca54aecac7dd21782018)), closes [#86](https://github.com/aibtcdev/skills/issues/86)
+* **stacking-lottery:** add stacking-lottery skill ([#185](https://github.com/aibtcdev/skills/issues/185)) ([dd0c912](https://github.com/aibtcdev/skills/commit/dd0c9127ef00dd90293ec0497f1e3e319b62c158)), closes [#184](https://github.com/aibtcdev/skills/issues/184)
+
+
+### Bug Fixes
+
+* **stacking-lottery:** use stacking_lottery mcp-tools instead of stackspot names ([#194](https://github.com/aibtcdev/skills/issues/194)) ([4e280b3](https://github.com/aibtcdev/skills/commit/4e280b33d00cb47b8c039f5f59803951f763b5a3)), closes [#190](https://github.com/aibtcdev/skills/issues/190)
+
 ## [0.27.0](https://github.com/aibtcdev/skills/compare/skills-v0.26.0...skills-v0.27.0) (2026-03-18)
 
 
