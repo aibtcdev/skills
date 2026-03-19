@@ -4,6 +4,24 @@ import * as btc from "@scure/btc-signer";
 import type { Network } from "../config/networks.js";
 
 /**
+ * Private helper: derive an HDKey from mnemonic + BIP path.
+ *
+ * Accepts an optional pre-computed seed so callers that derive multiple keys
+ * from the same mnemonic (e.g. wallet unlock: BTC + Taproot + Nostr) can run
+ * the expensive PBKDF2 step once and reuse the result.
+ *
+ * Not exported — all callers go through the typed public functions.
+ *
+ * @param mnemonic - BIP39 mnemonic phrase
+ * @param path - BIP32 derivation path (e.g. "m/84'/0'/0'/0/0")
+ * @param seed - Optional pre-computed seed (skips mnemonicToSeedSync if provided)
+ */
+function deriveHDKey(mnemonic: string, path: string, seed?: Uint8Array): HDKey {
+  const masterSeed = seed ?? mnemonicToSeedSync(mnemonic);
+  return HDKey.fromMasterSeed(masterSeed).derive(path);
+}
+
+/**
  * Bitcoin address derivation result
  */
 export interface BitcoinAddress {
@@ -105,24 +123,9 @@ export function deriveBitcoinAddress(
   mnemonic: string,
   network: Network
 ): BitcoinAddress {
-  // Convert mnemonic to seed
-  const seed = mnemonicToSeedSync(mnemonic);
-
-  // Create master key from seed
-  const masterKey = HDKey.fromMasterSeed(seed);
-
-  // BIP84 derivation path
-  // m / purpose' / coin_type' / account' / change / address_index
-  // Purpose: 84 (native SegWit)
-  // Coin type: 0 (Bitcoin mainnet) or 1 (Bitcoin testnet)
-  // Account: 0 (first account)
-  // Change: 0 (external/receiving addresses)
-  // Address index: 0 (first address)
+  // BIP84: m/84'/coin_type'/0'/0/0 — coin_type 0=mainnet, 1=testnet
   const coinType = network === "mainnet" ? 0 : 1;
-  const derivationPath = `m/84'/${coinType}'/0'/0/0`;
-
-  // Derive key at path
-  const derivedKey = masterKey.derive(derivationPath);
+  const derivedKey = deriveHDKey(mnemonic, `m/84'/${coinType}'/0'/0/0`);
 
   if (!derivedKey.publicKey) {
     throw new Error("Failed to derive public key");
@@ -190,24 +193,9 @@ export function deriveBitcoinKeyPair(
   mnemonic: string,
   network: Network
 ): BitcoinKeyPair {
-  // Convert mnemonic to seed
-  const seed = mnemonicToSeedSync(mnemonic);
-
-  // Create master key from seed
-  const masterKey = HDKey.fromMasterSeed(seed);
-
-  // BIP84 derivation path
-  // m / purpose' / coin_type' / account' / change / address_index
-  // Purpose: 84 (native SegWit)
-  // Coin type: 0 (Bitcoin mainnet) or 1 (Bitcoin testnet)
-  // Account: 0 (first account)
-  // Change: 0 (external/receiving addresses)
-  // Address index: 0 (first address)
+  // BIP84: m/84'/coin_type'/0'/0/0 — coin_type 0=mainnet, 1=testnet
   const coinType = network === "mainnet" ? 0 : 1;
-  const derivationPath = `m/84'/${coinType}'/0'/0/0`;
-
-  // Derive key at path
-  const derivedKey = masterKey.derive(derivationPath);
+  const derivedKey = deriveHDKey(mnemonic, `m/84'/${coinType}'/0'/0/0`);
 
   if (!derivedKey.publicKey) {
     throw new Error("Failed to derive public key");
@@ -268,24 +256,9 @@ export function deriveTaprootAddress(
   mnemonic: string,
   network: Network
 ): TaprootAddress {
-  // Convert mnemonic to seed
-  const seed = mnemonicToSeedSync(mnemonic);
-
-  // Create master key from seed
-  const masterKey = HDKey.fromMasterSeed(seed);
-
-  // BIP86 derivation path for Taproot
-  // m / purpose' / coin_type' / account' / change / address_index
-  // Purpose: 86 (Taproot)
-  // Coin type: 0 (Bitcoin mainnet) or 1 (Bitcoin testnet)
-  // Account: 0 (first account)
-  // Change: 0 (external/receiving addresses)
-  // Address index: 0 (first address)
+  // BIP86: m/86'/coin_type'/0'/0/0 — coin_type 0=mainnet, 1=testnet
   const coinType = network === "mainnet" ? 0 : 1;
-  const derivationPath = `m/86'/${coinType}'/0'/0/0`;
-
-  // Derive key at path
-  const derivedKey = masterKey.derive(derivationPath);
+  const derivedKey = deriveHDKey(mnemonic, `m/86'/${coinType}'/0'/0/0`);
 
   if (!derivedKey.publicKey) {
     throw new Error("Failed to derive public key");
@@ -363,17 +336,8 @@ export interface NostrKeyPair {
  * ```
  */
 export function deriveNostrKeyPair(mnemonic: string): NostrKeyPair {
-  // Convert mnemonic to seed
-  const seed = mnemonicToSeedSync(mnemonic);
-
-  // Create master key from seed
-  const masterKey = HDKey.fromMasterSeed(seed);
-
-  // NIP-06 derivation path: m/44'/1237'/0'/0/0
-  // Purpose: 44 (BIP-44 multi-account hierarchy)
-  // Coin type: 1237 (Nostr — registered coin type, never changes by network)
-  // Account: 0, Change: 0, Address index: 0
-  const derivedKey = masterKey.derive("m/44'/1237'/0'/0/0");
+  // NIP-06: m/44'/1237'/0'/0/0 — coin_type 1237 is the registered Nostr type
+  const derivedKey = deriveHDKey(mnemonic, "m/44'/1237'/0'/0/0");
 
   if (!derivedKey.privateKey) {
     throw new Error("Failed to derive NIP-06 private key");
@@ -425,24 +389,9 @@ export function deriveTaprootKeyPair(
   mnemonic: string,
   network: Network
 ): TaprootKeyPair {
-  // Convert mnemonic to seed
-  const seed = mnemonicToSeedSync(mnemonic);
-
-  // Create master key from seed
-  const masterKey = HDKey.fromMasterSeed(seed);
-
-  // BIP86 derivation path for Taproot
-  // m / purpose' / coin_type' / account' / change / address_index
-  // Purpose: 86 (Taproot)
-  // Coin type: 0 (Bitcoin mainnet) or 1 (Bitcoin testnet)
-  // Account: 0 (first account)
-  // Change: 0 (external/receiving addresses)
-  // Address index: 0 (first address)
+  // BIP86: m/86'/coin_type'/0'/0/0 — coin_type 0=mainnet, 1=testnet
   const coinType = network === "mainnet" ? 0 : 1;
-  const derivationPath = `m/86'/${coinType}'/0'/0/0`;
-
-  // Derive key at path
-  const derivedKey = masterKey.derive(derivationPath);
+  const derivedKey = deriveHDKey(mnemonic, `m/86'/${coinType}'/0'/0/0`);
 
   if (!derivedKey.publicKey) {
     throw new Error("Failed to derive public key");
