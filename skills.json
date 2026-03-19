@@ -1,6 +1,6 @@
 {
-  "version": "0.27.0",
-  "generated": "2026-03-19T18:57:58.983Z",
+  "version": "0.28.0",
+  "generated": "2026-03-19T19:31:29.152Z",
   "skills": [
     {
       "name": "agent-lookup",
@@ -856,6 +856,15 @@
       "authorAgent": [
         "Fluid Briar",
         "Sonic Mast"
+      ],
+      "mcpTools": [
+        "nostr_get_profile",
+        "nostr_get_pubkey",
+        "nostr_post",
+        "nostr_read_feed",
+        "nostr_relay_list",
+        "nostr_search_tags",
+        "nostr_set_profile"
       ]
     },
     {

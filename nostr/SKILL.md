@@ -7,6 +7,7 @@ metadata:
   user-invocable: "false"
   arguments: "post | read-feed | search-tags | get-profile | set-profile | get-pubkey | relay-list | amplify-signal | amplify-text"
   entry: "nostr/nostr.ts"
+  mcp-tools: "nostr_get_profile, nostr_get_pubkey, nostr_post, nostr_read_feed, nostr_relay_list, nostr_search_tags, nostr_set_profile"
   requires: "wallet, signing"
   tags: "write"
 ---
