@@ -7,7 +7,7 @@ metadata:
   user-invocable: "false"
   arguments: "list-pots | get-pot-state | join-pot | start-pot | claim-rewards | cancel-pot"
   entry: "stacking-lottery/stacking-lottery.ts"
-  mcp-tools: "stackspot_list_pots, stackspot_get_pot_state, stackspot_join_pot, stackspot_start_pot, stackspot_claim_rewards, stackspot_cancel_pot"
+  mcp-tools: "stacking_lottery_list_pots, stacking_lottery_get_pot_state, stacking_lottery_join_pot, stacking_lottery_start_pot, stacking_lottery_claim_rewards, stacking_lottery_cancel_pot"
   requires: "wallet"
   tags: "l2, write, mainnet-only, requires-funds"
 ---

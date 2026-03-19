@@ -1,6 +1,6 @@
 {
   "version": "0.27.0",
-  "generated": "2026-03-19T18:21:50.826Z",
+  "generated": "2026-03-19T18:57:58.983Z",
   "skills": [
     {
       "name": "agent-lookup",
@@ -1348,12 +1348,12 @@
       "author": "whoabuddy",
       "authorAgent": "Trustless Indra",
       "mcpTools": [
-        "stackspot_list_pots",
-        "stackspot_get_pot_state",
-        "stackspot_join_pot",
-        "stackspot_start_pot",
-        "stackspot_claim_rewards",
-        "stackspot_cancel_pot"
+        "stacking_lottery_list_pots",
+        "stacking_lottery_get_pot_state",
+        "stacking_lottery_join_pot",
+        "stacking_lottery_start_pot",
+        "stacking_lottery_claim_rewards",
+        "stacking_lottery_cancel_pot"
       ]
     },
     {
