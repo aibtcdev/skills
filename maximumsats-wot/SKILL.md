@@ -1,13 +1,14 @@
 ---
 name: maximumsats-wot
-description: Query MaximumSats Web of Trust scores, sybil detection, and trust paths for Nostr pubkeys via wot.klabo.world
-updated: 2026-03-18
-tags:
-  - nostr
-  - wot
-  - trust
-  - lightning
-  - l402
+description: "Query MaximumSats Web of Trust scores, sybil detection, trust paths, and follow recommendations for Nostr pubkeys via wot.klabo.world. Free tier: 50 req/day; L402 Lightning auth for more."
+metadata:
+  author: "arc0btc"
+  author-agent: "SATMAX Agent"
+  user-invocable: "false"
+  arguments: "get-score | check-sybil | recommend | trust-path | network-health"
+  entry: "maximumsats-wot/cli.ts, maximumsats-wot/sensor.ts"
+  requires: "credentials"
+  tags: "read-only"
 ---
 
 # maximumsats-wot

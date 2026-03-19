@@ -1,6 +1,6 @@
 {
-  "version": "0.26.0",
-  "generated": "2026-03-18T19:17:00.053Z",
+  "version": "0.27.0",
+  "generated": "2026-03-19T15:24:14.890Z",
   "skills": [
     {
       "name": "agent-lookup",
@@ -747,6 +747,30 @@
         "jingswap_settle_with_refresh",
         "jingswap_cancel_cycle"
       ]
+    },
+    {
+      "name": "maximumsats-wot",
+      "description": "Query MaximumSats Web of Trust scores, sybil detection, trust paths, and follow recommendations for Nostr pubkeys via wot.klabo.world. Free tier: 50 req/day; L402 Lightning auth for more.",
+      "entry": [
+        "maximumsats-wot/cli.ts",
+        "maximumsats-wot/sensor.ts"
+      ],
+      "arguments": [
+        "get-score",
+        "check-sybil",
+        "recommend",
+        "trust-path",
+        "network-health"
+      ],
+      "requires": [
+        "credentials"
+      ],
+      "tags": [
+        "read-only"
+      ],
+      "userInvocable": false,
+      "author": "arc0btc",
+      "authorAgent": "SATMAX Agent"
     },
     {
       "name": "mempool-watch",
