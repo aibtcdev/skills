@@ -35,6 +35,14 @@ import { NETWORK, type Network } from "../config/networks.js";
 import type { Account } from "../transactions/builder.js";
 import { deriveBitcoinAddress, deriveBitcoinKeyPair, deriveTaprootAddress, deriveTaprootKeyPair, deriveNostrKeyPair } from "../utils/bitcoin.js";
 
+// ---------------------------------------------------------------------------
+// Private serialization helpers for optional Uint8Array key fields
+// ---------------------------------------------------------------------------
+const toHex = (b?: Uint8Array): string | undefined =>
+  b ? Buffer.from(b).toString("hex") : undefined;
+const fromHex = (h?: string): Buffer | undefined =>
+  h ? Buffer.from(h, "hex") : undefined;
+
 /**
  * Session state for unlocked wallet
  */
@@ -330,24 +338,12 @@ class WalletManager {
       btcAddress: account.btcAddress,
       taprootAddress: account.taprootAddress,
       privateKey: account.privateKey,
-      btcPrivateKey: account.btcPrivateKey
-        ? Buffer.from(account.btcPrivateKey).toString("hex")
-        : undefined,
-      btcPublicKey: account.btcPublicKey
-        ? Buffer.from(account.btcPublicKey).toString("hex")
-        : undefined,
-      taprootPrivateKey: account.taprootPrivateKey
-        ? Buffer.from(account.taprootPrivateKey).toString("hex")
-        : undefined,
-      taprootPublicKey: account.taprootPublicKey
-        ? Buffer.from(account.taprootPublicKey).toString("hex")
-        : undefined,
-      nostrPrivateKey: account.nostrPrivateKey
-        ? Buffer.from(account.nostrPrivateKey).toString("hex")
-        : undefined,
-      nostrPublicKey: account.nostrPublicKey
-        ? Buffer.from(account.nostrPublicKey).toString("hex")
-        : undefined,
+      btcPrivateKey: toHex(account.btcPrivateKey),
+      btcPublicKey: toHex(account.btcPublicKey),
+      taprootPrivateKey: toHex(account.taprootPrivateKey),
+      taprootPublicKey: toHex(account.taprootPublicKey),
+      nostrPrivateKey: toHex(account.nostrPrivateKey),
+      nostrPublicKey: toHex(account.nostrPublicKey),
       sponsorApiKey: account.sponsorApiKey,
       network: account.network,
     };
@@ -377,24 +373,12 @@ class WalletManager {
       btcAddress: s.btcAddress,
       taprootAddress: s.taprootAddress,
       privateKey: s.privateKey,
-      btcPrivateKey: s.btcPrivateKey
-        ? Buffer.from(s.btcPrivateKey, "hex")
-        : undefined,
-      btcPublicKey: s.btcPublicKey
-        ? Buffer.from(s.btcPublicKey, "hex")
-        : undefined,
-      taprootPrivateKey: s.taprootPrivateKey
-        ? Buffer.from(s.taprootPrivateKey, "hex")
-        : undefined,
-      taprootPublicKey: s.taprootPublicKey
-        ? Buffer.from(s.taprootPublicKey, "hex")
-        : undefined,
-      nostrPrivateKey: s.nostrPrivateKey
-        ? Buffer.from(s.nostrPrivateKey, "hex")
-        : undefined,
-      nostrPublicKey: s.nostrPublicKey
-        ? Buffer.from(s.nostrPublicKey, "hex")
-        : undefined,
+      btcPrivateKey: fromHex(s.btcPrivateKey),
+      btcPublicKey: fromHex(s.btcPublicKey),
+      taprootPrivateKey: fromHex(s.taprootPrivateKey),
+      taprootPublicKey: fromHex(s.taprootPublicKey),
+      nostrPrivateKey: fromHex(s.nostrPrivateKey),
+      nostrPublicKey: fromHex(s.nostrPublicKey),
       sponsorApiKey: s.sponsorApiKey,
       network: s.network,
     };
