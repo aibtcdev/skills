@@ -8,7 +8,7 @@ metadata:
   arguments: "fetch | compile | list"
   entry: "arxiv-research/arxiv-research.ts"
   requires: ""
-  tags: "research, llm, agents, read-only"
+  tags: "read-only"
 ---
 
 # arXiv Research Skill

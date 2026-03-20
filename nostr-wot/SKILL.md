@@ -8,7 +8,7 @@ metadata:
   arguments: "trust-score | sybil-check | neighbors | network-health | config | cache-status"
   entry: "nostr-wot/nostr-wot.ts"
   requires: ""
-  tags: "nostr, trust, wot, read-only"
+  tags: "read-only"
 ---
 
 # Nostr Web of Trust Skill
