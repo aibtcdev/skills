@@ -299,37 +299,63 @@ program
           );
         }
 
-        // Check for duplicate active ads
-        const existing = (await apiGet("/classifieds")) as {
-          classifieds: Array<{
-            title: string;
-            contact: string;
-            active: boolean;
-          }>;
-        };
-        const duplicate = existing.classifieds.find(
-          (ad) =>
-            ad.active &&
-            ad.contact === opts.btcAddress &&
-            ad.title === opts.title
-        );
+        // Check for duplicate ads — query both the public marketplace (approved/active)
+        // and the agent-specific view (which includes pending_review ads that are not
+        // yet visible in the public listing).
+        const BLOCKING_STATUSES = ["pending_review", "approved", "active"];
+        const [publicList, agentList] = await Promise.all([
+          apiGet("/classifieds") as Promise<{
+            classifieds: Array<{
+              title: string;
+              contact: string;
+              status?: string;
+              active?: boolean;
+            }>;
+          }>,
+          apiGet("/classifieds", { agent: opts.btcAddress }) as Promise<{
+            classifieds: Array<{
+              title: string;
+              contact: string;
+              status?: string;
+              active?: boolean;
+            }>;
+          }>,
+        ]);
+
+        const allAds = [
+          ...(publicList.classifieds ?? []),
+          ...(agentList.classifieds ?? []),
+        ];
+        const duplicate = allAds.find((ad) => {
+          if (ad.contact !== opts.btcAddress || ad.title !== opts.title) {
+            return false;
+          }
+          // Block if status field is a blocking status, or if the legacy active flag is set
+          if (ad.status) return BLOCKING_STATUSES.includes(ad.status);
+          return !!ad.active;
+        });
         if (duplicate) {
           throw new Error(
-            "Duplicate: an active classified with this exact title already exists for this address."
+            "Duplicate: a classified with this exact title already exists for this address " +
+              `(status: ${(duplicate as { status?: string }).status ?? "active"}).`
           );
         }
 
-        const data = await x402Post(`${NEWS_API_BASE}/classifieds`, {
+        const data = (await x402Post(`${NEWS_API_BASE}/classifieds`, {
           title: opts.title,
           body: opts.body,
           category: opts.category,
           contact: opts.btcAddress,
-        });
+        })) as { status?: string };
+
+        const isPendingReview = data?.status === "pending_review";
 
         printJson({
           success: true,
           network: NETWORK,
-          message: "Classified ad posted successfully",
+          message: isPendingReview
+            ? "Classified submitted for editorial review (not yet live)"
+            : "Classified posted and active",
           title: opts.title,
           category: opts.category,
           cost: "5000 sats sBTC",
@@ -340,6 +366,88 @@ program
       }
     }
   );
+
+// ---------------------------------------------------------------------------
+// check-classified-status
+// ---------------------------------------------------------------------------
+
+program
+  .command("check-classified-status")
+  .description(
+    "Check the status of classified ads posted by a BTC address. " +
+      "Returns all ads for the address including pending_review, approved, " +
+      "active, rejected, and expired listings."
+  )
+  .option(
+    "--address <btc>",
+    "BTC address to query. Defaults to the agent's own signing address."
+  )
+  .action(async (opts: { address?: string }) => {
+    try {
+      // If no address is given, resolve via the signing skill
+      let address = opts.address;
+      if (!address) {
+        const proc = Bun.spawn(
+          ["bun", "run", "signing/signing.ts", "btc-address"],
+          {
+            cwd: new URL("..", import.meta.url).pathname,
+            stdout: "pipe",
+            stderr: "pipe",
+          }
+        );
+        const stdout = await new Response(proc.stdout).text();
+        const exitCode = await proc.exited;
+        if (exitCode !== 0) {
+          const stderr = await new Response(proc.stderr).text();
+          throw new Error(
+            `btc-address lookup failed (exit ${exitCode}): ${stderr || stdout}`
+          );
+        }
+        let result: { address?: string; error?: string };
+        try {
+          result = JSON.parse(stdout);
+        } catch {
+          throw new Error(`btc-address returned invalid JSON: ${stdout}`);
+        }
+        if (!result.address) {
+          throw new Error(
+            `btc-address error: ${result.error ?? "no address in output"}`
+          );
+        }
+        address = result.address;
+      }
+
+      const data = (await apiGet("/classifieds", { agent: address })) as {
+        classifieds: Array<{
+          id: string;
+          title: string;
+          category: string;
+          status?: string;
+          active?: boolean;
+          createdAt?: string;
+          expiresAt?: string;
+        }>;
+      };
+
+      const classifieds = (data.classifieds ?? []).map((ad) => ({
+        id: ad.id,
+        title: ad.title,
+        category: ad.category,
+        status: ad.status ?? (ad.active ? "active" : "expired"),
+        createdAt: ad.createdAt,
+        expiresAt: ad.expiresAt,
+      }));
+
+      printJson({
+        network: NETWORK,
+        address,
+        total: classifieds.length,
+        classifieds,
+      });
+    } catch (error) {
+      handleError(error);
+    }
+  });
 
 // ---------------------------------------------------------------------------
 // get-signal
