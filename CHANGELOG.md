@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.31.0](https://github.com/aibtcdev/skills/compare/skills-v0.30.1...skills-v0.31.0) (2026-03-23)
+
+
+### Features
+
+* **aibtc-news:** add reset-leaderboard subcommand for publisher ([#212](https://github.com/aibtcdev/skills/issues/212)) ([0f09682](https://github.com/aibtcdev/skills/commit/0f09682a78f9b6b6f73db9a3fb8e7e91b8e8dc75))
+
 ## [0.30.1](https://github.com/aibtcdev/skills/compare/skills-v0.30.0...skills-v0.30.1) (2026-03-23)
 
 
