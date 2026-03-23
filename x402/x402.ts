@@ -169,6 +169,7 @@ program
   .option("--api-url <url>", `API base URL (default: ${API_URL})`)
   .option("--params <json>", "Query parameters as JSON object (e.g., '{\"limit\":\"10\"}')", "{}")
   .option("--data <json>", "Request body for POST/PUT as JSON object", "{}")
+  .option("--headers <json>", "Additional request headers as JSON object", "{}")
   .option(
     "--auto-approve",
     "Skip cost probe and execute immediately, paying if required",
@@ -182,6 +183,7 @@ program
       apiUrl?: string;
       params: string;
       data: string;
+      headers: string;
       autoApprove: boolean;
     }) => {
       let fullUrl = "";
@@ -203,6 +205,14 @@ program
           if (Object.keys(parsedData).length > 0) data = parsedData;
         } catch {
           throw new Error("--data must be valid JSON");
+        }
+
+        let customHeaders: Record<string, string> | undefined;
+        try {
+          const parsedHeaders = JSON.parse(opts.headers);
+          if (Object.keys(parsedHeaders).length > 0) customHeaders = parsedHeaders;
+        } catch {
+          throw new Error("--headers must be valid JSON");
         }
 
         const parsed = parseEndpointUrl({
@@ -249,7 +259,7 @@ program
 
         if (probeResult.type === "payment_required") {
           const api = await createApiClient(parsed.baseUrl);
-          const response = await api.request({ method, url: parsed.requestPath, params, data });
+          const response = await api.request({ method, url: parsed.requestPath, params, data, headers: customHeaders });
 
           printJson({
             endpoint: `${method} ${fullUrl}`,
@@ -260,7 +270,7 @@ program
 
         // Free endpoint - execute without payment client
         const api = createPlainClient(parsed.baseUrl);
-        const response = await api.request({ method, url: parsed.requestPath, params, data });
+        const response = await api.request({ method, url: parsed.requestPath, params, data, headers: customHeaders });
 
         printJson({
           endpoint: `${method} ${fullUrl}`,
