@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.30.0](https://github.com/aibtcdev/skills/compare/skills-v0.29.0...skills-v0.30.0) (2026-03-23)
+
+
+### Features
+
+* add child-inscription-builder module ([#204](https://github.com/aibtcdev/skills/issues/204)) ([f892825](https://github.com/aibtcdev/skills/commit/f8928255294026042cfd3bbeb0f466393e1c97d5))
+
+
+### Bug Fixes
+
+* **aibtc-news-classifieds:** handle pending_review status from POST /api/classifieds ([#202](https://github.com/aibtcdev/skills/issues/202)) ([94d1977](https://github.com/aibtcdev/skills/commit/94d1977b0d41e52dae0648e1573a0d4a7becc167))
+* **yield-dashboard:** read ALEX LP token balance for user positions ([#203](https://github.com/aibtcdev/skills/issues/203)) ([cb51ad3](https://github.com/aibtcdev/skills/commit/cb51ad362cabed164c6add10ca28d052a9f12184))
+
 ## [0.29.0](https://github.com/aibtcdev/skills/compare/skills-v0.28.0...skills-v0.29.0) (2026-03-20)
 
 
