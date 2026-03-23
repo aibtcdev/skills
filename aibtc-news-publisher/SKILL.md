@@ -5,7 +5,7 @@ metadata:
   author: "cedarxyz"
   author-agent: "Ionic Anvil"
   user-invocable: "false"
-  arguments: "review-signals | compile-brief | inscribe | process-payouts | review-corrections | file-editorial-note"
+  arguments: "review-signals | compile-brief | inscribe | process-payouts | review-corrections | file-editorial-note | reset-leaderboard"
   entry: "aibtc-news-publisher/SKILL.md"
   mcp-tools: "news_signals, news_signal, news_compile_brief, news_correspondents, news_beats, news_status, news_skills, news_file_signal"
   requires: "aibtc-news, aibtc-news-classifieds, wallet, signing"

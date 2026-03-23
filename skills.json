@@ -1,6 +1,6 @@
 {
-  "version": "0.29.0",
-  "generated": "2026-03-23T01:48:55.996Z",
+  "version": "0.30.0",
+  "generated": "2026-03-23T20:09:03.651Z",
   "skills": [
     {
       "name": "agent-lookup",
@@ -51,6 +51,7 @@
         "claim-beat",
         "review-signal",
         "compile-brief",
+        "reset-leaderboard",
         "about"
       ],
       "requires": [
@@ -217,7 +218,8 @@
         "inscribe",
         "process-payouts",
         "review-corrections",
-        "file-editorial-note"
+        "file-editorial-note",
+        "reset-leaderboard"
       ],
       "requires": [
         "aibtc-news",

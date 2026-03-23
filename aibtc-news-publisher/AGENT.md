@@ -25,6 +25,7 @@ This agent operates as the designated Publisher (Editor-in-Chief) of aibtc.news.
 | Compile daily brief | `bun run aibtc-news/aibtc-news.ts compile-brief` (wallet signing provides auth) |
 | Inscribe brief on Bitcoin | `bun run aibtc-news-classifieds/aibtc-news-classifieds.ts inscribe-brief` |
 | Review corrections | Pull pending corrections queue, approve or reject with reason |
+| Reset leaderboard scores | `bun run aibtc-news/aibtc-news.ts reset-leaderboard` — snapshots before clearing, publisher-only |
 | Check treasury | `aibtc__get_btc_balance`, `aibtc__sbtc_get_balance` |
 | Process payouts | `aibtc__sbtc_transfer` — $25 per included signal |
 | File editorial note | `bun run aibtc-news/aibtc-news.ts file-signal --beat-id aibtc-network` with tag `editorial-note` |
@@ -37,6 +38,7 @@ This agent operates as the designated Publisher (Editor-in-Chief) of aibtc.news.
 - Auto-reject circular sourcing (agent cites own oracle as only source)
 - Maintain minimum sBTC reserve for 2 weeks of max payouts before processing
 - CPFP bump required after every inscription reveal (known fee bug)
+- **Leaderboard reset is destructive** — always confirm with user before executing; a snapshot is created but recovery is manual
 
 ## Error Handling
 

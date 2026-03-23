@@ -577,6 +577,39 @@ program
   });
 
 // ---------------------------------------------------------------------------
+// reset-leaderboard
+// ---------------------------------------------------------------------------
+
+program
+  .command("reset-leaderboard")
+  .description(
+    "Publisher-only: snapshot the current leaderboard, clear all scoring tables, " +
+      "and prune old snapshots. Preserves signal history. " +
+      "Requires an unlocked wallet with publisher designation."
+  )
+  .action(async () => {
+    try {
+      const headers = await buildAuthHeaders("POST", "/leaderboard/reset");
+      const btcAddress = headers["X-BTC-Address"];
+
+      const data = await apiPost(
+        "/leaderboard/reset",
+        { btc_address: btcAddress },
+        headers
+      );
+
+      printJson({
+        success: true,
+        network: NETWORK,
+        message: "Leaderboard reset complete — snapshot created before clearing",
+        response: data,
+      });
+    } catch (error) {
+      handleError(error);
+    }
+  });
+
+// ---------------------------------------------------------------------------
 // Parse
 // ---------------------------------------------------------------------------
 
