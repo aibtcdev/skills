@@ -409,11 +409,13 @@ export function buildRevealTransaction(
   // 1 input (Taproot with inscription witness) + 1 output (recipient)
   const revealInputSize = P2TR_INPUT_BASE_VBYTES;
   // Use the tap leaf script (which contains the inscription body) for witness size,
-  // not the P2TR output script (which is tiny). tapLeafScript is [controlBlock, leafScript].
+  // not the P2TR output script (which is tiny). tapLeafScript is an array of
+  // [controlBlock, leafScript] tuples; we use the leafScript from the first entry.
+  const WITNESS_OVERHEAD_VBYTES = 80; // Control block + script + protocol framing
   const leafScriptSize = revealScript.tapLeafScript?.[0]?.[1]?.length || 0;
   const revealWitnessSize = Math.ceil(
-    (leafScriptSize || revealScript.script?.byteLength || 0) / 4
-  );
+    ((leafScriptSize || revealScript.script?.byteLength || 0) / 4) * 1.25
+  ) + WITNESS_OVERHEAD_VBYTES;
   const revealTxSize =
     TX_OVERHEAD_VBYTES + revealInputSize + revealWitnessSize + P2TR_OUTPUT_VBYTES;
   const revealFee = Math.ceil(revealTxSize * feeRate);
