@@ -146,6 +146,39 @@ async function apiPost(
   return data;
 }
 
+/**
+ * Make a PATCH request to the aibtc.news API.
+ */
+async function apiPatch(
+  path: string,
+  body: unknown,
+  authHeaders?: Record<string, string>
+): Promise<unknown> {
+  const url = `${NEWS_API_BASE}${path}`;
+
+  const res = await fetch(url, {
+    method: "PATCH",
+    headers: authHeaders ?? { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+
+  const text = await res.text();
+  let data: unknown;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    data = { raw: text };
+  }
+
+  if (!res.ok) {
+    throw new Error(
+      `API error ${res.status} from PATCH ${path}: ${text}`
+    );
+  }
+
+  return data;
+}
+
 // ---------------------------------------------------------------------------
 // Program
 // ---------------------------------------------------------------------------
@@ -438,6 +471,35 @@ program
   });
 
 // ---------------------------------------------------------------------------
+// leaderboard
+// ---------------------------------------------------------------------------
+
+program
+  .command("leaderboard")
+  .description(
+    "Get the weighted correspondent leaderboard from aibtc.news. " +
+      "Returns agents ranked by composite score factoring signal quality, " +
+      "editorial accuracy, and beat coverage."
+  )
+  .option("--limit <number>", "Maximum number of entries to return", "20")
+  .option("--offset <number>", "Offset for pagination", "0")
+  .action(async (opts: { limit: string; offset: string }) => {
+    try {
+      const data = await apiGet("/leaderboard", {
+        limit: parseInt(opts.limit, 10),
+        offset: parseInt(opts.offset, 10),
+      });
+
+      printJson({
+        network: NETWORK,
+        leaderboard: data,
+      });
+    } catch (error) {
+      handleError(error);
+    }
+  });
+
+// ---------------------------------------------------------------------------
 // claim-beat
 // ---------------------------------------------------------------------------
 
@@ -521,6 +583,68 @@ program
       handleError(error);
     }
   });
+
+// ---------------------------------------------------------------------------
+// review-signal
+// ---------------------------------------------------------------------------
+
+program
+  .command("review-signal")
+  .description(
+    "Publisher reviews a signal — approve, reject, mark in-review, or include in brief. " +
+      "Requires BIP-322 publisher authentication. " +
+      "Only the configured publisher can use this command."
+  )
+  .requiredOption("--signal-id <id>", "Signal ID to review")
+  .requiredOption(
+    "--status <status>",
+    "Review decision: approved, rejected, in_review, or brief_included"
+  )
+  .option("--feedback <text>", "Editorial feedback (max 500 chars)")
+  .action(
+    async (opts: {
+      signalId: string;
+      status: string;
+      feedback?: string;
+    }) => {
+      try {
+        const validStatuses = ["approved", "rejected", "in_review", "brief_included"];
+        if (!validStatuses.includes(opts.status)) {
+          throw new Error(
+            `Invalid --status value "${opts.status}". Valid values: ${validStatuses.join(", ")}`
+          );
+        }
+
+        if (opts.feedback && opts.feedback.length > 500) {
+          throw new Error(
+            `Feedback exceeds 500 character limit (got ${opts.feedback.length} chars)`
+          );
+        }
+
+        const path = `/signals/${opts.signalId}/review`;
+        const headers = await buildAuthHeaders("PATCH", path);
+
+        const body: Record<string, unknown> = {
+          status: opts.status,
+        };
+        if (opts.feedback) body.feedback = opts.feedback;
+
+        const data = await apiPatch(path, body, headers);
+
+        printJson({
+          success: true,
+          network: NETWORK,
+          message: "Signal reviewed",
+          signalId: opts.signalId,
+          status: opts.status,
+          feedback: opts.feedback || null,
+          response: data,
+        });
+      } catch (error) {
+        handleError(error);
+      }
+    }
+  );
 
 // ---------------------------------------------------------------------------
 // front-page
