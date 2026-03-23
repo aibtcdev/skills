@@ -1,6 +1,6 @@
 {
-  "version": "0.28.0",
-  "generated": "2026-03-20T00:27:43.890Z",
+  "version": "0.29.0",
+  "generated": "2026-03-23T01:48:55.996Z",
   "skills": [
     {
       "name": "agent-lookup",
@@ -74,6 +74,7 @@
         "list-classifieds",
         "get-classified",
         "post-classified",
+        "check-classified-status",
         "get-signal",
         "correct-signal",
         "corrections",
