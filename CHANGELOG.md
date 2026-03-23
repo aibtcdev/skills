@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.31.1](https://github.com/aibtcdev/skills/compare/skills-v0.31.0...skills-v0.31.1) (2026-03-23)
+
+
+### Bug Fixes
+
+* **inscription-builder:** fix 3 bugs in buildRevealTransaction ([#216](https://github.com/aibtcdev/skills/issues/216)) ([d6648e9](https://github.com/aibtcdev/skills/commit/d6648e9fa7927c982763fdb01d108785872fa2d8))
+
 ## [0.31.0](https://github.com/aibtcdev/skills/compare/skills-v0.30.1...skills-v0.31.0) (2026-03-23)
 
 
