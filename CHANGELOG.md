@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.30.1](https://github.com/aibtcdev/skills/compare/skills-v0.30.0...skills-v0.30.1) (2026-03-23)
+
+
+### Bug Fixes
+
+* **child-inscription:** add tapInternalKey to parent input in buildChildRevealTransaction ([#207](https://github.com/aibtcdev/skills/issues/207)) ([5bfc907](https://github.com/aibtcdev/skills/commit/5bfc907081f515f78fc4a895b7b88fecac1bfce2))
+
 ## [0.30.0](https://github.com/aibtcdev/skills/compare/skills-v0.29.0...skills-v0.30.0) (2026-03-23)
 
 
