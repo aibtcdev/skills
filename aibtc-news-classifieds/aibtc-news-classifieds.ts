@@ -384,37 +384,12 @@ program
   )
   .action(async (opts: { address?: string }) => {
     try {
-      // If no address is given, resolve via the signing skill
+      // If no address is given, resolve by signing a minimal message and
+      // reading the `signer` field — btc-sign always returns the signing address.
       let address = opts.address;
       if (!address) {
-        const proc = Bun.spawn(
-          ["bun", "run", "signing/signing.ts", "btc-address"],
-          {
-            cwd: new URL("..", import.meta.url).pathname,
-            stdout: "pipe",
-            stderr: "pipe",
-          }
-        );
-        const stdout = await new Response(proc.stdout).text();
-        const exitCode = await proc.exited;
-        if (exitCode !== 0) {
-          const stderr = await new Response(proc.stderr).text();
-          throw new Error(
-            `btc-address lookup failed (exit ${exitCode}): ${stderr || stdout}`
-          );
-        }
-        let result: { address?: string; error?: string };
-        try {
-          result = JSON.parse(stdout);
-        } catch {
-          throw new Error(`btc-address returned invalid JSON: ${stdout}`);
-        }
-        if (!result.address) {
-          throw new Error(
-            `btc-address error: ${result.error ?? "no address in output"}`
-          );
-        }
-        address = result.address;
+        const { signer } = await signMessage("check-classified-status");
+        address = signer;
       }
 
       const data = (await apiGet("/classifieds", { agent: address })) as {
