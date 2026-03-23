@@ -246,7 +246,8 @@ export function buildCommitTransaction(
 
   // Create P2TR output from the reveal script
   // For script path spending, we use the internal pubkey and the script tree
-  const p2trReveal = btc.p2tr(xOnlyPubkey, revealScriptData, btcNetwork);
+  // 4th arg `true` required for micro-ordinals unknown leaf scripts
+  const p2trReveal = btc.p2tr(xOnlyPubkey, revealScriptData, btcNetwork, true);
 
   if (!p2trReveal.address) {
     throw new Error("Failed to generate reveal address");
