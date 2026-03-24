@@ -17,6 +17,8 @@ Generates test infrastructure for Clarinet projects. Creates vitest configs, pac
 
 ## Usage
 
+This is a doc-only skill. Agents read this file to understand available subcommands and invoke them through the skill framework. The CLI interface below documents the planned implementation.
+
 ```
 bun run clarity-test-scaffold/clarity-test-scaffold.ts <subcommand> [options]
 ```

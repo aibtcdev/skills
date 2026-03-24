@@ -17,6 +17,8 @@ Pre-deployment validation gate for Clarity smart contracts. Runs automated check
 
 ## Usage
 
+This is a doc-only skill. Agents read this file to understand available checks and invoke them through the skill framework. The CLI interface below documents the planned implementation.
+
 ```
 bun run clarity-check/clarity-check.ts <subcommand> [options]
 ```

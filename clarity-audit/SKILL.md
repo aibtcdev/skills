@@ -17,6 +17,8 @@ Structured security audit for Clarity smart contracts. Produces a comprehensive 
 
 ## Usage
 
+This is a doc-only skill. Agents read this file to understand the audit framework and invoke it through the skill framework or `clarity-expert` agent. The CLI interface below documents the planned implementation.
+
 ```
 bun run clarity-audit/clarity-audit.ts <subcommand> [options]
 ```

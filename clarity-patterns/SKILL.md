@@ -19,6 +19,8 @@ This skill is the canonical source for Clarity patterns in the aibtcdev ecosyste
 
 ## Usage
 
+This is a doc-only skill. Agents read this file to understand available patterns and invoke them through the skill framework. The CLI interface below documents the planned implementation.
+
 ```
 bun run clarity-patterns/clarity-patterns.ts <subcommand> [options]
 ```
