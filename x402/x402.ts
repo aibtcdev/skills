@@ -209,10 +209,17 @@ program
 
         let customHeaders: Record<string, string> | undefined;
         try {
-          const parsedHeaders = JSON.parse(opts.headers);
-          if (Object.keys(parsedHeaders).length > 0) customHeaders = parsedHeaders;
+          const parsedHeaders: unknown = JSON.parse(opts.headers);
+          if (
+            typeof parsedHeaders === "object" &&
+            parsedHeaders !== null &&
+            !Array.isArray(parsedHeaders) &&
+            Object.keys(parsedHeaders).length > 0
+          ) {
+            customHeaders = parsedHeaders as Record<string, string>;
+          }
         } catch {
-          throw new Error("--headers must be valid JSON");
+          throw new Error("--headers must be valid JSON object");
         }
 
         const parsed = parseEndpointUrl({
