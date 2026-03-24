@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.32.0](https://github.com/aibtcdev/skills/compare/skills-v0.31.1...skills-v0.32.0) (2026-03-24)
+
+
+### Features
+
+* **x402:** add --headers flag to execute-endpoint ([#211](https://github.com/aibtcdev/skills/issues/211)) ([6b8b93a](https://github.com/aibtcdev/skills/commit/6b8b93a2376fb272a00c5c06af6c0eb5aa067360))
+
 ## [0.31.1](https://github.com/aibtcdev/skills/compare/skills-v0.31.0...skills-v0.31.1) (2026-03-23)
 
 
