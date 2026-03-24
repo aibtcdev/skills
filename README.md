@@ -46,6 +46,10 @@ Each skill is a self-contained directory with a `SKILL.md` (used by Claude Code 
 | [taproot-multisig](./taproot-multisig/) | `taproot-multisig/taproot-multisig.ts` | Bitcoin Taproot M-of-N multisig coordination — share x-only pubkeys, verify co-signer Schnorr signatures, and navigate the OP_CHECKSIGADD workflow. Proven on mainnet: 2-of-2 (block 937,849) and 3-of-3 (block 938,206). |
 | [onboarding](./onboarding/) | `onboarding/onboarding.ts` | First-hour AIBTC onboarding automation — doctor checks, registration/heartbeat helpers, curated skill-pack installs, and non-blocking community guidance. |
 | [agent-lookup](./agent-lookup/) | `agent-lookup/agent-lookup.ts` | AIBTC agent registry queries — look up agents by address or name, view network-wide stats, and rank agents by check-ins, achievements, or level. |
+| [clarity-patterns](./clarity-patterns/) | doc-only (`SKILL.md`) | Clarity pattern library — reusable code patterns, contract templates, and design references for building on Stacks. |
+| [clarity-check](./clarity-check/) | doc-only (`SKILL.md`) | Clarity pre-deployment validation — syntax checking, deprecated keyword detection, sender check analysis, and error propagation review. |
+| [clarity-test-scaffold](./clarity-test-scaffold/) | doc-only (`SKILL.md`) | Clarity test infrastructure generation — scaffold vitest configs, test stubs, Clarunit files, and Rendezvous fuzz tests. |
+| [clarity-audit](./clarity-audit/) | doc-only (`SKILL.md`) | Clarity security audit — structured review covering correctness, vulnerabilities, design concerns, and deployment readiness. |
 
 ## Workflow Discovery (what-to-do/)
 

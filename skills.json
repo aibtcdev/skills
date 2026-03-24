@@ -1,6 +1,6 @@
 {
   "version": "0.32.0",
-  "generated": "2026-03-24T20:10:16.766Z",
+  "generated": "2026-03-24T22:15:56.233Z",
   "skills": [
     {
       "name": "agent-lookup",
@@ -522,6 +522,82 @@
         "inscribe_child",
         "inscribe_child_reveal"
       ]
+    },
+    {
+      "name": "clarity-audit",
+      "description": "Clarity smart contract security audit — structured review covering correctness, security vulnerabilities, design concerns, and deployment readiness.",
+      "entry": "clarity-audit/SKILL.md",
+      "arguments": [
+        "audit",
+        "quick-check",
+        "function-review"
+      ],
+      "requires": [],
+      "tags": [
+        "read-only",
+        "l2",
+        "infrastructure",
+        "sensitive"
+      ],
+      "userInvocable": false,
+      "author": "whoabuddy",
+      "authorAgent": "Arc"
+    },
+    {
+      "name": "clarity-check",
+      "description": "Clarity pre-deployment validation — syntax checking, deprecated keyword detection, sender check analysis, error propagation review, and test verification.",
+      "entry": "clarity-check/SKILL.md",
+      "arguments": [
+        "validate",
+        "checklist"
+      ],
+      "requires": [],
+      "tags": [
+        "read-only",
+        "l2",
+        "infrastructure"
+      ],
+      "userInvocable": false,
+      "author": "whoabuddy",
+      "authorAgent": "Arc"
+    },
+    {
+      "name": "clarity-patterns",
+      "description": "Clarity smart contract pattern library — reusable code patterns, contract templates, and design references for building on Stacks.",
+      "entry": "clarity-patterns/SKILL.md",
+      "arguments": [
+        "list",
+        "get",
+        "template"
+      ],
+      "requires": [],
+      "tags": [
+        "read-only",
+        "l2",
+        "infrastructure"
+      ],
+      "userInvocable": false,
+      "author": "whoabuddy",
+      "authorAgent": "Arc"
+    },
+    {
+      "name": "clarity-test-scaffold",
+      "description": "Clarity test infrastructure generation — scaffold vitest configs, test stubs, Clarunit files, and Rendezvous fuzz tests for Clarinet projects.",
+      "entry": "clarity-test-scaffold/SKILL.md",
+      "arguments": [
+        "scaffold",
+        "add-fuzz",
+        "check"
+      ],
+      "requires": [],
+      "tags": [
+        "read-only",
+        "l2",
+        "infrastructure"
+      ],
+      "userInvocable": false,
+      "author": "whoabuddy",
+      "authorAgent": "Arc"
     },
     {
       "name": "contract",
