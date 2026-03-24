@@ -256,7 +256,7 @@ program
               recipient: probeResult.recipient,
               network: probeResult.network,
             },
-            retryWith: `--auto-approve ${opts.url ? `--url ${opts.url}` : `--path ${opts.path}`}${opts.apiUrl ? ` --api-url ${opts.apiUrl}` : ""}${params ? ` --params '${JSON.stringify(params)}'` : ""}${data ? ` --data '${JSON.stringify(data)}'` : ""}`,
+            retryWith: `--auto-approve ${opts.url ? `--url ${opts.url}` : `--path ${opts.path}`}${opts.apiUrl ? ` --api-url ${opts.apiUrl}` : ""}${params ? ` --params '${JSON.stringify(params)}'` : ""}${data ? ` --data '${JSON.stringify(data)}'` : ""}${customHeaders ? ` --headers '${JSON.stringify(customHeaders)}'` : ""}`,
           });
           return;
         }
