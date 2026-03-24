@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.33.0](https://github.com/aibtcdev/skills/compare/skills-v0.32.0...skills-v0.33.0) (2026-03-24)
+
+
+### Features
+
+* **clarity:** add Clarity development skills ([#222](https://github.com/aibtcdev/skills/issues/222)) ([55bbc20](https://github.com/aibtcdev/skills/commit/55bbc201c7fcd1de2b237990164ba01a2a8bad5d))
+
 ## [0.32.0](https://github.com/aibtcdev/skills/compare/skills-v0.31.1...skills-v0.32.0) (2026-03-24)
 
 
