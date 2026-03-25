@@ -191,9 +191,15 @@ export function buildRuneTransfer(options: RuneTransferOptions): RuneTransferRes
     outputIndex: 1, // recipient is output 1
   };
 
+  // Only set the change pointer when the rune change output will actually be
+  // added to the transaction (i.e. when runeChangeSats >= DUST_THRESHOLD).
+  // Pointing to a non-existent output index burns the remaining runes.
+  const runeChangeSatsEstimate = runeUtxos.reduce((sum, u) => sum + u.value, 0) - DUST_THRESHOLD;
+  const changeOutputIndex = runeChangeSatsEstimate >= DUST_THRESHOLD ? 2 : undefined;
+
   const runestoneScript = buildRunestoneScript({
     edict,
-    changeOutput: 2, // rune change is output 2
+    changeOutput: changeOutputIndex,
   });
 
   // Output 0: OP_RETURN
