@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.33.1](https://github.com/aibtcdev/skills/compare/skills-v0.33.0...skills-v0.33.1) (2026-03-25)
+
+
+### Bug Fixes
+
+* **rune-transfer-builder:** only set changeOutput pointer when change output is included ([0a0fd63](https://github.com/aibtcdev/skills/commit/0a0fd63077f887ec84f49bd91642c17fcc22292f)), closes [#229](https://github.com/aibtcdev/skills/issues/229)
+* **rune-transfer-builder:** only set changeOutput pointer when change output is included ([#230](https://github.com/aibtcdev/skills/issues/230)) ([0a0fd63](https://github.com/aibtcdev/skills/commit/0a0fd63077f887ec84f49bd91642c17fcc22292f))
+* update scaffold, docs, and bounty-scanner for nested metadata format ([1eb033d](https://github.com/aibtcdev/skills/commit/1eb033d477bf7fee87f915d0fd82f0b9559170c2))
+* update scaffold, docs, and bounty-scanner for nested metadata format ([#232](https://github.com/aibtcdev/skills/issues/232)) ([1eb033d](https://github.com/aibtcdev/skills/commit/1eb033d477bf7fee87f915d0fd82f0b9559170c2))
+
 ## [0.33.0](https://github.com/aibtcdev/skills/compare/skills-v0.32.0...skills-v0.33.0) (2026-03-24)
 
 
