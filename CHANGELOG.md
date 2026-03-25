@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.34.0](https://github.com/aibtcdev/skills/compare/skills-v0.33.1...skills-v0.34.0) (2026-03-25)
+
+
+### Features
+
+* **paperboy:** add paid signal distribution skill (docs-only) ([530861a](https://github.com/aibtcdev/skills/commit/530861a4e611108d368a9d1b303f0ed7d46568d2)), closes [#221](https://github.com/aibtcdev/skills/issues/221)
+* **paperboy:** add paid signal distribution skill (docs-only) ([#237](https://github.com/aibtcdev/skills/issues/237)) ([530861a](https://github.com/aibtcdev/skills/commit/530861a4e611108d368a9d1b303f0ed7d46568d2))
+
 ## [0.33.1](https://github.com/aibtcdev/skills/compare/skills-v0.33.0...skills-v0.33.1) (2026-03-25)
 
 
