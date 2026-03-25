@@ -4,7 +4,7 @@ description: HODLMM volatility risk monitor — reads Bitflow HODLMM pool state,
 author: locallaunchsc-cloud
 author_agent: Risk Sentinel
 user-invocable: false
-arguments: assess-pool | assess-position | regime-history
+arguments: assess-pool | assess-position | regime-snapshot
 entry: hodlmm-risk/hodlmm-risk.ts
 requires: []
 tags: [l2, defi, read-only, mainnet-only, risk]
@@ -51,7 +51,7 @@ Output:
   "volatilityScore": 38,
   "regime": "calm",
   "signals": {
-    "safeTo AddLiquidity": true,
+    "safeToAddLiquidity": true,
     "recommendedBinWidth": 5,
     "maxExposurePct": 0.25
   },
@@ -80,41 +80,38 @@ Output:
   "positionBinCount": 3,
   "activeBinId": 447,
   "nearestPositionBinOffset": 2,
+  "avgBinOffset": 4.33,
   "concentrationRisk": "medium",
-  "driftScore": 15,
-  "impermanentLossEstimatePct": 1.2,
-  "recommendation": "hold",
+  "driftScore": 22,
+  "impermanentLossEstimatePct": 1.76,
+  "recommendation": "rebalance",
   "timestamp": "2026-03-24T20:00:00.000Z"
 }
 ```
 
-### regime-history
+### regime-snapshot
 
-Compute a rolling volatility regime history for a pool by sampling bin state.
+Get a single-point volatility regime snapshot for a pool.
 
 ```
-bun run hodlmm-risk/hodlmm-risk.ts regime-history --pool-id <pool_id> [--samples <count>]
+bun run hodlmm-risk/hodlmm-risk.ts regime-snapshot --pool-id <pool_id>
 ```
 
 Options:
 - `--pool-id` (required) — HODLMM pool identifier
-- `--samples` (optional) — Number of data points to return (default 10, max 50)
 
 Output:
 ```json
 {
   "network": "mainnet",
   "poolId": "dlmm_3",
-  "samples": 10,
-  "history": [
-    {
-      "volatilityScore": 38,
-      "regime": "calm",
-      "activeBinId": 447,
-      "timestamp": "2026-03-24T20:00:00.000Z"
-    }
-  ],
-  "trend": "stable"
+  "volatilityScore": 38,
+  "regime": "calm",
+  "activeBinId": 447,
+  "binSpread": 0.034,
+  "reserveImbalanceRatio": 0.72,
+  "note": "Single-point snapshot. For trend analysis, store snapshots externally over time.",
+  "timestamp": "2026-03-24T20:00:00.000Z"
 }
 ```
 
@@ -123,5 +120,9 @@ Output:
 - All operations are mainnet-only and read-only.
 - Uses the Bitflow BFF API and on-chain bin data — no API key required.
 - Volatility score ranges 0-100: 0-30 = calm, 31-60 = elevated, 61-100 = crisis.
+- Score weights: bin spread (40%), reserve imbalance (30%), liquidity concentration (30%).
 - Downstream agents should use `assess-pool` before any `bitflow add-liquidity-simple` call.
 - `assess-position` helps agents decide whether to hold or withdraw existing liquidity.
+- `driftScore` is derived from `avgBinOffset` (average distance of position bins from active bin).
+- `regime-snapshot` returns a single point-in-time reading. For trend analysis, store snapshots externally over time.
+- Pools with all-zero reserves will return an error rather than misleading metrics.
