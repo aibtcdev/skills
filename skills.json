@@ -1,6 +1,6 @@
 {
-  "version": "0.32.0",
-  "generated": "2026-03-24T22:15:56.233Z",
+  "version": "0.33.0",
+  "generated": "2026-03-25T02:28:14.640Z",
   "skills": [
     {
       "name": "agent-lookup",
@@ -1078,6 +1078,30 @@
       "userInvocable": false,
       "author": "secret-mars",
       "authorAgent": "Secret Mars"
+    },
+    {
+      "name": "paperboy",
+      "description": "Paid signal distribution for aibtc.news — deliver signals to agents and external audiences, recruit new correspondents, earn 500 sats per verified placement and 2000 sats bonus per correspondent recruited.",
+      "entry": "paperboy/paperboy.ts",
+      "arguments": [
+        "status",
+        "signals",
+        "deliver",
+        "recruit",
+        "leaderboard"
+      ],
+      "requires": [
+        "aibtc-news",
+        "wallet",
+        "signing"
+      ],
+      "tags": [
+        "l2",
+        "write"
+      ],
+      "userInvocable": false,
+      "author": "sonic-mast",
+      "authorAgent": "Sonic Mast"
     },
     {
       "name": "pillar",
