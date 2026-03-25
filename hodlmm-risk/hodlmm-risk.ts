@@ -44,16 +44,23 @@ function computePoolRiskMetrics(
   const activeBinId = binsResponse.active_bin_id ?? pool.active_bin;
   const totalBins = bins.length;
 
-  // Bin spread: normalized distance between lowest and highest non-empty bin
+  // Filter to bins with non-zero reserves
   const nonEmptyBins = bins.filter(
     (b) => Number(b.reserve_x) > 0 || Number(b.reserve_y) > 0
   );
+
+  // Guard: if all bins are empty, the pool has no active liquidity
+  if (nonEmptyBins.length === 0) {
+    throw new Error("No active liquidity in this pool \u2014 all bins are empty");
+  }
+
+  // Bin spread: normalized distance between lowest and highest non-empty bin
   const binIds = nonEmptyBins.map((b) => b.bin_id);
   const minBin = Math.min(...binIds);
   const maxBin = Math.max(...binIds);
   const binSpread = totalBins > 0 ? (maxBin - minBin) / Math.max(totalBins, 1) : 0;
 
-  // Reserve imbalance: ratio of total X reserves to total (X + Y) reserves
+  // Reserve imbalance: ratio of abs(X - Y) to total (X + Y) reserves
   let totalX = 0;
   let totalY = 0;
   for (const bin of bins) {
@@ -72,12 +79,17 @@ function computePoolRiskMetrics(
   const activeBinConcentration =
     totalReserves > 0 ? activeLiquidity / totalReserves : 0;
 
-  // Volatility score: weighted combination of signals
-  // Higher spread = higher vol, higher imbalance = higher vol,
-  // lower active bin concentration = higher vol (liquidity dispersed)
-  const spreadScore = Math.min(binSpread * 100, 40); // 0-40
-  const imbalanceScore = reserveImbalanceRatio * 30; // 0-30
-  const concentrationScore = (1 - activeBinConcentration) * 30; // 0-30
+  // Volatility score: weighted combination of three signals.
+  // Weights: spread (0-40), imbalance (0-30), concentration (0-30) = max 100.
+  // Rationale: bin spread is the strongest indicator of price movement (40%),
+  // while reserve imbalance and liquidity dispersion are secondary signals (30% each).
+  const SPREAD_WEIGHT = 40;
+  const IMBALANCE_WEIGHT = 30;
+  const CONCENTRATION_WEIGHT = 30;
+
+  const spreadScore = Math.min(binSpread * 100, SPREAD_WEIGHT);
+  const imbalanceScore = reserveImbalanceRatio * IMBALANCE_WEIGHT;
+  const concentrationScore = (1 - activeBinConcentration) * CONCENTRATION_WEIGHT;
   const volatilityScore = Math.round(
     Math.min(spreadScore + imbalanceScore + concentrationScore, 100)
   );
@@ -112,7 +124,7 @@ program
   .description(
     "HODLMM volatility risk monitoring \u2014 pool assessment, position scoring, and regime classification"
   )
-  .version("0.1.0");
+  .version("0.2.0");
 
 // ---------------------------------------------------------------------------
 // assess-pool
@@ -202,7 +214,7 @@ program
       const avgOffset =
         offsets.reduce((sum, o) => sum + o, 0) / offsets.length;
 
-      // Drift score: 0-100 based on how far position has drifted
+      // Drift score: 0-100 based on average distance of position bins from active bin
       const driftScore = Math.round(Math.min(avgOffset * 5, 100));
 
       // Concentration risk
@@ -235,6 +247,7 @@ program
         positionBinCount: positionBins.length,
         activeBinId,
         nearestPositionBinOffset: nearestOffset,
+        avgBinOffset: Number(avgOffset.toFixed(2)),
         concentrationRisk,
         driftScore,
         impermanentLossEstimatePct,
@@ -247,17 +260,16 @@ program
   });
 
 // ---------------------------------------------------------------------------
-// regime-history
+// regime-snapshot
 // ---------------------------------------------------------------------------
 
 program
-  .command("regime-history")
+  .command("regime-snapshot")
   .description(
-    "Compute current volatility regime snapshot for a pool. Returns a single-point assessment with trend indicator."
+    "Get a single-point volatility regime snapshot for a pool. Returns current regime and score. For trend history, use an external time-series store."
   )
   .requiredOption("--pool-id <poolId>", "HODLMM pool identifier")
-  .option("--samples <count>", "Number of data points (currently returns 1 live snapshot)", "1")
-  .action(async (opts: { poolId: string; samples: string }) => {
+  .action(async (opts: { poolId: string }) => {
     try {
       if (NETWORK !== "mainnet") {
         throw new Error("Network must be mainnet \u2014 Bitflow HODLMM is mainnet-only");
@@ -275,20 +287,16 @@ program
 
       const metrics = computePoolRiskMetrics(pool, binsResponse);
 
-      const snapshot = {
-        volatilityScore: metrics.volatilityScore,
-        regime: metrics.regime,
-        activeBinId: metrics.activeBinId,
-        timestamp: new Date().toISOString(),
-      };
-
-      // Single snapshot: trend is stable since we have one data point
       printJson({
         network: NETWORK,
         poolId: opts.poolId,
-        samples: 1,
-        history: [snapshot],
-        trend: "stable",
+        volatilityScore: metrics.volatilityScore,
+        regime: metrics.regime,
+        activeBinId: metrics.activeBinId,
+        binSpread: metrics.binSpread,
+        reserveImbalanceRatio: metrics.reserveImbalanceRatio,
+        note: "Single-point snapshot. For trend analysis, store snapshots externally over time.",
+        timestamp: new Date().toISOString(),
       });
     } catch (error) {
       handleError(error);
