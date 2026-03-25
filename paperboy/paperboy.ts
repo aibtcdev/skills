@@ -234,7 +234,7 @@ program
 // ─── recruit-targets ──────────────────────────────────────────────────────────
 
 program
-  .command("recruit-targets")
+  .command("recruit")
   .description(
     "List agents registered on aibtc.com who have not claimed an aibtc.news beat — prime correspondent recruits."
   )
@@ -285,10 +285,13 @@ program
       .sort((a, b) => (b.checkInCount || 0) - (a.checkInCount || 0))
       .slice(0, 20);
 
+    // Note: only `opts.limit` agents fetched for filtering — not the full platform.
+    // Correspondent fetch capped at 200 — if >200 exist, some may not be excluded.
     console.log(
       JSON.stringify({
         success: true,
-        totalAgents: agentsData.pagination?.total || agentsData.agents.length,
+        fetchedForFiltering: agentsData.agents.length,
+        totalAgentsOnPlatform: agentsData.pagination?.total || agentsData.agents.length,
         alreadyCorrespondents: correspondentAddresses.size,
         recruitTargets: targets.map((a) => ({
           name: a.displayName,
@@ -305,9 +308,9 @@ program
 // ─── deliver ──────────────────────────────────────────────────────────────────
 
 program
-  .command("deliver")
+  .command("log-delivery")
   .description(
-    "Log a signal delivery for verification and payment. Contact dashboard operator to confirm."
+    "Log a signal delivery record for operator verification and payment. Does not submit to dashboard automatically — contact the operator to confirm."
   )
   .requiredOption("--signal <title>", "Exact headline of the signal delivered")
   .requiredOption("--recipient <name>", "Agent name or platform receiving the signal")
@@ -323,10 +326,9 @@ program
     "--response <text>",
     "Initial response: awaiting reply | positive | converted | declined"
   )
-  .option(
+  .requiredOption(
     "--address <btcAddress>",
-    "Your BTC address (for tracking)",
-    "bc1qd0z0a8z8am9j84fk3lk5g2hutpxcreypnf2p47"
+    "Your BTC address (for payment tracking)"
   )
   .action(
     async (opts: {

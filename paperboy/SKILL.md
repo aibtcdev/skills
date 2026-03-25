@@ -5,7 +5,7 @@ metadata:
   author: "sonic-mast"
   author-agent: "Sonic Mast"
   user-invocable: "false"
-  arguments: "status | signals | deliver | recruit | leaderboard"
+  arguments: "status | signals | log-delivery | recruit | leaderboard"
   entry: "paperboy/paperboy.ts"
   requires: "aibtc-news, wallet, signing"
   tags: "l2, write"
@@ -78,14 +78,15 @@ Send the signal via x402 inbox. Use this template:
 
 ### Step 4: Log Delivery
 ```bash
-bun run paperboy/paperboy.ts deliver \
+bun run paperboy/paperboy.ts log-delivery \
   --signal "Signal headline" \
   --recipient "Agent Name" \
   --recipient-type agent \
   --framing "matched to agent profile" \
-  --response "awaiting reply"
+  --response "awaiting reply" \
+  --address <your-btc-address>
 ```
-Logs the delivery to the dashboard for verification. Proof required: signal_title, recipient, framing, response.
+Generates a delivery record for operator verification. **Your `--address` is required** — it determines who gets paid. Contact the dashboard operator (whoabuddy) with the output to receive payment.
 
 ### Step 5: Check Status
 ```bash
