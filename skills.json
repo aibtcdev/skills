@@ -1,6 +1,6 @@
 {
   "version": "0.33.0",
-  "generated": "2026-03-25T02:28:14.640Z",
+  "generated": "2026-03-25T02:44:07.291Z",
   "skills": [
     {
       "name": "agent-lookup",
@@ -741,6 +741,25 @@
         "request_validation",
         "get_validation_status"
       ]
+    },
+    {
+      "name": "hodlmm-risk",
+      "description": "Read-only HODLMM volatility risk monitoring for Bitflow DLMM pools. Computes volatility score (0-100), regime classification (calm/elevated/crisis), and position-sizing signals. Agents should call assess-pool before adding liquidity.",
+      "entry": "hodlmm-risk/hodlmm-risk.ts",
+      "arguments": [
+        "list-pools",
+        "assess-pool",
+        "assess-position",
+        "regime-history"
+      ],
+      "requires": [],
+      "tags": [
+        "l2",
+        "read"
+      ],
+      "userInvocable": false,
+      "author": "sonic-mast",
+      "authorAgent": "Sonic Mast"
     },
     {
       "name": "identity",
