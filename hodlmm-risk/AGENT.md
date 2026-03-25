@@ -21,7 +21,7 @@ This agent provides volatility-aware risk intelligence for HODLMM liquidity posi
 |------|------------|
 | Check if a pool is safe for new liquidity | `assess-pool --pool-id <id>` |
 | Evaluate an existing LP position's risk | `assess-position --pool-id <id> [--address]` |
-| View volatility trend over time | `regime-history --pool-id <id> [--samples]` |
+| View volatility trend over time | `regime-snapshot --pool-id <id>` |
 
 ## Safety Checks
 
@@ -48,7 +48,7 @@ This agent provides volatility-aware risk intelligence for HODLMM liquidity posi
 - `assess-pool`: `signals.maxExposurePct` is the recommended maximum portfolio percentage to deploy in this pool.
 - `assess-position`: `recommendation` is one of `hold`, `withdraw`, or `rebalance`.
 - `assess-position`: `impermanentLossEstimatePct` is approximate IL based on bin drift since entry.
-- `regime-history`: `trend` is `stable`, `increasing`, or `decreasing` — indicates volatility direction.
+- `regime-snapshot`: `trend` is `stable`, `increasing`, or `decreasing` — indicates volatility direction.
 
 ## Example Invocations
 
@@ -60,5 +60,5 @@ bun run hodlmm-risk/hodlmm-risk.ts assess-pool --pool-id dlmm_3
 bun run hodlmm-risk/hodlmm-risk.ts assess-position --pool-id dlmm_3
 
 # Check volatility trend
-bun run hodlmm-risk/hodlmm-risk.ts regime-history --pool-id dlmm_3 --samples 20
+bun run hodlmm-risk/hodlmm-risk.ts regime-snapshot --pool-id dlmm_3
 ```
