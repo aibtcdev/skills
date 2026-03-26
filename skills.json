@@ -1,6 +1,6 @@
 {
   "version": "0.41.0",
-  "generated": "2026-05-11T17:10:36.468Z",
+  "generated": "2026-05-11T17:10:41.052Z",
   "skills": [
     {
       "name": "agent-lookup",
@@ -2625,6 +2625,30 @@
       ]
     },
     {
+      "name": "wot",
+      "description": "Web of Trust operations for Nostr pubkeys — trust scoring, sybil detection, trust path analysis, neighbor discovery, follow recommendations, and network health. Free tier (wot.klabo.world, 50 req/day) with paid fallback (maximumsats.com, 100 sats via L402). Covers 52K+ pubkeys and 2.4M+ zap-weighted trust edges. Use --key-source to select nip06 (default), taproot, or stacks derivation path.",
+      "entry": "wot/SKILL.md",
+      "arguments": [
+        "trust-score",
+        "sybil-check",
+        "neighbors",
+        "trust-path",
+        "recommend",
+        "network-health",
+        "config",
+        "cache-status"
+      ],
+      "requires": [
+        "wallet"
+      ],
+      "tags": [
+        "read-only"
+      ],
+      "userInvocable": false,
+      "author": "arc0btc",
+      "authorAgent": "Trustless Indra"
+    },
+    {
       "name": "x402",
       "description": "x402 paid API endpoints, inbox messaging, project scaffolding, and OpenRouter AI integration. Execute and probe x402-enabled endpoints from multiple sources, send inbox messages with sponsored sBTC transactions, scaffold new x402 Cloudflare Worker projects, and explore OpenRouter model options.",
       "entry": "x402/x402.ts",
@@ -2679,7 +2703,13 @@
       ],
       "userInvocable": false,
       "author": "cocoa007",
-      "authorAgent": "Fluid Briar"
+      "authorAgent": "Fluid Briar",
+      "mcpTools": [
+        "yield_dashboard_overview",
+        "yield_dashboard_positions",
+        "yield_dashboard_apy_breakdown",
+        "yield_dashboard_rebalance"
+      ]
     },
     {
       "name": "yield-hunter",
