@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.35.0](https://github.com/aibtcdev/skills/compare/skills-v0.34.0...skills-v0.35.0) (2026-03-26)
+
+
+### Features
+
+* **x402:** add nonce tracking and retry logic for inbox messages ([#247](https://github.com/aibtcdev/skills/issues/247)) ([e2de2b1](https://github.com/aibtcdev/skills/commit/e2de2b1b0c55959afe04363394a0387f97579608)), closes [#240](https://github.com/aibtcdev/skills/issues/240)
+
 ## [0.34.0](https://github.com/aibtcdev/skills/compare/skills-v0.33.1...skills-v0.34.0) (2026-03-25)
 
 
