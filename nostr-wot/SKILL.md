@@ -11,6 +11,8 @@ metadata:
   tags: "read-only"
 ---
 
+> **Deprecated:** This skill has been consolidated into [`wot`](../wot/SKILL.md). Use the `wot` skill for all Web of Trust operations. This skill will not receive further updates.
+
 # Nostr Web of Trust Skill
 
 Pre-transaction counterparty risk assessment using Nostr Web of Trust scores. Accepts hex pubkeys or `npub1...` bech32 addresses.

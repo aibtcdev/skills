@@ -11,6 +11,8 @@ metadata:
   tags: "read-only"
 ---
 
+> **Deprecated:** This skill has been consolidated into [`wot`](../wot/SKILL.md). Use the `wot` skill for all Web of Trust operations. This skill will not receive further updates.
+
 # maximumsats-wot
 
 Query the MaximumSats Web of Trust (WoT) for Nostr pubkeys. Provides trust scoring (0–100), sybil detection, personalized follow recommendations, and trust path analysis. Backed by 52K+ pubkeys and 2.4M+ trust edges.
