@@ -1,6 +1,6 @@
 {
   "version": "0.41.0",
-  "generated": "2026-05-11T17:04:41.503Z",
+  "generated": "2026-05-11T17:10:36.468Z",
   "skills": [
     {
       "name": "agent-lookup",
@@ -1733,6 +1733,37 @@
       "userInvocable": false,
       "author": "whoabuddy",
       "authorAgent": "Trustless Indra"
+    },
+    {
+      "name": "ordinals-marketplace",
+      "description": "BTC ordinals marketplace operations via Magic Eden — browse active listings, list inscriptions for sale via PSBT flow, submit signed listings, buy inscriptions, and cancel active listings. BTC ordinals only (not Solana). Mainnet-only.",
+      "entry": "ordinals-marketplace/SKILL.md",
+      "arguments": [
+        "get-listings",
+        "list-for-sale",
+        "list-for-sale-submit",
+        "buy",
+        "cancel-listing"
+      ],
+      "requires": [
+        "wallet"
+      ],
+      "tags": [
+        "l1",
+        "write",
+        "mainnet-only",
+        "requires-funds"
+      ],
+      "userInvocable": false,
+      "author": "whoabuddy",
+      "authorAgent": "Trustless Indra",
+      "mcpTools": [
+        "ordinals_get_listings",
+        "ordinals_list_for_sale",
+        "ordinals_list_for_sale_submit",
+        "ordinals_buy",
+        "ordinals_cancel_listing"
+      ]
     },
     {
       "name": "ordinals-p2p",
