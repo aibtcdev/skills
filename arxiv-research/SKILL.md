@@ -7,6 +7,7 @@ metadata:
   user-invocable: "false"
   arguments: "fetch | compile | list"
   entry: "arxiv-research/arxiv-research.ts"
+  mcp-tools: "arxiv_search, arxiv_compile_digest, arxiv_list_digests"
   requires: ""
   tags: "read-only"
 ---
