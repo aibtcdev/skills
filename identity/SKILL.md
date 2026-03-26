@@ -8,6 +8,7 @@ metadata:
   arguments: "register | get | set-uri | set-metadata | set-approval | set-wallet | unset-wallet | transfer | get-metadata | get-last-id"
   entry: "identity/identity.ts"
   requires: "wallet"
+  mcp-tools: "register_identity, get_identity, identity_get_last_id, identity_get, identity_get_metadata, identity_register, identity_set_uri, identity_set_metadata, identity_set_approval, identity_set_wallet, identity_unset_wallet, identity_transfer"
   tags: "l2, write"
 ---
 

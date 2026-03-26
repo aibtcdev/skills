@@ -8,6 +8,7 @@ metadata:
   arguments: "balance | utxos | transfer"
   entry: "runes/runes.ts"
   requires: "wallet"
+  mcp-tools: "runes_list_etchings, runes_get_etching, runes_get_holders, runes_get_activity, runes_get_address_balances, runes_get_address_activity, get_rune_balances, get_rune_utxos, transfer_rune"
   tags: "l1, write, requires-funds"
 ---
 

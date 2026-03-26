@@ -8,6 +8,7 @@ metadata:
   arguments: "request | respond | get-status | get-summary | get-agent-validations | get-validator-requests"
   entry: "validation/validation.ts"
   requires: "wallet"
+  mcp-tools: "request_validation, get_validation_status, get_validation_summary"
   tags: "l2, write"
 ---
 

@@ -8,6 +8,7 @@ metadata:
   arguments: "get-ticker | get-tokens | get-hodlmm-pools | get-hodlmm-bins | get-hodlmm-position-bins | get-swap-targets | get-quote | get-routes | swap | add-liquidity-simple | withdraw-liquidity-simple | get-keeper-contract | create-order | get-order | cancel-order | get-keeper-user"
   entry: "bitflow/bitflow.ts"
   requires: "wallet"
+  mcp-tools: "bitflow_get_ticker, bitflow_get_tokens, bitflow_get_swap_targets, bitflow_get_quote, bitflow_get_routes, bitflow_swap, bitflow_get_keeper_contract, bitflow_create_order, bitflow_get_order, bitflow_cancel_order, bitflow_get_keeper_user"
   tags: "l2, defi, write, mainnet-only, requires-funds"
 ---
 

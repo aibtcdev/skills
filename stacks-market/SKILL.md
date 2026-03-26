@@ -8,6 +8,7 @@ metadata:
   arguments: "list-markets | search-markets | get-market | quote-buy | quote-sell | buy-yes | buy-no | sell-yes | sell-no | redeem | get-position"
   entry: "stacks-market/stacks-market.ts"
   requires: "wallet"
+  mcp-tools: "stacks_market_buy_no, stacks_market_buy_yes, stacks_market_get, stacks_market_get_position, stacks_market_list, stacks_market_quote_buy, stacks_market_quote_sell, stacks_market_redeem, stacks_market_search, stacks_market_sell_no, stacks_market_sell_yes"
   tags: "l2, defi, write, mainnet-only, requires-funds"
 ---
 

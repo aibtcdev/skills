@@ -8,6 +8,7 @@ metadata:
   arguments: "get-taproot-address | estimate-fee | inscribe | inscribe-reveal | get-inscription | transfer-inscription"
   entry: "ordinals/ordinals.ts"
   requires: "wallet"
+  mcp-tools: "get_taproot_address, estimate_inscription_fee, inscribe, inscribe_reveal, get_inscription, inscribe_child, inscribe_child_reveal, estimate_child_inscription_fee"
   tags: "l1, write, requires-funds"
 ---
 

@@ -8,6 +8,7 @@ metadata:
   arguments: "sip018-sign | sip018-verify | sip018-hash | stacks-sign | stacks-verify | btc-sign | btc-verify | schnorr-sign-digest | schnorr-verify-digest | nostr-sign-event"
   entry: "signing/signing.ts"
   requires: "wallet"
+  mcp-tools: "stacks_sign_message, stacks_verify_message, btc_sign_message, btc_verify_message, schnorr_sign_digest, schnorr_verify_digest, nostr_sign_event, sip018_hash, sip018_sign, sip018_verify"
   tags: "l2, l1"
 ---
 

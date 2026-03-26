@@ -8,6 +8,7 @@ metadata:
   arguments: "check-status | enroll | opt-out | get-rewards"
   entry: "dual-stacking/dual-stacking.ts"
   requires: "wallet"
+  mcp-tools: "dual_stacking_status, dual_stacking_get_rewards, dual_stacking_enroll, dual_stacking_opt_out"
   tags: "l2, write, requires-funds, defi"
 ---
 

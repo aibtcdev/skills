@@ -8,6 +8,7 @@ metadata:
   arguments: "token-info | market-summary | market-stats | top-gainers | top-losers | wallet-holdings | wallet-trades | trending-pools | whale-trades | holder-stats | search"
   entry: "tenero/tenero.ts"
   requires: "wallet"
+  mcp-tools: "tenero_holder_stats, tenero_market_stats, tenero_market_summary, tenero_search, tenero_token_info, tenero_top_gainers, tenero_top_losers, tenero_trending_pools, tenero_wallet_holdings, tenero_wallet_trades, tenero_whale_trades"
   tags: "l2, read-only"
 ---
 

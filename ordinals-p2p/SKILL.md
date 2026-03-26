@@ -8,6 +8,7 @@ metadata:
   arguments: "list-trades | get-trade | create-offer | counter | transfer | cancel | psbt-swap | my-trades | agents"
   entry: "ordinals-p2p/ordinals-p2p.ts"
   requires: "wallet"
+  mcp-tools: "psbt_decode, psbt_sign, psbt_broadcast, psbt_create_ordinal_buy, ordinals_p2p_list_trades, ordinals_p2p_get_trade, ordinals_p2p_my_trades, ordinals_p2p_agents, ordinals_p2p_create_offer, ordinals_p2p_counter, ordinals_p2p_transfer, ordinals_p2p_cancel, ordinals_p2p_psbt_swap, taproot_get_pubkey, taproot_verify_cosig, taproot_multisig_guide"
   tags: "l1, l2, write, requires-funds, defi"
 ---
 

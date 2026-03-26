@@ -8,6 +8,7 @@ metadata:
   arguments: "scan | match | claim | status | my-bounties | detail"
   entry: "bounty-scanner/bounty-scanner.ts"
   requires: "wallet, signing"
+  mcp-tools: "bounty_list, bounty_get, bounty_match, bounty_claim, bounty_status, bounty_my_claims, bounty_stats"
   tags: "l2, write, infrastructure"
 ---
 

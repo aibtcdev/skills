@@ -8,6 +8,7 @@ metadata:
   arguments: "set-hiro-api-key | get-hiro-api-key | delete-hiro-api-key | set-stacks-api-url | get-stacks-api-url | delete-stacks-api-url | get-server-version | check-relay-health"
   entry: "settings/settings.ts"
   requires: ""
+  mcp-tools: "set_hiro_api_key, get_hiro_api_key, delete_hiro_api_key, set_stacks_api_url, get_stacks_api_url, delete_stacks_api_url, get_server_version, check_relay_health, recover_sponsor_nonce, nonce_health, nonce_fill_gap"
   tags: "infrastructure"
 ---
 

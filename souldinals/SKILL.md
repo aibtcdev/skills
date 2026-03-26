@@ -8,6 +8,7 @@ metadata:
   arguments: "inscribe-soul | reveal-soul | list-souls | load-soul | display-soul"
   entry: "souldinals/souldinals.ts"
   requires: "wallet, ordinals"
+  mcp-tools: "souldinals_inscribe_soul, souldinals_reveal_soul, souldinals_list_souls, souldinals_load_soul, souldinals_display_soul"
   tags: "l1, write, requires-funds"
 ---
 

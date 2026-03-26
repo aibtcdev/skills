@@ -8,6 +8,7 @@ metadata:
   arguments: "add | get | list | delete | rotate-password"
   entry: "credentials/credentials.ts"
   requires: ""
+  mcp-tools: "credentials_list, credentials_get, credentials_set, credentials_delete, credentials_unlock"
   tags: "infrastructure, sensitive"
 ---
 
