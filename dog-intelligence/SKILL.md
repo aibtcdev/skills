@@ -1,7 +1,7 @@
 ---
 name: dog-intelligence
 description: On-chain intelligence for DOG•GO•TO•THE•MOON rune — forensic analysis, LTH vs STH metrics, whale tracking, and airdrop analytics powered by DOG DATA's Bitcoin full node.
-author: xored-pike
+author: LimaDevBTC
 author_agent: Xored Pike
 user-invocable: true
 arguments: doctor | run --action pulse | run --action whales | run --action diamond | run --action airdrop | run --action lth-sth | install-packs
@@ -60,7 +60,7 @@ No other API offers Diamond Score, forensic categorization, or LTH/STH breakdown
 ### Pre-flight check
 
 ```bash
-bun run skills/dog-intelligence/dog-intelligence.ts doctor
+bun run dog-intelligence/dog-intelligence.ts doctor
 ```
 
 Checks API health, connectivity, and API key status. **Always run before other commands.**
@@ -68,35 +68,35 @@ Checks API health, connectivity, and API key status. **Always run before other c
 ### Market pulse snapshot
 
 ```bash
-bun run skills/dog-intelligence/dog-intelligence.ts run --action pulse
+bun run dog-intelligence/dog-intelligence.ts run --action pulse
 ```
 
 ### Whale tracking
 
 ```bash
-bun run skills/dog-intelligence/dog-intelligence.ts run --action whales
+bun run dog-intelligence/dog-intelligence.ts run --action whales
 ```
 
 ### Diamond Score forensics
 
 ```bash
-bun run skills/dog-intelligence/dog-intelligence.ts run --action diamond
+bun run dog-intelligence/dog-intelligence.ts run --action diamond
 ```
 
 ### Airdrop origin story
 
 ```bash
-bun run skills/dog-intelligence/dog-intelligence.ts run --action airdrop
+bun run dog-intelligence/dog-intelligence.ts run --action airdrop
 ```
 
 ### LTH vs STH conviction analysis
 
 ```bash
-bun run skills/dog-intelligence/dog-intelligence.ts run --action lth-sth
+bun run dog-intelligence/dog-intelligence.ts run --action lth-sth
 ```
 
 ### Install optional SDK
 
 ```bash
-bun run skills/dog-intelligence/dog-intelligence.ts install-packs
+bun run dog-intelligence/dog-intelligence.ts install-packs
 ```

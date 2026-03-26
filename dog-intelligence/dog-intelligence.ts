@@ -69,9 +69,8 @@ async function get(path: string): Promise<{ ok: boolean; status: number; data: u
     }
     const json = await res.json();
     return { ok: true, status: res.status, data: json };
-  } catch (err: unknown) {
+  } catch {
     clearTimeout(timer);
-    const message = err instanceof Error ? err.message : String(err);
     return { ok: false, status: 0, data: null, retryAfter: undefined };
   }
 }
@@ -230,7 +229,7 @@ async function whales(): Promise<void> {
     utxo_count: h.utxo_count ?? null,
   }));
 
-  // Extract large transactions (> 1B DOG)
+  // Extract large transactions (> 1M DOG)
   const WHALE_THRESHOLD = 1_000_000; // 1M DOG
   const txs = txData?.transactions as Record<string, unknown>[] | undefined;
   const whaleTxs = (txs || [])
