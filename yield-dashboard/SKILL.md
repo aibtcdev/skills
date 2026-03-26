@@ -7,6 +7,7 @@ metadata:
   user-invocable: "false"
   arguments: "overview | positions | apy-breakdown | rebalance"
   entry: "yield-dashboard/yield-dashboard.ts"
+  mcp-tools: "yield_dashboard_overview, yield_dashboard_positions, yield_dashboard_apy_breakdown, yield_dashboard_rebalance"
   requires: "wallet"
   tags: "l2, defi, read-only, mainnet-only"
 ---
