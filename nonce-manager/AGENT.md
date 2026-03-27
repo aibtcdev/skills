@@ -46,7 +46,7 @@ The file lock has a 30-second stale timeout. If you see "Failed to acquire nonce
 ## Integration Pattern
 
 ```typescript
-import { acquireNonce, releaseNonce } from "../nonce-manager/nonce-store.js";
+import { acquireNonce, releaseNonce } from "../src/lib/services/nonce-tracker.js";
 
 const SENDER = "SP...";
 
@@ -57,11 +57,15 @@ try {
   // 2. Build and send transaction with this nonce
   const result = await sendTransaction({ nonce: BigInt(nonce), ... });
 
-  // 3. Release as success
-  await releaseNonce(SENDER, nonce, true);
+  // 3. Release as success (with txid for pending log)
+  await releaseNonce(SENDER, nonce, true, undefined, result.txid);
 } catch (error) {
   // 4. Determine if nonce was consumed
-  const wasRejected = isPreBroadcastError(error); // signing, relay rejection
+  // Pre-broadcast errors (signing, relay 409 SENDER_NONCE_STALE/GAP): rejected
+  // Post-broadcast errors (on-chain failure, timeout): broadcast
+  const wasRejected = error.message?.includes("SENDER_NONCE_STALE")
+    || error.message?.includes("SENDER_NONCE_GAP")
+    || error.message?.includes("signing");
   await releaseNonce(SENDER, nonce, false, wasRejected ? "rejected" : "broadcast");
 }
 ```

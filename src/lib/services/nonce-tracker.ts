@@ -1,24 +1,40 @@
 /**
  * Shared Nonce Tracker
  *
- * Unified, file-backed nonce tracker that prevents client-side nonce conflicts
- * across all tx-submitting tools. Ported from aibtc-mcp-server (PR #415).
+ * Cross-process nonce oracle for Stacks transactions. Prevents mempool
+ * collisions when multiple agents or skills send transactions concurrently.
  *
- * Design principles (issue #413):
- * - Local state is primary — no network calls on the hot path for nonce assignment
- * - Hiro is periodic reconciliation, not a real-time oracle
- * - Non-blocking — file read/write on the hot path, no network calls
- * - Records every submission — nonce + txid + timestamp for debugging
- * - Shared state file (~/.aibtc/nonce-state.json) for cross-process compatibility
- *   with MCP server (aibtc-mcp-server#413) and CLI skills (aibtcdev/skills#240)
+ * Primary API: acquireNonce / releaseNonce / syncNonce / getStatus
+ * Compat API: getTrackedNonce / recordNonceUsed / reconcileWithChain
+ *             (thin wrappers so existing callers like x402-retry don't break)
+ *
+ * Design:
+ * - mkdir-based file lock for cross-process atomicity
+ * - Atomic temp+rename writes to prevent corruption
+ * - Auto-sync from Hiro when state is stale (>90s)
+ * - Acquire/release lifecycle: acquire increments, release records outcome
+ * - Rejected nonces can be rolled back; broadcast nonces are consumed
+ *
+ * State file: ~/.aibtc/nonce-state.json (shared with aibtc-mcp-server)
  *
  * @see https://github.com/aibtcdev/aibtc-mcp-server/issues/413
  * @see https://github.com/aibtcdev/skills/issues/240
  */
 
-import fs from "fs/promises";
-import path from "path";
-import os from "os";
+import {
+  mkdirSync,
+  rmdirSync,
+  existsSync,
+  readFileSync,
+  writeFileSync,
+  renameSync,
+  statSync,
+  unlinkSync,
+} from "node:fs";
+import path from "node:path";
+import os from "node:os";
+import { getHiroApi, type NonceInfo } from "./hiro-api.js";
+import { NETWORK } from "../config/networks.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -33,10 +49,16 @@ export interface PendingTxRecord {
 
 /** Per-address nonce state. */
 export interface AddressNonceState {
-  /** The highest nonce we have assigned (not yet necessarily confirmed). */
-  lastUsedNonce: number;
-  /** ISO-8601 timestamp of the last nonce assignment. */
+  /** The next nonce to acquire (i.e. one past the highest assigned). */
+  nextNonce: number;
+  /** ISO-8601 timestamp of the last state change. */
   lastUpdated: string;
+  /** ISO-8601 timestamp of the last Hiro sync. */
+  lastSynced: string;
+  /** Last executed nonce from Hiro (for diagnostics). */
+  lastExecutedNonce: number | null;
+  /** Count of mempool-pending txs at last sync. */
+  mempoolPending: number;
   /** Rolling log of recent submissions (bounded to MAX_PENDING_LOG). */
   pending: PendingTxRecord[];
 }
@@ -47,305 +69,412 @@ export interface NonceStateFile {
   addresses: Record<string, AddressNonceState>;
 }
 
+/** Acquire result returned by acquireNonce. */
+export interface AcquireResult {
+  nonce: number;
+  address: string;
+  source: "local" | "hiro";
+}
+
+/** Sync result returned by syncNonce. */
+export interface SyncResult {
+  nonce: number;
+  address: string;
+  mempoolPending: number;
+  lastExecuted: number | null;
+  detectedMissing: number[];
+}
+
+/** Release result returned by releaseNonce. */
+export interface ReleaseResult {
+  address: string;
+  nonce: number;
+  action: "confirmed" | "rolled_back" | "noted";
+}
+
+/**
+ * Whether a nonce was consumed (broadcast to mempool) or can be reused.
+ * - "broadcast": tx reached mempool — nonce consumed even if tx fails on-chain
+ * - "rejected": tx never reached mempool — nonce NOT consumed, safe to reuse
+ */
+export type FailureKind = "broadcast" | "rejected";
+
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
 const DEFAULT_STORAGE_DIR = path.join(os.homedir(), ".aibtc");
 const DEFAULT_NONCE_STATE_FILE = path.join(DEFAULT_STORAGE_DIR, "nonce-state.json");
+const LOCK_DIR = path.join(DEFAULT_STORAGE_DIR, "nonce-state.lock");
 
 /** Mutable path — overridable via _testing.setStateFilePath() for test isolation. */
 let NONCE_STATE_FILE = DEFAULT_NONCE_STATE_FILE;
-const CURRENT_VERSION = 1;
+const CURRENT_VERSION = 2;
 
 /**
- * How long a locally-tracked nonce is considered fresh. After this window the
- * tracker falls back to the chain value on the next getNextNonce() call.
- *
- * Set to 90 seconds (~15-30 Stacks blocks post-Nakamoto, where blocks are 3-5s).
- * Previously 10 minutes (calibrated for Bitcoin block times). The shorter window
- * ensures the tracker detects external sends and chain advances promptly.
+ * How long locally-tracked state is considered fresh before auto-syncing.
+ * 90 seconds — ~15-30 Stacks blocks post-Nakamoto (3-5s block time).
  */
 export const STALE_NONCE_MS = 90 * 1000;
 
-/**
- * Maximum pending tx records kept per address. Older entries are evicted FIFO.
- */
+/** Maximum pending tx records kept per address. */
 const MAX_PENDING_LOG = 50;
 
-/**
- * Maximum addresses tracked in the state file. Oldest (by lastUpdated) are
- * evicted when this limit is reached, preventing unbounded file growth.
- */
+/** Maximum addresses tracked. Oldest evicted when exceeded. */
 const MAX_ADDRESSES = 100;
 
+/** Lock timeout: stale locks older than this are force-removed. */
+const LOCK_STALE_MS = 30_000;
+
+/** Max retries to acquire file lock. */
+const LOCK_MAX_RETRIES = 6;
+
+/** Delay between lock retries (ms). */
+const LOCK_RETRY_DELAY_MS = 500;
+
 // ---------------------------------------------------------------------------
-// In-memory cache
+// Cross-process file locking (mkdir-based)
 // ---------------------------------------------------------------------------
 
-/** In-memory mirror of the on-disk state. Loaded lazily on first access. */
-let _memoryState: NonceStateFile | null = null;
+function tryAcquireLock(): boolean {
+  try {
+    if (!existsSync(DEFAULT_STORAGE_DIR)) {
+      mkdirSync(DEFAULT_STORAGE_DIR, { recursive: true });
+    }
+    mkdirSync(LOCK_DIR);
+    writeFileSync(path.resolve(LOCK_DIR, "pid"), process.pid.toString());
+    return true;
+  } catch {
+    return false;
+  }
+}
 
-/**
- * Serializes concurrent file writes within this process.
- * Cross-process safety is handled by atomic temp+rename writes.
- */
-let _writeLock: Promise<void> = Promise.resolve();
+function releaseLockDir(): void {
+  try {
+    const pidFile = path.resolve(LOCK_DIR, "pid");
+    if (existsSync(pidFile)) unlinkSync(pidFile);
+    rmdirSync(LOCK_DIR);
+  } catch {
+    // Best effort
+  }
+}
+
+function isLockStale(): boolean {
+  try {
+    const stat = statSync(LOCK_DIR);
+    return Date.now() - stat.mtimeMs > LOCK_STALE_MS;
+  } catch {
+    return false;
+  }
+}
+
+async function withLock<T>(fn: () => Promise<T>): Promise<T> {
+  for (let attempt = 0; attempt < LOCK_MAX_RETRIES; attempt++) {
+    if (tryAcquireLock()) {
+      try {
+        return await fn();
+      } finally {
+        releaseLockDir();
+      }
+    }
+    if (isLockStale()) {
+      releaseLockDir();
+      continue;
+    }
+    await new Promise((r) => setTimeout(r, LOCK_RETRY_DELAY_MS));
+  }
+  throw new Error(`Failed to acquire nonce lock after ${LOCK_MAX_RETRIES} attempts`);
+}
 
 // ---------------------------------------------------------------------------
 // File I/O (atomic temp+rename, 0o600 perms)
 // ---------------------------------------------------------------------------
 
-async function readStateFile(): Promise<NonceStateFile> {
+function readStateFileSync(): NonceStateFile {
   try {
-    const content = await fs.readFile(NONCE_STATE_FILE, "utf8");
-    const parsed = JSON.parse(content) as NonceStateFile;
-    // Basic validation
-    if (parsed.version !== CURRENT_VERSION || typeof parsed.addresses !== "object") {
-      return createDefaultState();
+    const content = readFileSync(NONCE_STATE_FILE, "utf8");
+    const parsed = JSON.parse(content);
+    // Migrate v1 → v2
+    if (parsed.version === 1 && typeof parsed.addresses === "object") {
+      return migrateV1toV2(parsed);
     }
-    return parsed;
+    if (parsed.version === CURRENT_VERSION && typeof parsed.addresses === "object") {
+      return parsed as NonceStateFile;
+    }
+    // Unversioned (raw address map from early implementations) — discard
+    return createDefaultState();
   } catch {
     return createDefaultState();
   }
 }
 
-/**
- * Merge on-disk state into in-memory state to prevent cross-process write
- * races from silently regressing a nonce.
- *
- * For each address:
- * - Takes the higher lastUsedNonce (never regress)
- * - In-memory pending log is authoritative (disk entries are stale copies of
- *   our own prior writes); we only pull in disk-only addresses that another
- *   process (MCP server) may have created.
- */
-function mergeStates(disk: NonceStateFile, memory: NonceStateFile): NonceStateFile {
-  const merged: NonceStateFile = { version: CURRENT_VERSION, addresses: { ...memory.addresses } };
-
-  for (const [addr, diskEntry] of Object.entries(disk.addresses)) {
-    const memEntry = merged.addresses[addr];
-    if (!memEntry) {
-      // Address exists on disk but not in memory — another process wrote it
-      merged.addresses[addr] = diskEntry;
-      continue;
-    }
-
-    // Both exist: take the higher nonce to prevent regression
-    if (diskEntry.lastUsedNonce > memEntry.lastUsedNonce) {
-      memEntry.lastUsedNonce = diskEntry.lastUsedNonce;
-      memEntry.lastUpdated = diskEntry.lastUpdated;
-    }
-  }
-
-  return merged;
-}
-
-async function writeStateFile(state: NonceStateFile): Promise<void> {
+function writeStateFileSync(state: NonceStateFile): void {
   const dir = path.dirname(NONCE_STATE_FILE);
-  await fs.mkdir(dir, { recursive: true, mode: 0o700 });
+  if (!existsSync(dir)) {
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
+  }
   const tempFile = `${NONCE_STATE_FILE}.tmp`;
-  await fs.writeFile(tempFile, JSON.stringify(state, null, 2), { mode: 0o600 });
-  await fs.rename(tempFile, NONCE_STATE_FILE);
+  writeFileSync(tempFile, JSON.stringify(state, null, 2), { mode: 0o600 });
+  // Atomic rename — prevents corruption if process crashes mid-write
+  renameSync(tempFile, NONCE_STATE_FILE);
 }
 
 function createDefaultState(): NonceStateFile {
   return { version: CURRENT_VERSION, addresses: {} };
 }
 
+/** Migrate v1 schema (lastUsedNonce) to v2 (nextNonce). */
+function migrateV1toV2(v1: {
+  version: 1;
+  addresses: Record<string, { lastUsedNonce: number; lastUpdated: string; pending: PendingTxRecord[] }>;
+}): NonceStateFile {
+  const v2 = createDefaultState();
+  for (const [addr, entry] of Object.entries(v1.addresses)) {
+    v2.addresses[addr] = {
+      nextNonce: entry.lastUsedNonce + 1,
+      lastUpdated: entry.lastUpdated,
+      lastSynced: entry.lastUpdated,
+      lastExecutedNonce: null,
+      mempoolPending: 0,
+      pending: entry.pending ?? [],
+    };
+  }
+  return v2;
+}
+
+// ---------------------------------------------------------------------------
+// Hiro API integration
+// ---------------------------------------------------------------------------
+
+async function fetchNonceInfo(address: string): Promise<NonceInfo> {
+  const hiroApi = getHiroApi(NETWORK);
+  return hiroApi.getNonceInfo(address);
+}
+
+function isStale(entry: AddressNonceState): boolean {
+  const lastSync = new Date(entry.lastSynced).getTime();
+  return Date.now() - lastSync > STALE_NONCE_MS;
+}
+
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
 
-/** Load state into memory if not already loaded. */
-async function ensureLoaded(): Promise<NonceStateFile> {
-  if (!_memoryState) {
-    _memoryState = await readStateFile();
-  }
-  return _memoryState;
-}
-
-/** Persist the in-memory state to disk (serialized to prevent interleaving). */
-function persistToDisk(): void {
-  if (!_memoryState) return;
-  const stateSnapshot = _memoryState;
-  _writeLock = _writeLock
-    .then(() => writeStateFile(stateSnapshot))
-    .catch((err) => {
-      console.error("[nonce-tracker] Failed to persist nonce state:", err);
-    });
-}
-
-/** Evict oldest addresses if over MAX_ADDRESSES. */
 function evictOldestAddresses(state: NonceStateFile): void {
   const entries = Object.entries(state.addresses);
   if (entries.length <= MAX_ADDRESSES) return;
-
-  // Sort by lastUpdated ascending (oldest first)
   entries.sort((a, b) => new Date(a[1].lastUpdated).getTime() - new Date(b[1].lastUpdated).getTime());
-
-  // Keep only the newest MAX_ADDRESSES entries
-  const toKeep = entries.slice(entries.length - MAX_ADDRESSES);
-  state.addresses = Object.fromEntries(toKeep);
+  state.addresses = Object.fromEntries(entries.slice(entries.length - MAX_ADDRESSES));
 }
 
 // ---------------------------------------------------------------------------
-// Public API
+// Primary API: acquire / release / sync / status
 // ---------------------------------------------------------------------------
 
 /**
- * Get the next nonce to use for an address.
+ * Acquire the next nonce for an address. Atomically increments the stored
+ * value under a cross-process file lock. Auto-syncs from Hiro if state
+ * is missing or stale.
+ */
+export async function acquireNonce(address: string): Promise<AcquireResult> {
+  return withLock(async () => {
+    const state = readStateFileSync();
+    let entry = state.addresses[address];
+    let source: "local" | "hiro" = "local";
+
+    if (!entry || isStale(entry)) {
+      const hiro = await fetchNonceInfo(address);
+      const now = new Date().toISOString();
+      entry = {
+        nextNonce: hiro.possible_next_nonce,
+        lastUpdated: now,
+        lastSynced: now,
+        lastExecutedNonce: hiro.last_executed_tx_nonce,
+        mempoolPending: hiro.detected_mempool_nonces?.length ?? 0,
+        pending: entry?.pending ?? [],
+      };
+      state.addresses[address] = entry;
+      evictOldestAddresses(state);
+      source = "hiro";
+    }
+
+    const nonce = entry.nextNonce;
+    entry.nextNonce = nonce + 1;
+    entry.lastUpdated = new Date().toISOString();
+    writeStateFileSync(state);
+
+    return { nonce, address, source };
+  });
+}
+
+/**
+ * Release a nonce after transaction outcome is known.
  *
- * This is the HOT PATH — no network calls. Returns the locally tracked
- * next nonce, or null if no state exists or the local state is stale
- * (caller should then fall back to chain query).
+ * @param address - Stacks address
+ * @param nonce - The nonce that was acquired
+ * @param success - true if tx succeeded
+ * @param failureKind - "broadcast" (nonce consumed) or "rejected" (nonce reusable)
+ * @param txid - Transaction ID (for pending log on success)
+ */
+export async function releaseNonce(
+  address: string,
+  nonce: number,
+  success: boolean,
+  failureKind?: FailureKind,
+  txid?: string
+): Promise<ReleaseResult> {
+  return withLock(async () => {
+    const state = readStateFileSync();
+    const entry = state.addresses[address];
+
+    if (!entry) {
+      return { address, nonce, action: "noted" as const };
+    }
+
+    if (success) {
+      // Record in pending log
+      if (txid) {
+        entry.pending.push({ nonce, txid, timestamp: new Date().toISOString() });
+        if (entry.pending.length > MAX_PENDING_LOG) {
+          entry.pending = entry.pending.slice(-MAX_PENDING_LOG);
+        }
+      }
+      entry.lastUpdated = new Date().toISOString();
+      writeStateFileSync(state);
+      return { address, nonce, action: "confirmed" as const };
+    }
+
+    // Failed: only roll back if rejected AND this was the last acquired nonce
+    const kind = failureKind ?? "broadcast";
+    if (kind === "rejected" && entry.nextNonce === nonce + 1) {
+      entry.nextNonce = nonce;
+      entry.lastUpdated = new Date().toISOString();
+      writeStateFileSync(state);
+      return { address, nonce, action: "rolled_back" as const };
+    }
+
+    return { address, nonce, action: "noted" as const };
+  });
+}
+
+/**
+ * Force re-sync nonce state from Hiro API.
+ */
+export async function syncNonce(address: string): Promise<SyncResult> {
+  return withLock(async () => {
+    const state = readStateFileSync();
+    const hiro = await fetchNonceInfo(address);
+    const now = new Date().toISOString();
+
+    state.addresses[address] = {
+      nextNonce: hiro.possible_next_nonce,
+      lastUpdated: now,
+      lastSynced: now,
+      lastExecutedNonce: hiro.last_executed_tx_nonce,
+      mempoolPending: hiro.detected_mempool_nonces?.length ?? 0,
+      pending: state.addresses[address]?.pending ?? [],
+    };
+    writeStateFileSync(state);
+
+    return {
+      nonce: hiro.possible_next_nonce,
+      address,
+      mempoolPending: hiro.detected_mempool_nonces?.length ?? 0,
+      lastExecuted: hiro.last_executed_tx_nonce,
+      detectedMissing: hiro.detected_missing_nonces ?? [],
+    };
+  });
+}
+
+/**
+ * Get current nonce state for an address (or all addresses).
+ * No lock needed — read-only snapshot.
+ */
+export function getStatus(address?: string): NonceStateFile | AddressNonceState | null {
+  const state = readStateFileSync();
+  if (address) {
+    return state.addresses[address] ?? null;
+  }
+  return state;
+}
+
+// ---------------------------------------------------------------------------
+// Compat API (used by x402-retry.ts)
+// ---------------------------------------------------------------------------
+
+/**
+ * Get the next nonce without acquiring (read-only, no lock, no increment).
+ * Returns null if state is missing or stale.
+ *
+ * @deprecated Use acquireNonce() for atomic nonce assignment.
  */
 export async function getTrackedNonce(address: string): Promise<number | null> {
-  const state = await ensureLoaded();
+  const state = readStateFileSync();
   const entry = state.addresses[address];
   if (!entry) return null;
-
-  // Stale check
-  const lastUpdated = new Date(entry.lastUpdated).getTime();
-  if (Date.now() - lastUpdated > STALE_NONCE_MS) {
-    return null; // Stale — caller should query chain
-  }
-
-  return entry.lastUsedNonce + 1;
+  if (isStale(entry)) return null;
+  return entry.nextNonce;
 }
 
 /**
  * Record that a nonce was used for a transaction.
+ * Equivalent to releaseNonce(address, nonce, true, undefined, txid).
  *
- * Called after successful broadcast. Updates both in-memory and on-disk state.
- *
- * @param address - The sender STX address
- * @param nonce - The nonce that was used
- * @param txid - The transaction ID from broadcast
+ * @deprecated Use acquireNonce() + releaseNonce() for proper lifecycle.
  */
 export async function recordNonceUsed(
   address: string,
   nonce: number,
   txid: string
 ): Promise<void> {
-  const state = await ensureLoaded();
-  const now = new Date().toISOString();
-
-  const existing = state.addresses[address];
-  if (existing) {
-    // Only advance — never regress
-    if (nonce > existing.lastUsedNonce) {
-      existing.lastUsedNonce = nonce;
-    }
-    existing.lastUpdated = now;
-
-    // Append to pending log
-    existing.pending.push({ nonce, txid, timestamp: now });
-    // Trim to MAX_PENDING_LOG (FIFO)
-    if (existing.pending.length > MAX_PENDING_LOG) {
-      existing.pending = existing.pending.slice(-MAX_PENDING_LOG);
-    }
-  } else {
-    state.addresses[address] = {
-      lastUsedNonce: nonce,
-      lastUpdated: now,
-      pending: [{ nonce, txid, timestamp: now }],
-    };
-    evictOldestAddresses(state);
-  }
-
-  persistToDisk();
+  await releaseNonce(address, nonce, true, undefined, txid);
 }
 
 /**
  * Reconcile local state with chain data.
+ * Delegates to syncNonce internally.
  *
- * If the chain's `possibleNextNonce` is ahead of our local state, update
- * to match (txs confirmed or external sends happened). If our local state
- * is ahead, keep it (chain is lagging behind mempool propagation).
- *
- * @param address - The STX address
- * @param chainNextNonce - The `possible_next_nonce` value from Hiro API
+ * @deprecated Use syncNonce() directly.
  */
 export async function reconcileWithChain(
   address: string,
-  chainNextNonce: number
+  _chainNextNonce: number
 ): Promise<void> {
-  const state = await ensureLoaded();
-  const entry = state.addresses[address];
-
-  if (!entry) {
-    // No local state — initialize from chain
-    state.addresses[address] = {
-      lastUsedNonce: chainNextNonce - 1,
-      lastUpdated: new Date().toISOString(),
-      pending: [],
-    };
-    evictOldestAddresses(state);
-    persistToDisk();
-    return;
-  }
-
-  let changed = false;
-
-  // Chain advanced past us — update (txs confirmed or external sends)
-  if (chainNextNonce - 1 > entry.lastUsedNonce) {
-    entry.lastUsedNonce = chainNextNonce - 1;
-    entry.lastUpdated = new Date().toISOString();
-    changed = true;
-  }
-
-  // Prune pending entries whose nonces are now confirmed on-chain
-  const beforeLen = entry.pending.length;
-  entry.pending = entry.pending.filter((p) => p.nonce >= chainNextNonce);
-  if (entry.pending.length !== beforeLen) {
-    changed = true;
-  }
-
-  if (changed) {
-    persistToDisk();
-  }
+  await syncNonce(address);
 }
 
 /**
  * Reset (clear) nonce state for an address.
- * Called on wallet unlock/lock/switch so the tracker re-syncs from chain.
+ * Called on wallet unlock/lock/switch.
  */
 export async function resetTrackedNonce(address: string): Promise<void> {
-  const state = await ensureLoaded();
-  delete state.addresses[address];
-  persistToDisk();
+  await withLock(async () => {
+    const state = readStateFileSync();
+    delete state.addresses[address];
+    writeStateFileSync(state);
+  });
 }
 
 /**
- * Get the raw state for an address (for diagnostics/health tool).
+ * Get the raw state for an address (for diagnostics).
  */
-export async function getAddressState(
-  address: string
-): Promise<AddressNonceState | null> {
-  const state = await ensureLoaded();
-  return state.addresses[address] ?? null;
+export async function getAddressState(address: string): Promise<AddressNonceState | null> {
+  return (getStatus(address) as AddressNonceState | null);
 }
 
 /**
  * Get the full state file (for diagnostics).
  */
 export async function getFullState(): Promise<NonceStateFile> {
-  return ensureLoaded();
+  return readStateFileSync();
 }
 
 /**
- * Force reload state from disk (useful after external process wrote to file).
- * Merges disk state into memory so external writes (MCP server) are picked up
- * without losing any in-memory nonce advancements.
+ * Force reload state from disk.
+ * With file locking, this is just a no-op since we always read fresh.
  */
 export async function reloadFromDisk(): Promise<void> {
-  const diskState = await readStateFile();
-  if (_memoryState && Object.keys(_memoryState.addresses).length > 0) {
-    _memoryState = mergeStates(diskState, _memoryState);
-  } else {
-    _memoryState = diskState;
-  }
+  // No-op: withLock reads fresh from disk each time
 }
 
 // ---------------------------------------------------------------------------
@@ -359,20 +488,16 @@ export const _testing = {
   get NONCE_STATE_FILE() {
     return NONCE_STATE_FILE;
   },
-  /** Override the state file path for test isolation. */
   setStateFilePath(filePath: string): void {
     NONCE_STATE_FILE = filePath;
   },
-  /** Reset state file path to default. */
   resetStateFilePath(): void {
     NONCE_STATE_FILE = DEFAULT_NONCE_STATE_FILE;
   },
-  /** Clear in-memory state without touching disk. */
   clearMemory(): void {
-    _memoryState = null;
+    // No-op: no in-memory cache with file-lock model
   },
-  /** Get raw memory state ref for assertions. */
   getMemoryState(): NonceStateFile | null {
-    return _memoryState;
+    return readStateFileSync();
   },
 };

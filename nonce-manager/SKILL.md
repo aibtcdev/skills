@@ -7,6 +7,7 @@ metadata:
   user-invocable: "false"
   arguments: "acquire | release | sync | status"
   entry: "nonce-manager/nonce-manager.ts"
+  mcp-tools: "nonce_health, nonce_heal, nonce_fill_gap"
   requires: ""
   tags: "infrastructure, l2"
 ---
