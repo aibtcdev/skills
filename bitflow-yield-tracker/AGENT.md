@@ -44,7 +44,7 @@ Autonomously monitor Bitflow HODLMM pool yields and surface the best liquidity d
 
 | Error | Action |
 |-------|--------|
-| Bitflow API unreachable | Retry once after 2s, then output `{ "error": "Bitflow API unavailable" }` |
+| Bitflow API unreachable | Ticker failures are silently zeroed (pool still appears with 0 APR/volume). Only fatal errors (pool list unavailable) return `{ "error": "Bitflow API unavailable" }` |
 | Pool not found | Output `{ "error": "Pool not found", "poolId": "<id>" }` |
 | No pools with min-apr | Output empty array with note: `"No pools meet the minimum APR threshold"` |
 | Invalid contract ID format | Output `{ "error": "Invalid pool-id format. Expected SP... contract identifier" }` |
