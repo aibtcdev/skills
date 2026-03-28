@@ -210,7 +210,7 @@ program
 // ─── get-market-info ─────────────────────────────────────────────────────────
 program
   .command("get-market-info")
-  .description("Fetch market-wide metrics for a Zest asset")
+  .description("Get Zest asset configuration and liquidation parameters")
   .requiredOption("--asset <symbol>", "Asset symbol (sBTC, STX, USDH, aeUSDC, stSTX)")
   .action(async (opts) => {
     try {
@@ -225,25 +225,27 @@ program
       }
 
       const zest = getZestService();
-      const market = await zest.getMarketInfo(opts.asset);
+      const assets = await zest.getAssets();
+      const assetInfo = assets.find(
+        (a) => a.symbol.toLowerCase() === opts.asset.toLowerCase()
+      );
 
-      if (!market) {
-        printJson({
-          error: "Asset not found or market data unavailable",
-          validAssets: VALID_ASSETS,
-        });
+      if (!assetInfo) {
+        printJson({ error: `Asset not found: ${opts.asset}`, validAssets: VALID_ASSETS });
         return;
       }
 
+      // Dynamic borrow/supply rates require direct on-chain reads from the pool-borrow
+      // contract (get-reserve-data). This command returns static asset configuration
+      // and liquidation parameters available via getAssets().
       printJson({
         network: NETWORK,
         asset: opts.asset,
-        totalSupply: market.totalSupply,
-        totalBorrow: market.totalBorrow,
-        supplyRate: market.supplyRate,
-        borrowRate: market.borrowRate,
-        utilizationRate: market.utilizationRate,
+        contractId: assetInfo.contractId,
+        name: assetInfo.name,
+        decimals: assetInfo.decimals ?? null,
         liquidationThreshold: getLiquidationThreshold(opts.asset),
+        note: "Dynamic supply/borrow rates require on-chain pool-borrow contract reads. Use the Zest app (app.zestprotocol.com) for live rate data.",
         fetchedAt: new Date().toISOString(),
       });
     } catch (err) {
