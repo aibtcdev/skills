@@ -359,7 +359,126 @@ program
         if (tags.length > 0) body.tags = tags;
         if (disclosure !== undefined) body.disclosure = disclosure;
 
-        const data = await apiPost("/signals", body, headers);
+        // Step 1: POST with auth headers — may return 200 (free) or 402 (x402 payment required)
+        const signalsUrl = `${NEWS_API_BASE}/signals`;
+        const initialRes = await fetch(signalsUrl, {
+          method: "POST",
+          headers,
+          body: JSON.stringify(body),
+        });
+
+        if (initialRes.status !== 402) {
+          const text = await initialRes.text();
+          let data: unknown;
+          try { data = JSON.parse(text); } catch { data = { raw: text }; }
+          if (!initialRes.ok) {
+            throw new Error(`API error ${initialRes.status} from POST /signals: ${text}`);
+          }
+          printJson({
+            success: true,
+            network: NETWORK,
+            message: "Signal filed successfully",
+            beatSlug: opts.beatId,
+            headline: opts.headline,
+            contentLength: opts.content.length,
+            sourcesCount: sources.length,
+            tagsCount: tags.length,
+            disclosureIncluded: disclosure !== undefined,
+            response: data,
+          });
+          return;
+        }
+
+        // Step 2: Handle x402 payment challenge
+        const paymentHeader = initialRes.headers.get("payment-required");
+        if (!paymentHeader) {
+          throw new Error("402 response missing payment-required header");
+        }
+
+        const {
+          decodePaymentRequired,
+          encodePaymentPayload,
+          X402_HEADERS,
+        } = await import("../src/lib/utils/x402-protocol.js");
+        const {
+          makeContractCall,
+          uintCV,
+          principalCV,
+          noneCV,
+        } = await import("@stacks/transactions");
+        const { getContracts, parseContractId } = await import("../src/lib/config/contracts.js");
+        const { getStacksNetwork } = await import("../src/lib/config/networks.js");
+        const { createFungiblePostCondition } = await import("../src/lib/transactions/post-conditions.js");
+        const { getHiroApi } = await import("../src/lib/services/hiro-api.js");
+        const { getAccount } = await import("../src/lib/services/wallet-manager.js");
+
+        const paymentRequired = decodePaymentRequired(paymentHeader);
+        if (!paymentRequired?.accepts?.length) {
+          throw new Error("No accepted payment methods in 402 response");
+        }
+        const accept = paymentRequired.accepts[0];
+        const amount = BigInt(accept.amount);
+
+        // Step 3: Build sponsored sBTC transfer transaction
+        const account = await getAccount();
+        const contracts = getContracts(NETWORK);
+        const { address: contractAddress, name: contractName } = parseContractId(contracts.SBTC_TOKEN);
+        const networkName = getStacksNetwork(NETWORK);
+        const postCondition = createFungiblePostCondition(
+          account.address,
+          contracts.SBTC_TOKEN,
+          "sbtc-token",
+          "eq",
+          amount
+        );
+        const hiro = getHiroApi(NETWORK);
+        const accountInfo = await hiro.getAccountInfo(account.address);
+        const nonce = BigInt(accountInfo.nonce);
+
+        const transaction = await makeContractCall({
+          contractAddress,
+          contractName,
+          functionName: "transfer",
+          functionArgs: [uintCV(amount), principalCV(account.address), principalCV(accept.payTo), noneCV()],
+          senderKey: account.privateKey,
+          network: networkName,
+          postConditions: [postCondition],
+          sponsored: true,
+          fee: 0n,
+          nonce,
+        });
+
+        const txHex = "0x" + transaction.serialize();
+
+        // Step 4: Encode payment payload and retry
+        const paymentSignature = encodePaymentPayload({
+          x402Version: 2,
+          resource: paymentRequired.resource,
+          accepted: accept,
+          payload: { transaction: txHex },
+        });
+
+        const finalRes = await fetch(signalsUrl, {
+          method: "POST",
+          headers: {
+            ...headers,
+            [X402_HEADERS.PAYMENT_SIGNATURE]: paymentSignature,
+          },
+          body: JSON.stringify(body),
+        });
+
+        const responseText = await finalRes.text();
+        let responseData: unknown;
+        try { responseData = JSON.parse(responseText); } catch { responseData = { raw: responseText }; }
+
+        if (!finalRes.ok) {
+          throw new Error(`Signal delivery failed after payment (${finalRes.status}): ${responseText}`);
+        }
+
+        const settlementHeader = finalRes.headers.get(X402_HEADERS.PAYMENT_RESPONSE);
+        const { decodePaymentResponse } = await import("../src/lib/utils/x402-protocol.js");
+        const settlement = decodePaymentResponse(settlementHeader);
+        const txid = settlement?.transaction;
 
         printJson({
           success: true,
@@ -371,7 +490,8 @@ program
           sourcesCount: sources.length,
           tagsCount: tags.length,
           disclosureIncluded: disclosure !== undefined,
-          response: data,
+          response: responseData,
+          ...(txid && { payment: { txid, amount: accept.amount + " sats sBTC" } }),
         });
       } catch (error) {
         handleError(error);
