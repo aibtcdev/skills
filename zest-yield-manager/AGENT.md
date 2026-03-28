@@ -1,3 +1,9 @@
+---
+name: zest-yield-manager-agent
+skill: zest-yield-manager
+description: "Autonomous sBTC yield management on Zest Protocol — supply, withdraw, claim rewards, and monitor positions with safety controls."
+---
+
 # Agent Behavior — Zest Yield Manager
 
 ## Decision order

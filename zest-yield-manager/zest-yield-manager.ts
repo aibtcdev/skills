@@ -9,6 +9,7 @@
  * On-chain proof: SP4DXVEC16FS6QR7RBKGWZYJKTXPC81W49W0ATJE has active Zest history.
  */
 
+import { Command } from "commander";
 import {
   uintCV,
   principalCV,
@@ -140,17 +141,6 @@ async function getRewardsPending(address: string): Promise<number> {
   } catch {
     return 0;
   }
-}
-
-function parseArgs(args: string[]): Record<string, string> {
-  const parsed: Record<string, string> = {};
-  for (const arg of args) {
-    if (arg.startsWith("--")) {
-      const [key, ...rest] = arg.slice(2).split("=");
-      parsed[key] = rest.join("=") || "true";
-    }
-  }
-  return parsed;
 }
 
 function getWalletAddress(): string {
@@ -471,92 +461,91 @@ async function runClaim(address: string): Promise<void> {
   });
 }
 
-// ── Main ───────────────────────────────────────────────────────────────
+// ── CLI ─────────────────────────────────────────────────────────────────
 
-async function main(): Promise<void> {
-  const command = process.argv[2];
-  const args = parseArgs(process.argv.slice(3));
+const program = new Command();
 
-  switch (command) {
-    case "doctor":
-      await doctor();
-      break;
+program
+  .name("zest-yield-manager")
+  .description(
+    "Autonomous sBTC yield management on Zest Protocol — supply, withdraw, claim rewards, and monitor positions"
+  )
+  .version("0.1.0");
 
-    case "install-packs": {
-      // Check and report dependencies
-      const deps = ["@stacks/transactions", "@stacks/network"];
-      const missing: string[] = [];
-      for (const dep of deps) {
-        try {
-          require.resolve(dep);
-        } catch {
-          missing.push(dep);
-        }
-      }
-      if (missing.length > 0) {
-        console.log(
-          JSON.stringify({
-            status: "success",
-            action: `Install missing packages: bun add ${missing.join(" ")}`,
-            data: { required: deps, missing, installed: deps.filter((d) => !missing.includes(d)) },
-            error: null,
-          })
+program
+  .command("doctor")
+  .description("Check environment readiness: wallet, balances, Zest contract availability, position, and rewards")
+  .action(async () => {
+    await doctor();
+  });
+
+program
+  .command("run")
+  .description("Execute a yield management action: status, supply, withdraw, or claim")
+  .option("--action <action>", "Action to perform: status | supply | withdraw | claim", "status")
+  .option("--amount <sats>", "Amount in sats for supply/withdraw operations", "0")
+  .option("--max-supply-sats <sats>", "Maximum sats allowed in a single supply call", String(DEFAULT_MAX_SUPPLY_SATS))
+  .action(async (opts: { action: string; amount: string; maxSupplySats: string }) => {
+    const address = getWalletAddress();
+    const action = opts.action;
+    const amount = parseInt(opts.amount, 10);
+    const maxSupply = parseInt(opts.maxSupplySats, 10);
+
+    switch (action) {
+      case "status":
+        await runStatus(address);
+        break;
+      case "supply":
+        await runSupply(address, amount, maxSupply);
+        break;
+      case "withdraw":
+        await runWithdraw(address, amount);
+        break;
+      case "claim":
+        await runClaim(address);
+        break;
+      default:
+        error(
+          "unknown_action",
+          `Unknown action: ${action}`,
+          "Use --action=status|supply|withdraw|claim"
         );
-      } else {
-        console.log(
-          JSON.stringify({
-            status: "success",
-            action: "All dependencies installed",
-            data: { required: deps, missing: [], installed: deps },
-            error: null,
-          })
-        );
-      }
-      break;
     }
+  });
 
-    case "run": {
-      const address = getWalletAddress();
-      const action = args["action"] || "status";
-      const amount = parseInt(args["amount"] || "0", 10);
-      const maxSupply = parseInt(
-        args["max-supply-sats"] || String(DEFAULT_MAX_SUPPLY_SATS),
-        10
-      );
-
-      switch (action) {
-        case "status":
-          await runStatus(address);
-          break;
-        case "supply":
-          await runSupply(address, amount, maxSupply);
-          break;
-        case "withdraw":
-          await runWithdraw(address, amount);
-          break;
-        case "claim":
-          await runClaim(address);
-          break;
-        default:
-          error(
-            "unknown_action",
-            `Unknown action: ${action}`,
-            "Use --action=status|supply|withdraw|claim"
-          );
+program
+  .command("install-packs")
+  .description("Check and report on required dependency packages")
+  .option("--pack <name>", "Specific package to check")
+  .action(async () => {
+    const deps = ["@stacks/transactions", "@stacks/network"];
+    const missing: string[] = [];
+    for (const dep of deps) {
+      try {
+        require.resolve(dep);
+      } catch {
+        missing.push(dep);
       }
-      break;
     }
-
-    default:
-      error(
-        "unknown_command",
-        `Unknown command: ${command || "(none)"}`,
-        "Use: doctor | run | install-packs"
+    if (missing.length > 0) {
+      console.log(
+        JSON.stringify({
+          status: "success",
+          action: `Install missing packages: bun add ${missing.join(" ")}`,
+          data: { required: deps, missing, installed: deps.filter((d) => !missing.includes(d)) },
+          error: null,
+        })
       );
-  }
-}
+    } else {
+      console.log(
+        JSON.stringify({
+          status: "success",
+          action: "All dependencies installed",
+          data: { required: deps, missing: [], installed: deps },
+          error: null,
+        })
+      );
+    }
+  });
 
-main().catch((e) => {
-  error("unhandled", e.message, "Check stack trace and retry");
-  process.exit(1);
-});
+program.parse(process.argv);
