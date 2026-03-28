@@ -7,7 +7,7 @@ metadata:
   user-invocable: "false"
   arguments: "alex-get-swap-quote | alex-swap | alex-get-pool-info | alex-list-pools | zest-list-assets | zest-get-position | zest-supply | zest-withdraw | zest-borrow | zest-repay | zest-claim-rewards"
   entry: "defi/defi.ts"
-  mcp-tools: "alex_get_swap_quote, alex_swap, alex_get_pool_info, alex_list_pools, zest_list_assets, zest_get_position, zest_supply, zest_withdraw, zest_borrow, zest_repay"
+  mcp-tools: "alex_get_swap_quote, alex_swap, alex_get_pool_info, alex_list_pools, zest_list_assets, zest_get_position, zest_supply, zest_withdraw, zest_borrow, zest_repay, zest_enable_collateral"
   requires: "wallet"
   tags: "l2, defi, write, mainnet-only, requires-funds"
 ---
@@ -295,6 +295,31 @@ Output:
   "asset": "SM3VDXK3WZZSA84XXFKAFAF15NNZX32CTSG82JFQ4.sbtc-token",
   "amount": "100000",
   "onBehalfOf": "SP2...",
+  "network": "mainnet",
+  "explorerUrl": "https://explorer.hiro.so/txid/abc123...?chain=mainnet"
+}
+```
+
+### zest-enable-collateral
+
+Register existing zTokens as collateral on Zest Protocol v2. Calls `v0-4-market.collateral-add`. Only needed if you deposited directly to a vault without going through `zest-supply` (which handles collateral registration atomically). Requires an unlocked wallet.
+
+```
+bun run defi/defi.ts zest-enable-collateral --asset <symbolOrContractId> --amount <units>
+```
+
+Options:
+- `--asset` (required) — Asset symbol or full contract ID
+- `--amount` (required) — Amount of zTokens to add as collateral (in smallest units)
+
+Output:
+```json
+{
+  "success": true,
+  "txid": "abc123...",
+  "action": "enable_collateral",
+  "asset": "SM3VDXK3WZZSA84XXFKAFAF15NNZX32CTSG82JFQ4.sbtc-token",
+  "amount": "100000",
   "network": "mainnet",
   "explorerUrl": "https://explorer.hiro.so/txid/abc123...?chain=mainnet"
 }
