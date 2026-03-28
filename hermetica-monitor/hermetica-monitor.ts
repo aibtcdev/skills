@@ -8,7 +8,7 @@
 
 import { Command } from "commander";
 import { NETWORK } from "../src/lib/config/networks.js";
-import { callReadOnlyFunction, cvToValue, principalCV } from "@stacks/transactions";
+import { callReadOnlyFunction, cvToValue } from "@stacks/transactions";
 import { printJson, handleError } from "../src/lib/utils/cli.js";
 
 // Contract addresses
