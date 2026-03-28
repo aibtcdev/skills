@@ -144,7 +144,7 @@ program
         );
       } catch { /* ignore */ }
 
-      const bins = await bitflow.getHodlmmBins(opts.poolId);
+      const bins = await bitflow.getHodlmmPoolBins(opts.poolId);
 
       const fees24h = String(ticker?.fee_volume_24h ?? 0);
       const volume24h = String(ticker?.volume_24h ?? 0);
