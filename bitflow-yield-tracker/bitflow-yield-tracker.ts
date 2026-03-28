@@ -12,7 +12,7 @@ import { getBitflowService } from "../src/lib/services/bitflow.service.js";
 import { printJson, handleError } from "../src/lib/utils/cli.js";
 
 const APR_SANITY_THRESHOLD = 500; // Flag APRs above 500% as suspicious
-const MIN_LIQUIDITY_USD = 10_000_00; // 10,000 USD in micro-units (6 decimals)
+const MIN_LIQUIDITY_USD = 10_000; // $10,000 USD (liquidity is in USD, not micro-units)
 
 function calcApr(fees24h: string, totalLiquidity: string): number {
   const fees = parseFloat(fees24h);
@@ -55,7 +55,7 @@ program
         pools.map(async (pool: any) => {
           let fees24h = "0";
           let volume24h = "0";
-          let activeBinSpread = 0;
+
           let totalLiquidity = "0";
 
           try {
@@ -70,12 +70,8 @@ program
             // Ticker unavailable — continue with zeros
           }
 
-          try {
-            const bins = await bitflow.getHodlmmPositionBins(pool.contractId, pool.contractId);
-            activeBinSpread = Array.isArray(bins) ? bins.length : 0;
-          } catch {
-            // Bins unavailable
-          }
+          // Note: getHodlmmUserPositionBins requires a userAddress — not called here
+          // since get-pool-yields is a market-wide view, not user-specific.
 
           const estimatedApr = calcApr(fees24h, totalLiquidity);
           const flags = flagPool(estimatedApr, totalLiquidity);
@@ -88,7 +84,6 @@ program
             estimatedApr: parseFloat(estimatedApr.toFixed(2)),
             volume24h,
             fees24h,
-            activeBinSpread,
             totalLiquidity,
             flags,
           };
