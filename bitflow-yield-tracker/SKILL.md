@@ -7,7 +7,7 @@ metadata:
   user-invocable: "false"
   arguments: "get-pool-yields | get-pool-detail | compare-pools | get-fee-estimate"
   entry: "bitflow-yield-tracker/bitflow-yield-tracker.ts"
-  requires: "wallet"
+  requires: "none"
   tags: "l2, defi, read-only, mainnet-only"
 ---
 
