@@ -26,6 +26,7 @@ Each skill is a self-contained directory with a `SKILL.md` (used by Claude Code 
 | [validation](./validation/) | `validation/validation.ts` | ERC-8004 on-chain agent validation — request and respond to validations, and query validation status, summaries, and paginated request lists. |
 | [bitflow](./bitflow/) | `bitflow/bitflow.ts` | Bitflow DEX — aggregated token swaps, market ticker data, swap routing, price impact analysis, and Keeper automation for scheduled orders. Mainnet-only. |
 | [bitflow-yield-tracker](./bitflow-yield-tracker/) | `bitflow-yield-tracker/bitflow-yield-tracker.ts` | Track real-time yield metrics for Bitflow HODLMM pools — APR estimates, fee accumulation, volume, and cross-pool comparison. Read-only. Mainnet-only. |
+| [hermetica-monitor](./hermetica-monitor/) | `hermetica-monitor/hermetica-monitor.ts` | Monitor Hermetica Protocol USDh stablecoin peg health, oracle price, reserve backing, and APY from Zest. Read-only. Mainnet-only. |
 | [defi](./defi/) | `defi/defi.ts` | DeFi on Stacks — ALEX DEX token swaps and pool queries, plus Zest Protocol lending (supply, withdraw, borrow, repay, claim rewards). Mainnet-only. |
 | [stacking](./stacking/) | `stacking/stacking.ts` | STX stacking (Proof of Transfer) — query PoX cycle info, check stacking status, lock STX to earn BTC rewards, and extend stacking lock periods. |
 | [stacks-market](./stacks-market/) | `stacks-market/stacks-market.ts` | Prediction market trading on stacksmarket.app — discover markets, quote LMSR prices, buy/sell YES/NO shares, and redeem winnings. Mainnet-only. |
