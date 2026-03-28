@@ -449,6 +449,7 @@ program
         });
 
         const txHex = "0x" + transaction.serialize();
+        const paymentTxid = transaction.txid();
 
         // Step 4: Encode payment payload and retry
         const paymentSignature = encodePaymentPayload({
@@ -472,13 +473,13 @@ program
         try { responseData = JSON.parse(responseText); } catch { responseData = { raw: responseText }; }
 
         if (!finalRes.ok) {
-          throw new Error(`Signal delivery failed after payment (${finalRes.status}): ${responseText}`);
+          throw new Error(`Signal delivery failed after payment (${finalRes.status}): ${responseText} (paymentTxid=${paymentTxid})`);
         }
 
         const settlementHeader = finalRes.headers.get(X402_HEADERS.PAYMENT_RESPONSE);
         const { decodePaymentResponse } = await import("../src/lib/utils/x402-protocol.js");
-        const settlement = decodePaymentResponse(settlementHeader);
-        const txid = settlement?.transaction;
+        const settlement = settlementHeader ? decodePaymentResponse(settlementHeader) : null;
+        const txid = settlement?.transaction ?? paymentTxid;
 
         printJson({
           success: true,
