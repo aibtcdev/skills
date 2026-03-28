@@ -67,7 +67,7 @@ function printJson(data: Record<string, unknown>): void {
 }
 function handleError(error: unknown): void {
   const message = error instanceof Error ? error.message : String(error);
-      const output = { error: message };
+  const output = { error: message };
   console.log(JSON.stringify(output, null, 2));
   process.exit(1);
 }
