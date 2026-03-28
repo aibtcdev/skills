@@ -77,7 +77,7 @@ async function getNonceInfo(
 ): Promise<HiroNonceInfo> {
   const baseUrl = getApiBaseUrl(network);
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 30000);
+  const timeout = setTimeout(() => controller.abort(), 10000);
   try {
     const res = await fetch(
       `${baseUrl}/extended/v1/address/${address}/nonces`,
@@ -102,8 +102,17 @@ async function checkRelayHealth(
 
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 30000);
-    let healthData: { status?: string; version?: string };
+    const timeout = setTimeout(() => controller.abort(), 10000);
+    let healthData: {
+      status?: string;
+      version?: string;
+      nonce?: {
+        circuitBreakerOpen?: boolean;
+        poolStatus?: string;
+        effectiveCapacity?: number;
+        conflictsDetected?: number;
+      };
+    };
     try {
       const healthRes = await fetch(`${relayUrl}/health`, {
         method: "GET",
@@ -119,6 +128,12 @@ async function checkRelayHealth(
       healthData = (await healthRes.json()) as {
         status?: string;
         version?: string;
+        nonce?: {
+          circuitBreakerOpen?: boolean;
+          poolStatus?: string;
+          effectiveCapacity?: number;
+          conflictsDetected?: number;
+        };
       };
     } finally {
       clearTimeout(timeout);
@@ -128,6 +143,22 @@ async function checkRelayHealth(
 
     if (healthData.status !== "ok") {
       issues.push(`Relay status: ${healthData.status ?? "unknown"}`);
+    }
+
+    if (healthData.nonce) {
+      const noncePool = healthData.nonce;
+      if (noncePool.circuitBreakerOpen === true) {
+        issues.push("Relay circuit breaker is open — new sponsored transactions will be rejected");
+      }
+      if (noncePool.poolStatus !== undefined && noncePool.poolStatus !== "healthy") {
+        issues.push(`Relay nonce pool status: ${noncePool.poolStatus}`);
+      }
+      if (noncePool.effectiveCapacity !== undefined && noncePool.effectiveCapacity < 5) {
+        issues.push(`Relay nonce pool capacity critically low: ${noncePool.effectiveCapacity} available`);
+      }
+      if (noncePool.conflictsDetected !== undefined && noncePool.conflictsDetected > 10) {
+        issues.push(`Relay nonce conflicts detected: ${noncePool.conflictsDetected}`);
+      }
     }
 
     const sponsorAddress = SPONSOR_ADDRESSES[network];
@@ -162,7 +193,7 @@ async function checkRelayHealth(
       issues.push(
         `Mempool desync detected: sponsor nonce ${lastExecuted} (executed) vs ${lastMempool} (mempool), gap of ${desyncGap}`
       );
-    } else if (nonceInfo.detected_mempool_nonces.length > 10) {
+    } else if (nonceInfo.detected_mempool_nonces.length > 5) {
       issues.push(
         `Sponsor has ${nonceInfo.detected_mempool_nonces.length} transactions stuck in mempool`
       );
@@ -312,7 +343,7 @@ async function attemptRbf(
   if (txids && txids.length > 0) body.txids = txids;
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 30000);
+  const timeout = setTimeout(() => controller.abort(), 10000);
 
   try {
     const res = await fetch(`${relayUrl}/recovery/rbf`, {
@@ -367,7 +398,7 @@ async function attemptFillGaps(
   if (nonces && nonces.length > 0) body.nonces = nonces;
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 30000);
+  const timeout = setTimeout(() => controller.abort(), 10000);
 
   try {
     const res = await fetch(`${relayUrl}/recovery/fill-gaps`, {

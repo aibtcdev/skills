@@ -307,7 +307,7 @@ program
   .option(
     "--relay-url <url>",
     "Base URL of the sponsor relay",
-    "https://sponsor.aibtc.dev"
+    "https://x402-relay.aibtc.com"
   )
   .option(
     "--sponsor-address <address>",
@@ -394,6 +394,18 @@ program
               `Mempool congestion: ${nonceData.detected_mempool_nonces.length} pending sponsor transactions. ` +
                 "New sponsored transactions may be slow to confirm."
             );
+          }
+          if (
+            nonceData.last_mempool_tx_nonce !== null &&
+            nonceData.last_executed_tx_nonce !== null
+          ) {
+            const desyncGap =
+              nonceData.last_mempool_tx_nonce - nonceData.last_executed_tx_nonce;
+            if (desyncGap > 5) {
+              issues.push(
+                `Mempool desync detected: sponsor nonce ${nonceData.last_executed_tx_nonce} (executed) vs ${nonceData.last_mempool_tx_nonce} (mempool), gap of ${desyncGap}`
+              );
+            }
           }
         } else {
           issues.push(
