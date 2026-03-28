@@ -36,6 +36,10 @@ function calcHealthFactor(supplied: string, borrowed: string, lt: number): numbe
   const s = parseFloat(supplied);
   const b = parseFloat(borrowed);
   if (b <= 0) return null; // no borrow = no liquidation risk
+  // NOTE: getUserPosition returns raw token amounts for a single asset.
+  // supplied and borrowed are always the same asset (e.g. both sBTC in raw satoshis,
+  // or both USDH in micro-units), so decimal places cancel out and the ratio is correct.
+  // This skill does NOT aggregate cross-asset positions — each check is per-asset.
   return (s * lt) / b;
 }
 
@@ -88,6 +92,10 @@ program
       }
       if (!validateAddress(opts.address)) {
         printJson({ error: "Invalid Stacks address. Must start with SP or SM." });
+        return;
+      }
+      if (!VALID_ASSETS.includes(opts.asset)) {
+        printJson({ error: `Unknown asset: ${opts.asset}`, validAssets: VALID_ASSETS });
         return;
       }
 
@@ -208,6 +216,11 @@ program
     try {
       if (NETWORK !== "mainnet") {
         printJson({ error: "Zest Protocol is mainnet-only." });
+        return;
+      }
+
+      if (!VALID_ASSETS.includes(opts.asset)) {
+        printJson({ error: `Unknown asset: ${opts.asset}`, validAssets: VALID_ASSETS });
         return;
       }
 
