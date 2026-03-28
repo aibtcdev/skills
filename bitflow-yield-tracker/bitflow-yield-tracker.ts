@@ -58,7 +58,7 @@ program
           let totalLiquidity = "0";
 
           try {
-            const ticker = await bitflow.getTicker(
+            const ticker = await bitflow.getTickerByPair(
               pool.tokenXContractAddress + "." + pool.tokenXContractName,
               pool.tokenYContractAddress + "." + pool.tokenYContractName
             );
@@ -138,7 +138,7 @@ program
 
       let ticker: any = {};
       try {
-        ticker = await bitflow.getTicker(
+        ticker = await bitflow.getTickerByPair(
           pool.tokenXContractAddress + "." + pool.tokenXContractName,
           pool.tokenYContractAddress + "." + pool.tokenYContractName
         );
@@ -207,7 +207,7 @@ program
           let volume24h = "0";
           let totalLiquidity = "0";
           try {
-            const ticker = await bitflow.getTicker(
+            const ticker = await bitflow.getTickerByPair(
               pool.tokenXContractAddress + "." + pool.tokenXContractName,
               pool.tokenYContractAddress + "." + pool.tokenYContractName
             );
@@ -285,7 +285,7 @@ program
       let fees24h = "0";
       let totalLiquidity = "0";
       try {
-        const ticker = await bitflow.getTicker(
+        const ticker = await bitflow.getTickerByPair(
           pool.tokenXContractAddress + "." + pool.tokenXContractName,
           pool.tokenYContractAddress + "." + pool.tokenYContractName
         );
