@@ -286,7 +286,6 @@ program
       const riskFlags: string[] = [];
       if (oracle === null) riskFlags.push("oracle-stale");
       else if (deviationPct !== null) riskFlags.push(...calcRiskFlags(deviationPct, supply?.formatted ?? 0));
-      if (supply?.formatted !== undefined && supply.formatted < 10_000) riskFlags.push("low-supply");
 
       const pegStatus = oracle === null
         ? "unknown"
