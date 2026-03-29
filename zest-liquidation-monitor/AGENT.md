@@ -65,7 +65,7 @@ Default liquidation thresholds:
 ## Liquidation Price Formula
 
 ```
-liquidationPrice = (borrowed × 1.0) / (supplied × liquidationThreshold)
+liquidationPrice = (borrowed / (supplied × liquidationThreshold)) × currentPrice
 ```
 
 Example: 1 sBTC supplied, 0.5 sBTC borrowed equivalent, 75% LT

@@ -12,16 +12,12 @@ import { getZestService } from "../src/lib/services/defi.service.js";
 import { printJson, handleError } from "../src/lib/utils/cli.js";
 
 // Liquidation thresholds by asset symbol (Zest Protocol defaults)
+// Keys are lowercase for case-insensitive lookup via getLiquidationThreshold
 const LIQUIDATION_THRESHOLDS: Record<string, number> = {
-  sBTC: 0.75,
   sbtc: 0.75,
-  STX: 0.65,
   stx: 0.65,
-  USDH: 0.80,
   usdh: 0.80,
-  aeUSDC: 0.80,
   aeusdc: 0.80,
-  stSTX: 0.65,
   ststx: 0.65,
 };
 
@@ -29,7 +25,7 @@ const DEFAULT_LT = 0.75;
 const WARN_THRESHOLD_DEFAULT = 1.5;
 
 function getLiquidationThreshold(asset: string): number {
-  return LIQUIDATION_THRESHOLDS[asset] ?? DEFAULT_LT;
+  return LIQUIDATION_THRESHOLDS[asset.toLowerCase()] ?? DEFAULT_LT;
 }
 
 function calcHealthFactor(supplied: string, borrowed: string, lt: number): number | null {
