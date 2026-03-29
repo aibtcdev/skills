@@ -224,7 +224,7 @@ Store token balance snapshots at proposal creation time using a composite-key ma
   (let (
     (proposal-id (+ (var-get last-proposal-id) u1))
     (snapshot-block stacks-block-height))
-    (map (store-snapshot proposal-id) voters)
+    (fold store-snapshot voters proposal-id)
     (map-set Proposals proposal-id {
       votesFor: u0, votesAgainst: u0,
       status: u0, liquidTokens: u0,
@@ -232,10 +232,12 @@ Store token balance snapshots at proposal creation time using a composite-key ma
     (var-set last-proposal-id proposal-id)
     (ok proposal-id)))
 
-(define-private (store-snapshot (proposal-id uint) (voter principal))
-  (map-set ProposalSnapshots
-    {proposalId: proposal-id, voter: voter}
-    (unwrap-panic (contract-call? .token get-balance voter))))
+(define-private (store-snapshot (voter principal) (acc uint))
+  (begin
+    (map-set ProposalSnapshots
+      {proposalId: acc, voter: voter}
+      (unwrap! (contract-call? .token get-balance voter) u0))
+    acc))
 
 ;; O(1) lookup — no list scan, no filter
 (define-read-only (get-vote-power (proposal-id uint) (voter principal))
