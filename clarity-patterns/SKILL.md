@@ -199,29 +199,58 @@ Prevent rapid repeated actions.
     (ok true)))
 ```
 
-### DAO Proposals with Historic Balances
+### DAO Proposals with Snapshot Voting (Stacks 3.4+)
 
-Use `at-block` for snapshot voting.
+> **Note:** Contracts using `at-block` will fail after Stacks 3.4 activation (~2026-04-02, BTC block 943,333). The `at-block` built-in was removed in Stacks 3.4 (SIP-042). The aibtcdev-daos DAO contracts that used `at-block` will need migration before activation.
+
+Store token balance snapshots at proposal creation time using a composite-key map. This avoids `at-block`, eliminates `filter`/list scan at read time, and gives O(1) lookup.
 
 ```clarity
+;; Stacks 3.4+: at-block removed. Store snapshot at proposal creation time.
+;; Using a composite-key map for O(1) lookup — no filter/list scan needed.
+(define-map ProposalSnapshots {proposalId: uint, voter: principal} uint)
+
 (define-map Proposals uint {
   votesFor: uint,
   votesAgainst: uint,
   status: uint,
   liquidTokens: uint,
-  blockHash: (buff 32)
+  snapshotBlock: uint
 })
 
-;; Get voting power at proposal creation
+;; At proposal creation: capture token balances for eligible voters
+;; (caller supplies voter list; balances read from current block)
+(define-public (create-proposal (voters (list 1000 principal)))
+  (let (
+    (proposal-id (+ (var-get last-proposal-id) u1))
+    (snapshot-block stacks-block-height))
+    (map (store-snapshot proposal-id) voters)
+    (map-set Proposals proposal-id {
+      votesFor: u0, votesAgainst: u0,
+      status: u0, liquidTokens: u0,
+      snapshotBlock: snapshot-block})
+    (var-set last-proposal-id proposal-id)
+    (ok proposal-id)))
+
+(define-private (store-snapshot (proposal-id uint) (voter principal))
+  (map-set ProposalSnapshots
+    {proposalId: proposal-id, voter: voter}
+    (unwrap-panic (contract-call? .token get-balance voter))))
+
+;; O(1) lookup — no list scan, no filter
 (define-read-only (get-vote-power (proposal-id uint) (voter principal))
-  (let ((proposal (unwrap! (map-get? Proposals proposal-id) u0)))
-    (at-block (get blockHash proposal)
-      (contract-call? .token get-balance voter))))
+  (default-to u0
+    (map-get? ProposalSnapshots {proposalId: proposal-id, voter: voter})))
 
 ;; Quorum check: (>= (/ (* total-votes u100) liquid-supply) QUORUM_PERCENT)
 ```
 
-Example: [aibtc-action-proposal-voting](https://github.com/aibtcdev/aibtcdev-daos/blob/main/contracts/dao/extensions/aibtc-action-proposal-voting.clar)
+Key points:
+- **No `(filter ...)` with closures** — Clarity has no partial application. Composite-key map replaces the filter pattern entirely.
+- **`default-to u0` works correctly** — `map-get?` returns `(optional uint)`, so `default-to u0` handles missing voters without panic (unlike `unwrap-panic` on a filtered list).
+- **O(1) lookup** instead of O(n) list scan at read time.
+
+Example: [aibtcdev-daos](https://github.com/aibtcdev/aibtcdev-daos) — DAO contracts using `at-block` require migration before Stacks 3.4 activation.
 
 ### Fixed-Point Arithmetic
 
