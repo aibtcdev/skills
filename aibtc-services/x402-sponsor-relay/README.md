@@ -33,11 +33,13 @@ Enables AI agents to perform Stacks transactions without holding STX for gas fee
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | GET | `/` | None | Service info |
-| GET | `/health` | None | Health check with network and version |
+| GET | `/health` | None | Health check with network, version, and nonce pool status |
 | GET | `/docs` | None | Swagger UI documentation |
 | GET | `/openapi.json` | None | OpenAPI 3.1 specification |
-| POST | `/relay` | None | Submit pre-signed sponsored transaction for settlement |
-| POST | `/sponsor` | API Key | Sponsor and broadcast transaction directly |
+| POST | `/relay` | None | Submit pre-signed sponsored transaction for settlement (may return 202 if sender nonce is out of order) |
+| POST | `/sponsor` | API Key | Sponsor and broadcast transaction directly (400 `SENDER_NONCE_GAP` if sender nonce would create a gap) |
+| GET | `/queue/:senderAddress` | None | List queued/held transactions for a sender address |
+| DELETE | `/queue/:senderAddress/:walletIndex/:sponsorNonce` | None | Cancel a specific held transaction |
 | GET | `/verify/:receiptId` | None | Verify a payment receipt |
 | POST | `/access` | None | Access protected resource with receipt token |
 | GET | `/fees` | None | Current fee estimates (clamped) |
@@ -150,6 +152,27 @@ Agents must build transactions with `sponsored: true` and `fee: 0n`:
 }
 ```
 
+**202 Transaction Held** (sender nonce out of order — queued for later broadcast):
+
+```json
+{
+  "success": false,
+  "code": "TRANSACTION_HELD",
+  "error": "Transaction held — sender nonce is out of order",
+  "queue": {
+    "position": 1,
+    "senderNonce": 42,
+    "sponsorNonce": 5,
+    "walletIndex": 0,
+    "heldAt": "2026-03-29T10:00:00.000Z",
+    "expiresAt": "2026-03-29T11:00:00.000Z"
+  },
+  "retryable": true
+}
+```
+
+Use `GET /queue/:senderAddress` to inspect held transactions. Once the gap is filled, held transactions are broadcast automatically.
+
 ### POST /keys/provision
 
 ```json
@@ -170,6 +193,16 @@ Agents must build transactions with `sponsored: true` and `fee: 0n`:
   }
 }
 ```
+
+## Error Codes
+
+| Code | HTTP | Endpoint | Description |
+|------|------|----------|-------------|
+| `SENDER_NONCE_GAP` | 400 | `/sponsor` | Sender nonce would create a gap in the sequence. Response includes `missingNonces[]` — submit transactions for those nonces first. |
+| `TRANSACTION_HELD` | 202 | `/relay` | Sender nonce is out of order; transaction queued and will broadcast automatically when gap is filled. Response includes `queue` object with position and expiry. |
+| `MALFORMED_PAYLOAD` | 400 | `/relay`, `/sponsor` | Request body failed schema validation. After 3 bad payloads from the same IP, subsequent requests return 429 until the window resets. |
+| `QUEUE_NOT_FOUND` | 404 | `DELETE /queue/:senderAddress/:walletIndex/:sponsorNonce` | No held transaction matching the given coordinates. |
+| `QUEUE_ACCESS_DENIED` | 403 | `DELETE /queue/:senderAddress/:walletIndex/:sponsorNonce` | Cancellation rejected — caller is not the original sender. |
 
 ## Related Skills
 

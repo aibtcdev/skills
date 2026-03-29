@@ -28,6 +28,8 @@ export interface SponsorRelayResponse {
   details?: string;
   retryable?: boolean;
   retryAfter?: number;
+  /** SENDER_NONCE_GAP: nonces between current sender nonce and submitted nonce that must be filled first */
+  missingNonces?: number[];
 }
 
 /**
@@ -36,12 +38,16 @@ export interface SponsorRelayResponse {
 function formatRelayError(response: SponsorRelayResponse): string {
   const errorMsg = response.error || "Sponsor relay request failed";
   const details = response.details ? ` (${response.details})` : "";
+  const nonceGapInfo =
+    response.code === "SENDER_NONCE_GAP" && response.missingNonces && response.missingNonces.length > 0
+      ? ` [Missing sender nonces: ${response.missingNonces.join(", ")} — submit transactions for these nonces first]`
+      : "";
   const retryInfo = response.retryable
     ? typeof response.retryAfter === "number"
       ? ` [Retryable after ${response.retryAfter}s]`
       : " [Retryable; try again later]"
     : "";
-  return `${errorMsg}${details}${retryInfo}`;
+  return `${errorMsg}${details}${nonceGapInfo}${retryInfo}`;
 }
 
 /**
