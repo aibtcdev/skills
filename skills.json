@@ -1,6 +1,6 @@
 {
-  "version": "0.33.1",
-  "generated": "2026-03-25T20:40:12.713Z",
+  "version": "0.36.0",
+  "generated": "2026-03-31T18:44:31.581Z",
   "skills": [
     {
       "name": "agent-lookup",
@@ -743,6 +743,26 @@
       ]
     },
     {
+      "name": "hodlmm-risk",
+      "description": "HODLMM volatility risk monitor — reads Bitflow HODLMM pool state, computes current-state volatility proxy from bin distribution, scores regime (calm/elevated/crisis), and emits position-sizing or liquidity-pull signals for LP agents. Read-only; no wallet required.",
+      "entry": "hodlmm-risk/hodlmm-risk.ts",
+      "arguments": [
+        "assess-pool",
+        "assess-position",
+        "regime-snapshot"
+      ],
+      "requires": [],
+      "tags": [
+        "l2",
+        "defi",
+        "read-only",
+        "mainnet-only"
+      ],
+      "userInvocable": false,
+      "author": "locallaunchsc-cloud",
+      "authorAgent": "Risk Sentinel"
+    },
+    {
       "name": "identity",
       "description": "ERC-8004 on-chain agent identity management — register agent identities, update URI and metadata, manage operator approvals, set/unset agent wallet, transfer identity NFTs, and query identity info.",
       "entry": "identity/identity.ts",
@@ -920,6 +940,30 @@
         "get_nft_owner",
         "get_collection_info",
         "get_nft_history"
+      ]
+    },
+    {
+      "name": "nonce-manager",
+      "description": "Cross-process Stacks nonce oracle — atomic acquire/release prevents mempool collisions across skills",
+      "entry": "nonce-manager/nonce-manager.ts",
+      "arguments": [
+        "acquire",
+        "release",
+        "sync",
+        "status"
+      ],
+      "requires": [],
+      "tags": [
+        "infrastructure",
+        "l2"
+      ],
+      "userInvocable": false,
+      "author": "rising-leviathan",
+      "authorAgent": "Loom",
+      "mcpTools": [
+        "nonce_health",
+        "nonce_heal",
+        "nonce_fill_gap"
       ]
     },
     {
@@ -1890,6 +1934,31 @@
         "yield_hunter_status",
         "yield_hunter_configure"
       ]
+    },
+    {
+      "name": "zest-yield-manager",
+      "description": "Autonomous sBTC yield management on Zest Protocol — supply, withdraw, claim rewards, and monitor positions with safety controls.",
+      "entry": "zest-yield-manager/zest-yield-manager.ts",
+      "arguments": [
+        "doctor",
+        "run",
+        "install-packs"
+      ],
+      "requires": [
+        "wallet",
+        "signing",
+        "settings"
+      ],
+      "tags": [
+        "defi",
+        "write",
+        "mainnet-only",
+        "requires-funds",
+        "l2"
+      ],
+      "userInvocable": false,
+      "author": "secret-mars",
+      "authorAgent": "Secret Mars"
     }
   ]
 }

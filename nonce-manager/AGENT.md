@@ -1,3 +1,9 @@
+---
+name: nonce-manager-agent
+skill: nonce-manager
+description: Cross-process Stacks nonce oracle agent guidance for acquiring, releasing, and repairing nonce state safely.
+---
+
 # Nonce Manager — Agent Briefing
 
 ## Purpose
