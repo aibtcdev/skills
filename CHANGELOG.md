@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.36.1](https://github.com/aibtcdev/skills/compare/skills-v0.36.0...skills-v0.36.1) (2026-03-31)
+
+
+### Bug Fixes
+
+* **x402-retry:** track pending payment ids ([#279](https://github.com/aibtcdev/skills/issues/279)) ([92ece39](https://github.com/aibtcdev/skills/commit/92ece391dd73fb28b8796a4141a44a4b23216b9c))
+
 ## [0.36.0](https://github.com/aibtcdev/skills/compare/skills-v0.35.0...skills-v0.36.0) (2026-03-28)
 
 
