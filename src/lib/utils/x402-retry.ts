@@ -57,6 +57,8 @@ export interface InboxSubmitResult {
   status: number;
   responseData: Record<string, unknown>;
   settlementTxid?: string;
+  paymentId?: string;
+  paymentStatus?: "confirmed" | "pending" | "failed";
   paymentSignature?: string;
   recovered?: boolean;
 }
@@ -232,6 +234,34 @@ async function getNextNonce(address: string, network: Network): Promise<number> 
  */
 async function advanceNonceCache(address: string, usedNonce: number, txid = ""): Promise<void> {
   await recordNonceUsed(address, usedNonce, txid);
+}
+
+export function extractInboxPaymentMetadata(responseData: Record<string, unknown>): {
+  paymentId?: string;
+  paymentStatus?: "confirmed" | "pending" | "failed";
+} {
+  const inbox = responseData["inbox"];
+  if (!inbox || typeof inbox !== "object" || Array.isArray(inbox)) {
+    return {};
+  }
+
+  const inboxRecord = inbox as Record<string, unknown>;
+
+  const paymentId =
+    typeof inboxRecord["paymentId"] === "string" && inboxRecord["paymentId"].length > 0
+      ? inboxRecord["paymentId"]
+      : undefined;
+  const paymentStatus = inboxRecord["paymentStatus"];
+
+  return {
+    paymentId,
+    paymentStatus:
+      paymentStatus === "confirmed" ||
+      paymentStatus === "pending" ||
+      paymentStatus === "failed"
+        ? paymentStatus
+        : undefined,
+  };
 }
 
 /**
@@ -434,15 +464,20 @@ export async function executeInboxWithRetry(
         finalRes.headers.get(X402_HEADERS.PAYMENT_RESPONSE)
       );
       const txid = settlement?.transaction;
+      const { paymentId, paymentStatus } = extractInboxPaymentMetadata(parsed);
+      const nonceReference =
+        txid ?? (paymentStatus === "pending" && paymentId ? `pending:${paymentId}` : "");
 
       // Advance shared nonce tracker on success
-      await advanceNonceCache(account.address, nonce, txid ?? "");
+      await advanceNonceCache(account.address, nonce, nonceReference);
 
       return {
         success: true,
         status: finalRes.status,
         responseData: parsed,
         settlementTxid: txid ?? undefined,
+        paymentId,
+        paymentStatus,
         paymentSignature,
       };
     }

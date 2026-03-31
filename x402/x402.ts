@@ -493,13 +493,18 @@ program
           contentLength: opts.content.length,
           contentHash,
           inbox: result.responseData,
-          ...(result.settlementTxid && {
-            payment: {
-              txid: result.settlementTxid,
-              amount: accept.amount + " sats sBTC",
-              explorer: getExplorerTxUrl(result.settlementTxid, NETWORK),
-            },
-          }),
+          payment: {
+            amount: accept.amount + " sats sBTC",
+            status: result.paymentStatus ?? (result.settlementTxid ? "confirmed" : undefined),
+            paymentId: result.paymentId,
+            checkUrl: result.paymentId
+              ? `https://aibtc.com/api/payment-status/${result.paymentId}`
+              : undefined,
+            txid: result.settlementTxid,
+            explorer: result.settlementTxid
+              ? getExplorerTxUrl(result.settlementTxid, NETWORK)
+              : undefined,
+          },
         });
       } catch (error) {
         handleError(error);
