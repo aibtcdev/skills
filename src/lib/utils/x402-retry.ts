@@ -264,6 +264,30 @@ export function extractInboxPaymentMetadata(responseData: Record<string, unknown
   };
 }
 
+export function resolveInboxPaymentTracking(
+  responseData: Record<string, unknown>,
+  fallbackPaymentId: string,
+  settlementTxid?: string
+): {
+  paymentId?: string;
+  paymentStatus?: "confirmed" | "pending" | "failed";
+  nonceReference: string;
+} {
+  const { paymentId: inboxPaymentId, paymentStatus: inboxPaymentStatus } =
+    extractInboxPaymentMetadata(responseData);
+  const paymentId = inboxPaymentId ?? fallbackPaymentId;
+
+  return {
+    paymentId,
+    paymentStatus: inboxPaymentStatus,
+    // The nonce tracker stores either the confirmed settlement txid or a synthetic
+    // pending:<paymentId> reference until the relay returns a real txid.
+    nonceReference:
+      settlementTxid ??
+      (inboxPaymentStatus === "pending" && paymentId ? `pending:${paymentId}` : ""),
+  };
+}
+
 /**
  * Build a sponsored sBTC transfer transaction (signed, not broadcast).
  * Explicit nonce avoids ConflictingNonceInMempool.
@@ -464,9 +488,11 @@ export async function executeInboxWithRetry(
         finalRes.headers.get(X402_HEADERS.PAYMENT_RESPONSE)
       );
       const txid = settlement?.transaction;
-      const { paymentId, paymentStatus } = extractInboxPaymentMetadata(parsed);
-      const nonceReference =
-        txid ?? (paymentStatus === "pending" && paymentId ? `pending:${paymentId}` : "");
+      const {
+        paymentId: resolvedPaymentId,
+        paymentStatus: inboxPaymentStatus,
+        nonceReference,
+      } = resolveInboxPaymentTracking(parsed, paymentId, txid);
 
       // Advance shared nonce tracker on success
       await advanceNonceCache(account.address, nonce, nonceReference);
@@ -476,8 +502,8 @@ export async function executeInboxWithRetry(
         status: finalRes.status,
         responseData: parsed,
         settlementTxid: txid ?? undefined,
-        paymentId,
-        paymentStatus,
+        paymentId: resolvedPaymentId,
+        paymentStatus: inboxPaymentStatus,
         paymentSignature,
       };
     }
