@@ -163,9 +163,8 @@ const queueCmd = new Command("queue")
 // ---------------------------------------------------------------------------
 // Program
 // ---------------------------------------------------------------------------
-import { program } from "commander";
-
-program
+// Build the program from the existing Command instance
+const program = new Command()
   .name("inbox-dispatcher")
   .description("Auto-triage and respond to inbox messages based on priority scoring")
   .version("0.1.0")
