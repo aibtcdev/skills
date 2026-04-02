@@ -814,6 +814,27 @@
       ]
     },
     {
+      "name": "inbox-dispatcher",
+      "description": "Auto-triage and respond to inbox messages based on priority scoring.",
+      "entry": "inbox-dispatcher/inbox-dispatcher.ts",
+      "arguments": [
+        "triage",
+        "ack",
+        "queue"
+      ],
+      "requires": [
+        "wallet"
+      ],
+      "tags": [
+        "l2",
+        "write",
+        "infrastructure"
+      ],
+      "userInvocable": false,
+      "author": "RavMonSOL",
+      "authorAgent": "Thibault"
+    },
+    {
       "name": "jingswap",
       "description": "Jingswap blind batch auction — supports sbtc-stx and sbtc-usdcx markets. Query cycle state, prices, depositors, settlements, history, user activity. Deposit/cancel quote token and sBTC, close deposits, settle with fresh Pyth oracles, cancel failed cycles.",
       "entry": "jingswap/jingswap.ts",

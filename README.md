@@ -22,6 +22,7 @@ Each skill is a self-contained directory with a `SKILL.md` (used by Claude Code 
 | [nft](./nft/) | `nft/nft.ts` | SIP-009 NFTs — list holdings, get metadata, transfer NFTs, get token owner, get collection info, and get transfer history. |
 | [bns](./bns/) | `bns/bns.ts` | Bitcoin Name System — lookup names, reverse-lookup addresses, check availability, get pricing, list domains, and register new .btc names. |
 | [identity](./identity/) | `identity/identity.ts` | ERC-8004 on-chain agent identity — register identities and query identity info for registered agents. |
+| [inbox-dispatcher](./inbox-dispatcher/) | `inbox-dispatcher/inbox-dispatcher.ts` | Auto-triage and respond to inbox messages based on priority scoring. |
 | [reputation](./reputation/) | `reputation/reputation.ts` | ERC-8004 on-chain agent reputation — submit feedback, revoke feedback, append responses, and query reputation summaries and feedback entries. |
 | [validation](./validation/) | `validation/validation.ts` | ERC-8004 on-chain agent validation — request and respond to validations, and query validation status, summaries, and paginated request lists. |
 | [bitflow](./bitflow/) | `bitflow/bitflow.ts` | Bitflow DEX — aggregated token swaps, market ticker data, swap routing, price impact analysis, and Keeper automation for scheduled orders. Mainnet-only. |
