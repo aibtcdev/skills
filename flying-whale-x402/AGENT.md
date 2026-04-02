@@ -66,8 +66,10 @@ All commands return JSON to stdout.
 
 - Errors are returned as JSON: `{ "error": "descriptive message" }`
 - Common errors: "Payment failed", "Invalid input", "Upstream timeout"
-- x402 payment errors mean insufficient balance or relay issue — check wallet balance.
-- Do not retry silently — surface the error to the user.
+- x402 payment errors (402) mean insufficient balance or relay issue — check wallet balance.
+- **Do not retry silently** — paid calls cost funds, so a transient 502/503/504 should be surfaced to the user with the option to retry manually.
+- For transient failures (502 Cloudflare, relay timeout): explain the error is temporary and ask the user if they want to retry. No funds were spent if the request never reached the Worker.
+- For 500 errors (upstream data source down): suggest the user try again in a few minutes or use `probe` to verify the endpoint is responsive before retrying the paid call.
 
 ## On success
 

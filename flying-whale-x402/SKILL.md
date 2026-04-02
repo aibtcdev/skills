@@ -145,6 +145,31 @@ On error:
 { "error": "descriptive error message" }
 ```
 
+## Payment token flow
+
+The `--payment-token` flag supplies an x402 payment credential for paid endpoint calls. Here's how it works:
+
+1. **Token source**: The payment token is issued by the [x402 relay](https://x402-relay.aibtc.com) after the caller authorizes a micropayment from their Stacks wallet (STX, sBTC, or USDCx).
+2. **How it's used**: The skill attaches the token as an `X-PAYMENT` header on the POST request. The Cloudflare Worker validates it with the relay before processing.
+3. **Agent integration**: Agents with wallet access obtain the token automatically through the x402 protocol handshake — the relay returns a 402 response with payment details, the agent signs the payment, and the relay returns the token for the actual request.
+4. **Manual usage**: If calling directly, first `probe` the endpoint to see pricing, then obtain a token from the relay's `/authorize` endpoint with the required amount.
+
+If `--payment-token` is omitted, the POST request is sent without the header and the upstream server will return a 402 Payment Required response with pricing details.
+
+## Error handling
+
+Paid endpoint calls (`postWithPayment`) do not retry on failure — errors are surfaced immediately as JSON. Expected failure modes:
+
+| HTTP Status | Cause | What to do |
+|-------------|-------|------------|
+| 402 | Missing or invalid payment token | Check wallet balance, re-authorize via x402 relay |
+| 400 | Invalid input parameters | Fix the request body (check `probe` output for required fields) |
+| 500 | Upstream data source failure (Hiro, CoinGecko) | Wait and retry manually — transient |
+| 502/503 | Cloudflare Worker or relay timeout | Transient — wait 30s and retry once manually |
+| 504 | Gateway timeout (Premium tier, large portfolios) | Increase timeout or retry with simpler query |
+
+No automatic retry is intentional — paid calls should not silently re-spend funds on transient failures. The agent or user should decide whether to retry.
+
 ## Known constraints
 - Mainnet only — all endpoints query mainnet data sources.
 - Requires funded wallet — x402 payments deduct from the caller's STX/sBTC/USDCx balance.
