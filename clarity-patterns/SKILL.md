@@ -224,6 +224,9 @@ Store token balance snapshots at proposal creation time using a composite-key ma
   (let (
     (proposal-id (+ (var-get last-proposal-id) u1))
     (snapshot-block stacks-block-height))
+    ;; fold is used (not map) because Clarity has no partial application —
+    ;; map requires a bare function identifier, not a call expression.
+    ;; proposal-id is threaded as the accumulator so store-snapshot can use it.
     (fold store-snapshot voters proposal-id)
     (map-set Proposals proposal-id {
       votesFor: u0, votesAgainst: u0,
