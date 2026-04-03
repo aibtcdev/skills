@@ -8,7 +8,7 @@ metadata:
   arguments: "verify <address> | members | beats | recruit <address>"
   entry: "correspondent-guild/correspondent-guild.ts"
   requires: ""
-  tags: "correspondent, earnings, verification, coordination, nostr, sbtc, l2, read"
+  tags: "read-only, l2, infrastructure"
 ---
 
 # correspondent-guild
