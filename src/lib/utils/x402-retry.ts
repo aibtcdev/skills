@@ -667,8 +667,14 @@ export async function executeInboxWithRetry(
       seenRelayTxids.add(failedTxid);
     }
 
+    // Prefer relay-owned paymentId from the inbox response envelope, then
+    // fall back to the canonical tracking hint, then to locally generated id.
+    const inboxMeta = extractInboxPaymentMetadata(
+      parsed as Record<string, unknown>
+    );
     const trackingHint = extractCanonicalPaymentTrackingHint(parsed);
-    const canonicalPaymentId = trackingHint.paymentId ?? paymentIdentifier;
+    const canonicalPaymentId =
+      inboxMeta.paymentId ?? trackingHint.paymentId ?? paymentIdentifier;
     const canonicalAssessment = canonicalPaymentId
       ? await getCanonicalPaymentAssessment(
           canonicalPaymentId,
@@ -762,6 +768,18 @@ export async function executeInboxWithRetry(
 
     if (canonicalAssessment?.paymentAction === "bounded_retry" && attempt < maxAttempts - 1) {
       nextRetryDelayMs = Math.max(retry.delayMs, DEFAULT_RETRY_DELAY_MS);
+      cachedTxHex = null;
+      cachedPaymentIdentifier = null;
+      cachedNonce = null;
+      await advanceNonceCache(account.address, nonce);
+      lastError = `${finalRes.status}: ${responseData}`;
+      continue;
+    }
+
+    // "restart" means the payment identity expired — use retry budget to
+    // rebuild with a fresh nonce/signature instead of throwing immediately.
+    if (canonicalAssessment?.paymentAction === "restart" && attempt < maxAttempts - 1) {
+      nextRetryDelayMs = 0;
       cachedTxHex = null;
       cachedPaymentIdentifier = null;
       cachedNonce = null;
