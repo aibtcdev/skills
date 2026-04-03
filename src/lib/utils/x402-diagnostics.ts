@@ -33,6 +33,9 @@ interface PaymentDiagnosticOptions {
   compatShimUsed?: boolean;
 }
 
+// When run via `bun run`, npm_package_version is set automatically from
+// package.json. This fallback only fires in bare `bun <script>` invocations
+// or non-npm execution contexts.
 const FALLBACK_REPO_VERSION = "unknown";
 
 export function resolvePaymentDiagnosticTool(tool?: string): string {

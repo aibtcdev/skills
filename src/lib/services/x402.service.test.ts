@@ -195,6 +195,9 @@ describe("createApiClient canonical payment flow", () => {
     try {
       const api = await createApiClient(serverOrigin(server), "test.endpoint");
       const response = await api.request({ method: "GET", url: "/paid" });
+      // Cast needed: attachCanonicalPaymentMetadata writes dynamic x402* fields
+      // onto the AxiosResponse object, which the AxiosResponse type doesn't declare.
+      // Cast needed: dynamic x402* fields added by attachCanonicalPaymentMetadata
       const responseMeta = response as unknown as Record<string, unknown>;
 
       expect(response.data).toEqual({ ok: true });
@@ -295,6 +298,7 @@ describe("createApiClient canonical payment flow", () => {
     try {
       const api = await createApiClient(serverOrigin(server), "test.endpoint");
       const response = await api.request({ method: "GET", url: "/paid" });
+      // Cast needed: dynamic x402* fields added by attachCanonicalPaymentMetadata
       const responseMeta = response as unknown as Record<string, unknown>;
 
       expect(response.data).toEqual({ ok: true });
@@ -377,6 +381,7 @@ describe("createApiClient canonical payment flow", () => {
     try {
       const api = await createApiClient(serverOrigin(server), "test.endpoint");
       const response = await api.request({ method: "GET", url: "/paid" });
+      // Cast needed: dynamic x402* fields added by attachCanonicalPaymentMetadata
       const responseMeta = response as unknown as Record<string, unknown>;
 
       expect(response.data).toEqual({ ok: true });

@@ -514,9 +514,8 @@ program
             ? "Payment is still in flight. Keep polling the same paymentId; do not rebuild or re-sign."
             : "Payment accepted, but delivery is not confirmed yet.";
         printJson({
-          success: result.messageDelivered ?? true,
-          // Older result shapes omitted messageDelivered; keep success=true for
-          // that backward-compatible case while newer paths rely on the field.
+          success: result.success,
+          messageDelivered: result.messageDelivered ?? false,
           message,
           recipient: {
             btcAddress: opts.recipientBtcAddress,

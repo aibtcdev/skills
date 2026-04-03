@@ -151,6 +151,14 @@ export function buildPaymentStatusCheckUrl(baseUrl: string, paymentId: string): 
   return `${origin}/api/payment-status/${paymentId}`;
 }
 
+/**
+ * Resolve the canonical check-status URL for a payment.
+ *
+ * Currently a pass-through that returns the upstream-provided URL as-is.
+ * The unused `_baseUrl` and `_paymentId` params are retained for forward
+ * compatibility: when the relay omits `checkStatusUrl`, a future version
+ * can construct a fallback from `{baseUrl}/api/payment-status/{paymentId}`.
+ */
 export function resolveCanonicalCheckStatusUrl(
   _baseUrl: string,
   _paymentId: string,
@@ -175,6 +183,9 @@ export interface CanonicalPaymentTrackingHint {
   checkStatusUrl?: string;
 }
 
+// Axios responses and Error objects are used as carriers for dynamic x402*
+// metadata fields (x402PaymentStatus, x402PaymentId, etc.) that don't exist
+// on the static types. This cast centralizes the type widening.
 function asMetadataTarget(target: unknown): Record<string, unknown> {
   return target as Record<string, unknown>;
 }
@@ -342,6 +353,10 @@ export async function fetchCanonicalPaymentStatus(
   options: CanonicalPaymentStatusFetchOptions = {}
 ): Promise<HttpPaymentStatusResponse | null> {
   const controller = new AbortController();
+  // Single-shot fetch with a hard timeout cap. No exponential backoff is used
+  // because this is a status probe, not a retry loop — the caller (retry loop
+  // in x402-retry.ts) already has its own bounded retry with delay logic.
+  // 15s is generous for a single GET to a status endpoint.
   const cappedTimeoutMs = Math.min(
     Math.max(1, options.timeoutMs ?? 15_000),
     15_000

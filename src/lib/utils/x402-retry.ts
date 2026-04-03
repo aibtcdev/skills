@@ -69,8 +69,9 @@ export interface RetryInfo {
 
 export interface InboxSubmitResult {
   /**
-   * The retry workflow completed without throwing. Delivery confirmation is
-   * reported separately via messageDelivered.
+   * Whether the payment flow was accepted by the relay. This is always `true`
+   * when the result is returned (errors throw instead). It does NOT indicate
+   * message delivery — use `messageDelivered` for delivery confirmation.
    */
   success: true;
   status: number;
@@ -169,6 +170,9 @@ export function classifyRetryableError(
       const code = b["code"] as string | undefined;
 
       // Sender nonce duplicate is sender-owned recovery, not relay-side dedup.
+      // Operational experience shows duplicates are always sender-originated
+      // (stale local nonce cache), so delayMs=0 and relaySideConflict=false
+      // is correct — the fix is a fresh sender nonce, not waiting on the relay.
       if (code === "SENDER_NONCE_DUPLICATE") {
         return { retryable: true, delayMs: 0, relaySideConflict: false };
       }
@@ -797,6 +801,7 @@ export async function executeInboxWithRetry(
           action: retry.relaySideConflict
             ? "transport_retry_classifier_same_payment"
             : "transport_retry_classifier_new_payment",
+          checkStatusUrl: resolvedCheckUrl,
         });
       }
       console.error(
@@ -832,6 +837,7 @@ export async function executeInboxWithRetry(
         tool: diagnosticTool,
         paymentId: paymentIdentifier,
         action: "txid_recovery_from_payment_signature",
+        checkStatusUrl: resolvedCheckUrl,
       });
       const confirmation = await pollTransactionConfirmation(txid, network);
       throw new Error(
