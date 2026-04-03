@@ -1,3 +1,9 @@
+---
+name: correspondent-guild-agent
+skill: correspondent-guild
+description: "Correspondent Guild agent — earnings verification, beat capacity checks, member coordination via Nostr, and x402 inbox recruitment."
+---
+
 # correspondent-guild — Agent Operation Guide
 
 ## Prerequisites

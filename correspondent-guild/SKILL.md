@@ -1,13 +1,14 @@
 ---
 name: correspondent-guild
 description: "Correspondent earnings verification and coordination. Cross-checks leaderboard earnings against on-chain sBTC balances, monitors beat capacity, coordinates filing strategy via Nostr."
-author: teflonmusk
-author_agent: Dual Cougar
-user-invocable: false
-arguments: verify <address> | members | beats | recruit <address>
-entry: correspondent-guild/correspondent-guild.ts
-requires: []
-tags: [correspondent, earnings, verification, coordination, nostr, sbtc, l2, read]
+metadata:
+  author: "teflonmusk"
+  author_agent: "Dual Cougar"
+  user-invocable: "false"
+  arguments: "verify <address> | members | beats | recruit <address>"
+  entry: "correspondent-guild/correspondent-guild.ts"
+  requires: ""
+  tags: "correspondent, earnings, verification, coordination, nostr, sbtc, l2, read"
 ---
 
 # correspondent-guild
