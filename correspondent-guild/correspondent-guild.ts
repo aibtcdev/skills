@@ -6,10 +6,10 @@
  * Cross-checks leaderboard earnings against on-chain sBTC balances.
  *
  * Usage:
- *   bun skills/correspondent-guild/skill.ts verify <btc-address>
- *   bun skills/correspondent-guild/skill.ts members [--limit N]
- *   bun skills/correspondent-guild/skill.ts beats
- *   bun skills/correspondent-guild/skill.ts recruit <btc-address> [--message <text>]
+ *   bun correspondent-guild/correspondent-guild.ts verify <btc-address>
+ *   bun correspondent-guild/correspondent-guild.ts members [--limit N]
+ *   bun correspondent-guild/correspondent-guild.ts beats
+ *   bun correspondent-guild/correspondent-guild.ts recruit <btc-address> [--message <text>]
  */
 
 import { Command } from "commander";
@@ -77,7 +77,7 @@ program
 
       // Fetch earnings from aibtc.news status endpoint
       const status = await fetchJson<StatusResponse>(
-        `${AIBTC_NEWS_API}/status/${btcAddress}`
+        `${AIBTC_NEWS_API}/status/${encodeURIComponent(btcAddress)}`
       );
 
       const earnings = status.earnings ?? [];
@@ -125,23 +125,19 @@ program
   .command("members")
   .description("List guild members from Nostr #correspondent-guild posts.")
   .option("--limit <n>", "Max results (default: 50)", "50")
-  .action(async (opts: { limit: string }) => {
-    try {
-      out({
-        skill: "correspondent-guild",
-        command: "members",
-        action: "FETCH_MEMBERS",
-        mcp_tool: "nostr_search_tags",
-        params: {
-          tags: NOSTR_GUILD_TAG,
-          limit: parseInt(opts.limit, 10),
-        },
-        instruction:
-          "Parent agent: call nostr_search_tags with params above. Each post with #correspondent-guild = one member. Extract pubkeys and match to BTC addresses via agent profiles.",
-      });
-    } catch (e) {
-      fail(e instanceof Error ? e.message : e);
-    }
+  .action((opts: { limit: string }) => {
+    out({
+      skill: "correspondent-guild",
+      command: "members",
+      action: "FETCH_MEMBERS",
+      mcp_tool: "nostr_search_tags",
+      params: {
+        tags: NOSTR_GUILD_TAG,
+        limit: parseInt(opts.limit, 10),
+      },
+      instruction:
+        "Parent agent: call nostr_search_tags with params above. Each post with #correspondent-guild = one member. Extract pubkeys and match to BTC addresses via agent profiles.",
+    });
   });
 
 // ─── beats ────────────────────────────────────────────────────────────────────
@@ -149,36 +145,33 @@ program
 program
   .command("beats")
   .description("Check beat capacity — which beats have room vs which are at cap.")
-  .action(async () => {
-    try {
-      // Fetch recent signals to estimate beat capacity
-      const now = new Date();
-      const sixHoursAgo = new Date(now.getTime() - 6 * 60 * 60 * 1000);
-      const since = sixHoursAgo.toISOString();
+  .action(() => {
+    const now = new Date();
+    const sixHoursAgo = new Date(now.getTime() - 6 * 60 * 60 * 1000);
+    const since = sixHoursAgo.toISOString();
 
-      out({
-        skill: "correspondent-guild",
-        command: "beats",
-        action: "CHECK_CAPACITY",
-        mcp_tool: "news_list_signals",
-        params: {
-          since,
-          limit: 50,
-        },
-        instruction:
-          "Parent agent: call news_list_signals with params. Count approved signals per beat in the current Pacific day. Known caps: infrastructure ~4, agent-economy ~4, agent-skills ~3, onboarding ~3. Beats at or near cap should be flagged as FULL.",
-        known_caps: {
-          infrastructure: 4,
-          "agent-economy": 4,
-          "agent-skills": 3,
-          onboarding: 3,
-        },
-        note:
-          "Beat caps are approximate — observed from rejection feedback. Actual caps may vary by day. Filing early (within 1 hour of 07:00 UTC reset) gives best odds.",
-      });
-    } catch (e) {
-      fail(e instanceof Error ? e.message : e);
-    }
+    out({
+      skill: "correspondent-guild",
+      command: "beats",
+      action: "CHECK_CAPACITY",
+      mcp_tool: "news_list_signals",
+      params: {
+        since,
+        limit: 50,
+      },
+      instruction:
+        "Parent agent: call news_list_signals with params. Count approved signals per beat in the current Pacific day. Beats at or near cap should be flagged as FULL.",
+      known_caps: {
+        infrastructure: 4,
+        "agent-economy": 4,
+        "agent-skills": 3,
+        onboarding: 3,
+      },
+      known_caps_warning:
+        "Caps are hardcoded as of 2026-04-02 — treat as estimates only. Rejections are the authoritative signal that a beat is full.",
+      note:
+        "Filing early (within 1 hour of 07:00 UTC reset) gives best odds.",
+    });
   });
 
 // ─── recruit ──────────────────────────────────────────────────────────────────
@@ -187,10 +180,9 @@ program
   .command("recruit <btc-address>")
   .description("Send guild invite via x402 inbox. Costs 100 sats.")
   .option("--message <text>", "Custom message (max 500 chars)")
-  .action(async (btcAddress: string, opts: { message?: string }) => {
-    try {
-      if (!btcAddress.startsWith("bc1")) fail("Address must start with bc1");
-      const defaultMsg =
+  .action((btcAddress: string, opts: { message?: string }) => {
+    if (!btcAddress.startsWith("bc1")) fail("Address must start with bc1");
+    const defaultMsg =
         "We verify your earnings. The Correspondent Guild cross-checks your leaderboard sats against on-chain sBTC. Free. No commitment. Reply 'yes' to join. Nostr #correspondent-guild";
       const content = opts.message ?? defaultMsg;
       if (content.length > 500) fail("Message must be ≤500 characters");
@@ -211,9 +203,6 @@ program
         instruction:
           "Parent agent: call execute_x402_endpoint with params above to send invite. Confirm before sending.",
       });
-    } catch (e) {
-      fail(e instanceof Error ? e.message : e);
-    }
   });
 
 // ─── Parse ────────────────────────────────────────────────────────────────────
