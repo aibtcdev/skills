@@ -331,8 +331,9 @@ async function getCanonicalPaymentAssessment(
   const canonical = await fetchCanonicalPaymentStatus(
     paymentId,
     baseUrl,
-    undefined,
-    true
+    {
+      localStatusRouteBaseUrl: baseUrl,
+    }
   );
   if (!canonical) {
     throw new Error("canonical payment status unavailable");

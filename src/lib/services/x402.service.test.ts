@@ -466,7 +466,9 @@ describe("fetchCanonicalPaymentStatus", () => {
         await fetchCanonicalPaymentStatus(
           "pay_123",
           serverOrigin(server),
-          `${serverOrigin(server)}/rpc/payment-check/pay_123`
+          {
+            checkStatusUrl: `${serverOrigin(server)}/rpc/payment-check/pay_123`,
+          }
         )
       ).toMatchObject({
         paymentId: "pay_123",
@@ -509,14 +511,71 @@ describe("fetchCanonicalPaymentStatus", () => {
         await fetchCanonicalPaymentStatus(
           "pay_123",
           serverOrigin(server),
-          undefined,
-          true
+          {
+            localStatusRouteBaseUrl: serverOrigin(server),
+          }
         )
       ).toMatchObject({
         paymentId: "pay_123",
         status: "queued",
       });
       expect(seen.localRouteHits).toBe(1);
+    } finally {
+      server.close();
+      await once(server, "close");
+    }
+  });
+
+  test("prefers the canonical hint even when a bounded local fallback is available", async () => {
+    const seen = { hintHits: 0, localRouteHits: 0 };
+    const server = createServer((req: IncomingMessage, res: ServerResponse) => {
+      const url = new URL(req.url ?? "/", "http://127.0.0.1");
+      if (url.pathname === "/rpc/payment-check/pay_123") {
+        seen.hintHits += 1;
+        res.statusCode = 200;
+        res.setHeader("content-type", "application/json");
+        res.end(
+          JSON.stringify({
+            paymentId: "pay_123",
+            status: "confirmed",
+            checkStatusUrl: `${serverOrigin(server)}/rpc/payment-check/pay_123`,
+          })
+        );
+        return;
+      }
+
+      if (url.pathname === "/api/payment-status/pay_123") {
+        seen.localRouteHits += 1;
+        res.statusCode = 200;
+        res.setHeader("content-type", "application/json");
+        res.end(JSON.stringify({ paymentId: "pay_123", status: "queued" }));
+        return;
+      }
+
+      res.statusCode = 404;
+      res.end("not found");
+    });
+
+    server.listen(0, "127.0.0.1");
+    await once(server, "listening");
+
+    try {
+      expect(
+        await fetchCanonicalPaymentStatus(
+          "pay_123",
+          serverOrigin(server),
+          {
+            checkStatusUrl: `${serverOrigin(server)}/rpc/payment-check/pay_123`,
+            localStatusRouteBaseUrl: serverOrigin(server),
+          }
+        )
+      ).toMatchObject({
+        paymentId: "pay_123",
+        status: "confirmed",
+        checkStatusUrl: `${serverOrigin(server)}/rpc/payment-check/pay_123`,
+      });
+      expect(seen.hintHits).toBe(1);
+      expect(seen.localRouteHits).toBe(0);
     } finally {
       server.close();
       await once(server, "close");

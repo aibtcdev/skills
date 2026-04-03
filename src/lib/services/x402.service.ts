@@ -159,6 +159,15 @@ export function resolveCanonicalCheckStatusUrl(
   return checkStatusUrl;
 }
 
+export interface CanonicalPaymentStatusFetchOptions {
+  checkStatusUrl?: string;
+  /**
+   * Explicit first-party compatibility fallback for flows like inbox.
+   * Generic x402 clients must not assume this route exists.
+   */
+  localStatusRouteBaseUrl?: string;
+}
+
 export function extractPaymentIdFromPaymentSignature(
   paymentSignatureHeader: string
 ): string | null {
@@ -243,15 +252,16 @@ function attachCanonicalPaymentMetadata(
 export async function fetchCanonicalPaymentStatus(
   paymentId: string,
   baseUrl: string,
-  checkStatusUrl?: string,
-  allowLocalRouteFallback = false
+  options: CanonicalPaymentStatusFetchOptions = {}
 ): Promise<HttpPaymentStatusResponse | null> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 15_000);
 
   try {
-    const url = checkStatusUrl ??
-      (allowLocalRouteFallback ? buildPaymentStatusCheckUrl(baseUrl, paymentId) : null);
+    const url = options.checkStatusUrl ??
+      (options.localStatusRouteBaseUrl
+        ? buildPaymentStatusCheckUrl(options.localStatusRouteBaseUrl, paymentId)
+        : null);
     if (!url) {
       return null;
     }

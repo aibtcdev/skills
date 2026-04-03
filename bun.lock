@@ -4,7 +4,7 @@
     "": {
       "name": "@aibtc/skills",
       "dependencies": {
-        "@aibtc/tx-schemas": "^0.2.2",
+        "@aibtc/tx-schemas": "^0.3.0",
         "@bitflowlabs/core-sdk": "^3.0.0",
         "@faktoryfun/styx-sdk": "^1.3.5",
         "@noble/curves": "^2.0.1",
@@ -35,7 +35,7 @@
     },
   },
   "packages": {
-    "@aibtc/tx-schemas": ["@aibtc/tx-schemas@0.2.2", "", { "dependencies": { "zod": "^4.3.6" } }, "sha512-a6Mly35vvuxqXFVM3lSH/6ewe1io33eMXfY9rFSZz+790TbOebYIrd1gEQI+JTvd1NmntbXEibBXg5Mnif8sjw=="],
+    "@aibtc/tx-schemas": ["@aibtc/tx-schemas@0.3.0", "", { "dependencies": { "zod": "^4.3.6" } }, "sha512-pXzW9TnmFR3uJMfajbUdAYiPKRkNlzWWL2WGZ554NAeVIPq9vWyL6x8nrYtaDohuHlZRmMj1tSVeFap9AA+adw=="],
 
     "@bitflowlabs/core-sdk": ["@bitflowlabs/core-sdk@3.0.0", "", { "dependencies": { "@stacks/connect": "^7.10.2", "@stacks/network": "^7.0.2", "@stacks/transactions": "^7.0.5", "dotenv": "^16.4.7" } }, "sha512-5+STFKWtJzIx7G3MuZLPkB1T1r8HZEQ04Qe9anPhD8WwqRymzA8Km7J6AVGtrXuuE6svgqL0ezUwZUgOcUK0QA=="],
 
