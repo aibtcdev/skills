@@ -20,7 +20,7 @@ import {
 import {
   encodePaymentPayload,
   decodePaymentResponse,
-  generatePaymentId,
+  generatePaymentIdentifier,
   buildPaymentIdentifierExtension,
   X402_HEADERS,
   type PaymentRequiredV2,
@@ -38,6 +38,7 @@ import {
 } from "../services/nonce-tracker.js";
 import {
   classifyCanonicalPaymentOutcome,
+  extractCanonicalPaymentTrackingHint,
   fetchCanonicalPaymentStatus,
   isInFlightPaymentStatus,
   normalizeCallerFacingPaymentStatus,
@@ -67,7 +68,11 @@ export interface RetryInfo {
 }
 
 export interface InboxSubmitResult {
-  success: boolean;
+  /**
+   * The retry workflow completed without throwing. Delivery confirmation is
+   * reported separately via messageDelivered.
+   */
+  success: true;
   status: number;
   responseData: Record<string, unknown>;
   settlementTxid?: string;
@@ -101,6 +106,8 @@ export interface InboxRetryOptions {
 const DEFAULT_RETRY_DELAY_MS = 2_000;
 /** Cap retryAfter to avoid blocking too long (seconds). */
 const MAX_RETRY_AFTER_CAP_S = 60;
+/** Keep retry-loop canonical polling bounded so a slow status endpoint does not stall retries. */
+const RETRY_LOOP_CANONICAL_POLL_TIMEOUT_MS = 5_000;
 /** Inbox API base URL. */
 const INBOX_BASE = "https://aibtc.com/api/inbox";
 
@@ -214,6 +221,15 @@ export function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function buildInboxSubmitResult(
+  fields: Omit<InboxSubmitResult, "success">
+): InboxSubmitResult {
+  return {
+    success: true,
+    ...fields,
+  };
+}
+
 /**
  * Compute the next safe nonce for a sender address.
  * Checks shared nonce tracker first (no network), then reconciles with chain.
@@ -286,7 +302,7 @@ export function extractInboxPaymentMetadata(responseData: Record<string, unknown
 
 export function resolveInboxPaymentTracking(
   responseData: Record<string, unknown>,
-  fallbackPaymentId: string,
+  fallbackPaymentIdentifier: string,
   settlementTxid?: string
 ): {
   paymentId?: string;
@@ -300,7 +316,7 @@ export function resolveInboxPaymentTracking(
     compatShimUsed,
   } =
     extractInboxPaymentMetadata(responseData);
-  const paymentId = inboxPaymentId ?? fallbackPaymentId;
+  const paymentId = inboxPaymentId ?? fallbackPaymentIdentifier;
 
   return {
     paymentId,
@@ -318,7 +334,8 @@ export function resolveInboxPaymentTracking(
 
 async function getCanonicalPaymentAssessment(
   paymentId: string,
-  inboxUrl: string
+  inboxUrl: string,
+  checkStatusUrl?: string
 ): Promise<{
   paymentStatus: TrackedPaymentState;
   terminalReason?: TerminalReason;
@@ -332,7 +349,9 @@ async function getCanonicalPaymentAssessment(
     paymentId,
     baseUrl,
     {
+      checkStatusUrl,
       localStatusRouteBaseUrl: baseUrl,
+      timeoutMs: RETRY_LOOP_CANONICAL_POLL_TIMEOUT_MS,
     }
   );
   if (!canonical) {
@@ -477,9 +496,9 @@ export async function executeInboxWithRetry(
   // Track relay txids across failed attempts for auto-recovery.
   const seenRelayTxids = new Set<string>();
 
-  // Cache first attempt's tx + paymentId for reuse on relay-side conflicts.
+  // Cache first attempt's tx + idempotency key for reuse on relay-side conflicts.
   let cachedTxHex: string | null = null;
-  let cachedPaymentId: string | null = null;
+  let cachedPaymentIdentifier: string | null = null;
   let cachedNonce: number | null = null;
   let nextRetryDelayMs = 0;
 
@@ -494,13 +513,13 @@ export async function executeInboxWithRetry(
     // Build or reuse transaction
     let nonce: number;
     let txHex: string;
-    let paymentId: string;
+    let paymentIdentifier: string;
 
-    if (cachedTxHex && cachedPaymentId && cachedNonce !== null) {
+    if (cachedTxHex && cachedPaymentIdentifier && cachedNonce !== null) {
       // Relay-side conflict: resubmit the same tx for dedup
       nonce = cachedNonce;
       txHex = cachedTxHex;
-      paymentId = cachedPaymentId;
+      paymentIdentifier = cachedPaymentIdentifier;
       console.error(
         `[x402-retry] Reusing cached tx (nonce=${nonce}) for relay-side dedup`
       );
@@ -516,17 +535,17 @@ export async function executeInboxWithRetry(
         network,
         contentHash
       );
-      paymentId = generatePaymentId();
+      paymentIdentifier = generatePaymentIdentifier();
       emitPaymentDiagnostic({
         event: "payment.accepted",
         tool: diagnosticTool,
-        paymentId,
+        paymentId: paymentIdentifier,
         action: "submit_paid_request",
       });
 
       // Cache for potential reuse on relay-side conflicts
       cachedTxHex = txHex;
-      cachedPaymentId = paymentId;
+      cachedPaymentIdentifier = paymentIdentifier;
       cachedNonce = nonce;
     }
 
@@ -536,7 +555,7 @@ export async function executeInboxWithRetry(
       resource: paymentRequired.resource,
       accepted: accept,
       payload: { transaction: txHex },
-      extensions: buildPaymentIdentifierExtension(paymentId),
+      extensions: buildPaymentIdentifierExtension(paymentIdentifier),
     });
     lastPaymentSignature = paymentSignature;
 
@@ -570,9 +589,14 @@ export async function executeInboxWithRetry(
         paymentStatus: inboxPaymentStatus,
         nonceReference,
         compatShimUsed,
-      } = resolveInboxPaymentTracking(parsed, paymentId, txid);
+      } = resolveInboxPaymentTracking(parsed, paymentIdentifier, txid);
+      const trackingHint = extractCanonicalPaymentTrackingHint(parsed);
       const canonicalAssessment = resolvedPaymentId
-        ? await getCanonicalPaymentAssessment(resolvedPaymentId, inboxUrl).catch(() => null)
+        ? await getCanonicalPaymentAssessment(
+            resolvedPaymentId,
+            inboxUrl,
+            trackingHint.checkStatusUrl
+          ).catch(() => null)
         : null;
       const paymentStatus = canonicalAssessment?.paymentStatus ?? inboxPaymentStatus;
       const terminalReason = canonicalAssessment?.terminalReason;
@@ -581,7 +605,7 @@ export async function executeInboxWithRetry(
         (paymentStatus
           ? classifyCanonicalPaymentOutcome(paymentStatus, terminalReason).action
           : undefined);
-      const checkUrl = canonicalAssessment?.checkUrl;
+      const checkUrl = canonicalAssessment?.checkUrl ?? trackingHint.checkStatusUrl;
       const effectiveNonceReference =
         txid ??
         (isInFlightPaymentStatus(paymentStatus) && resolvedPaymentId
@@ -613,8 +637,7 @@ export async function executeInboxWithRetry(
       // Advance shared nonce tracker on success
       await advanceNonceCache(account.address, nonce, effectiveNonceReference);
 
-      return {
-        success: true,
+      return buildInboxSubmitResult({
         status: finalRes.status,
         responseData: parsed,
         settlementTxid: canonicalAssessment?.settlementTxid ?? txid ?? undefined,
@@ -625,7 +648,7 @@ export async function executeInboxWithRetry(
         checkUrl,
         paymentSignature,
         messageDelivered: paymentStatus === "confirmed",
-      };
+      });
     }
 
     // Extract relay txid from payment-response header (forwarded even on failure)
@@ -640,64 +663,69 @@ export async function executeInboxWithRetry(
       seenRelayTxids.add(failedTxid);
     }
 
-    const canonicalAssessment = paymentId
-      ? await getCanonicalPaymentAssessment(paymentId, inboxUrl).catch(() => null)
+    const trackingHint = extractCanonicalPaymentTrackingHint(parsed);
+    const canonicalPaymentId = trackingHint.paymentId ?? paymentIdentifier;
+    const canonicalAssessment = canonicalPaymentId
+      ? await getCanonicalPaymentAssessment(
+          canonicalPaymentId,
+          inboxUrl,
+          trackingHint.checkStatusUrl
+        ).catch(() => null)
       : null;
+    const resolvedCheckUrl = canonicalAssessment?.checkUrl ?? trackingHint.checkStatusUrl;
 
     if (canonicalAssessment?.paymentAction === "poll") {
       emitPaymentDiagnostic({
         event: "payment.poll",
         tool: diagnosticTool,
-        paymentId,
+        paymentId: canonicalPaymentId,
         status: canonicalAssessment.paymentStatus,
         terminalReason: canonicalAssessment.terminalReason,
         action: canonicalAssessment.paymentAction,
-        checkStatusUrl: canonicalAssessment.checkUrl,
+        checkStatusUrl: resolvedCheckUrl,
       });
-      await advanceNonceCache(account.address, nonce, `pending:${paymentId}`);
-      return {
-        success: true,
+      await advanceNonceCache(account.address, nonce, `pending:${canonicalPaymentId}`);
+      return buildInboxSubmitResult({
         status: finalRes.status,
         responseData: parsed,
         settlementTxid: canonicalAssessment.settlementTxid,
-        paymentId,
+        paymentId: canonicalPaymentId,
         paymentStatus: canonicalAssessment.paymentStatus,
         terminalReason: canonicalAssessment.terminalReason,
         paymentAction: canonicalAssessment.paymentAction,
-        checkUrl: canonicalAssessment.checkUrl,
+        checkUrl: resolvedCheckUrl,
         paymentSignature,
         messageDelivered: false,
-      };
+      });
     }
 
     if (canonicalAssessment?.paymentAction === "success") {
       emitPaymentDiagnostic({
         event: "payment.finalized",
         tool: diagnosticTool,
-        paymentId,
+        paymentId: canonicalPaymentId,
         status: canonicalAssessment.paymentStatus,
         terminalReason: canonicalAssessment.terminalReason,
         action: canonicalAssessment.paymentAction,
-        checkStatusUrl: canonicalAssessment.checkUrl,
+        checkStatusUrl: resolvedCheckUrl,
       });
       await advanceNonceCache(
         account.address,
         nonce,
         canonicalAssessment.settlementTxid ?? ""
       );
-      return {
-        success: true,
+      return buildInboxSubmitResult({
         status: finalRes.status,
         responseData: parsed,
         settlementTxid: canonicalAssessment.settlementTxid,
-        paymentId,
+        paymentId: canonicalPaymentId,
         paymentStatus: canonicalAssessment.paymentStatus,
         terminalReason: canonicalAssessment.terminalReason,
         paymentAction: canonicalAssessment.paymentAction,
-        checkUrl: canonicalAssessment.checkUrl,
+        checkUrl: resolvedCheckUrl,
         paymentSignature,
         messageDelivered: true,
-      };
+      });
     }
 
     // Classify the transport fallback and extract retry timing
@@ -706,7 +734,7 @@ export async function executeInboxWithRetry(
     emitPaymentDiagnostic({
       event: "payment.retry_decision",
       tool: diagnosticTool,
-      paymentId,
+      paymentId: canonicalPaymentId,
       status: canonicalAssessment?.paymentStatus,
       terminalReason: canonicalAssessment?.terminalReason,
       action: canonicalAssessment?.paymentAction ??
@@ -715,13 +743,13 @@ export async function executeInboxWithRetry(
             ? "transport_retry_same_payment"
             : "transport_retry_new_payment"
           : "transport_stop"),
-      checkStatusUrl: canonicalAssessment?.checkUrl,
+      checkStatusUrl: resolvedCheckUrl,
     });
 
     if (canonicalAssessment?.paymentAction === "rebuild_resign" && attempt < maxAttempts - 1) {
       nextRetryDelayMs = 0;
       cachedTxHex = null;
-      cachedPaymentId = null;
+      cachedPaymentIdentifier = null;
       cachedNonce = null;
       await advanceNonceCache(account.address, nonce);
       lastError = `${finalRes.status}: ${responseData}`;
@@ -731,7 +759,7 @@ export async function executeInboxWithRetry(
     if (canonicalAssessment?.paymentAction === "bounded_retry" && attempt < maxAttempts - 1) {
       nextRetryDelayMs = Math.max(retry.delayMs, DEFAULT_RETRY_DELAY_MS);
       cachedTxHex = null;
-      cachedPaymentId = null;
+      cachedPaymentIdentifier = null;
       cachedNonce = null;
       await advanceNonceCache(account.address, nonce);
       lastError = `${finalRes.status}: ${responseData}`;
@@ -746,17 +774,17 @@ export async function executeInboxWithRetry(
       emitPaymentDiagnostic({
         event: "payment.finalized",
         tool: diagnosticTool,
-        paymentId,
+        paymentId: canonicalPaymentId,
         status: canonicalAssessment.paymentStatus,
         terminalReason: canonicalAssessment.terminalReason,
         action: canonicalAssessment.paymentAction,
-        checkStatusUrl: canonicalAssessment.checkUrl,
+        checkStatusUrl: resolvedCheckUrl,
       });
       throw new Error(
         `Message delivery failed (${finalRes.status}): ${responseData}\n\n` +
           `${canonicalAssessment.guidance}\n` +
-          `paymentId: ${paymentId}\n` +
-          `checkUrl: ${canonicalAssessment.checkUrl}`
+          `paymentId: ${canonicalPaymentId}\n` +
+          `checkUrl: ${resolvedCheckUrl}`
       );
     }
 
@@ -765,7 +793,7 @@ export async function executeInboxWithRetry(
         emitPaymentDiagnostic({
           event: "payment.fallback_used",
           tool: diagnosticTool,
-          paymentId,
+          paymentId: paymentIdentifier,
           action: retry.relaySideConflict
             ? "transport_retry_classifier_same_payment"
             : "transport_retry_classifier_new_payment",
@@ -778,11 +806,11 @@ export async function executeInboxWithRetry(
       nextRetryDelayMs = retry.delayMs;
 
       if (retry.relaySideConflict) {
-        // Keep cached tx/paymentId — relay will dedup on resubmit
+        // Keep cached tx/idempotency key so the relay can dedup on resubmit.
       } else {
         // Sender-side conflict: need a fresh tx with new nonce
         cachedTxHex = null;
-        cachedPaymentId = null;
+        cachedPaymentIdentifier = null;
         cachedNonce = null;
         // Advance nonce cache so the next attempt uses a strictly higher nonce
         await advanceNonceCache(account.address, nonce);
@@ -802,7 +830,7 @@ export async function executeInboxWithRetry(
       emitPaymentDiagnostic({
         event: "payment.fallback_used",
         tool: diagnosticTool,
-        paymentId,
+        paymentId: paymentIdentifier,
         action: "txid_recovery_from_payment_signature",
       });
       const confirmation = await pollTransactionConfirmation(txid, network);
@@ -849,8 +877,7 @@ export async function executeInboxWithRetry(
           } catch {
             parsed = { raw: result.body };
           }
-          return {
-            success: true,
+          return buildInboxSubmitResult({
             status: result.status,
             responseData: parsed,
             settlementTxid: seenTxid,
@@ -858,7 +885,7 @@ export async function executeInboxWithRetry(
             paymentStatus: "confirmed",
             paymentAction: "success",
             messageDelivered: true,
-          };
+          });
         }
         console.error(
           `[x402-retry] Auto-recovery resubmission failed for txid ${seenTxid}: ${result.status} ${result.body}`

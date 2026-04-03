@@ -21,7 +21,7 @@ import {
   decodePaymentPayload,
   encodePaymentPayload,
   buildPaymentIdentifierExtension,
-  generatePaymentId,
+  generatePaymentIdentifier,
   X402_HEADERS,
 } from "../utils/x402-protocol.js";
 import {
@@ -166,9 +166,60 @@ export interface CanonicalPaymentStatusFetchOptions {
    * Generic x402 clients must not assume this route exists.
    */
   localStatusRouteBaseUrl?: string;
+  /** Optional per-call timeout override, capped to avoid long polling stalls. */
+  timeoutMs?: number;
 }
 
-export function extractPaymentIdFromPaymentSignature(
+export interface CanonicalPaymentTrackingHint {
+  paymentId?: string;
+  checkStatusUrl?: string;
+}
+
+function asMetadataTarget(target: unknown): Record<string, unknown> {
+  return target as Record<string, unknown>;
+}
+
+function extractStringField(record: Record<string, unknown>, key: string): string | undefined {
+  const value = record[key];
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+export function extractCanonicalPaymentTrackingHint(value: unknown): CanonicalPaymentTrackingHint {
+  const visit = (candidate: unknown): CanonicalPaymentTrackingHint | null => {
+    if (!candidate || typeof candidate !== "object") {
+      return null;
+    }
+
+    const record = candidate as Record<string, unknown>;
+    const paymentId =
+      extractStringField(record, "paymentId") ??
+      extractStringField(record, "payment_id");
+    const checkStatusUrl =
+      extractStringField(record, "checkStatusUrl") ??
+      extractStringField(record, "check_status_url") ??
+      extractStringField(record, "checkUrl") ??
+      extractStringField(record, "check_url") ??
+      extractStringField(record, "statusUrl") ??
+      extractStringField(record, "status_url");
+
+    if (paymentId || checkStatusUrl) {
+      return { paymentId, checkStatusUrl };
+    }
+
+    for (const nested of Object.values(record)) {
+      const nestedMatch = visit(nested);
+      if (nestedMatch?.paymentId || nestedMatch?.checkStatusUrl) {
+        return nestedMatch;
+      }
+    }
+
+    return null;
+  };
+
+  return visit(value) ?? {};
+}
+
+export function extractPaymentIdentifierFromPaymentSignature(
   paymentSignatureHeader: string
 ): string | null {
   try {
@@ -191,6 +242,23 @@ export function extractPaymentIdFromPaymentSignature(
   }
 
   return null;
+}
+
+export interface CanonicalPaymentMetadata {
+  paymentStatus?: HttpPaymentStatusResponse;
+  paymentDecision?: CanonicalPaymentOutcome;
+  paymentId?: string;
+  checkUrl?: string;
+}
+
+export function getCanonicalPaymentMetadata(target: unknown): CanonicalPaymentMetadata {
+  const source = asMetadataTarget(target);
+  return {
+    paymentStatus: source.x402PaymentStatus as HttpPaymentStatusResponse | undefined,
+    paymentDecision: source.x402PaymentDecision as CanonicalPaymentOutcome | undefined,
+    paymentId: typeof source.x402PaymentId === "string" ? source.x402PaymentId : undefined,
+    checkUrl: typeof source.x402CheckUrl === "string" ? source.x402CheckUrl : undefined,
+  };
 }
 
 function resolvePaymentStatusBaseUrl(
@@ -249,13 +317,36 @@ function attachCanonicalPaymentMetadata(
   }
 }
 
+async function fetchCanonicalPaymentStatusFromHint(
+  paymentStatusBaseUrl: string,
+  clientPaymentIdentifier: string | null,
+  trackingHint: CanonicalPaymentTrackingHint
+): Promise<HttpPaymentStatusResponse | null> {
+  if (!trackingHint.checkStatusUrl) {
+    return null;
+  }
+
+  const paymentId = trackingHint.paymentId ?? clientPaymentIdentifier;
+  if (!paymentId) {
+    return null;
+  }
+
+  return fetchCanonicalPaymentStatus(paymentId, paymentStatusBaseUrl, {
+    checkStatusUrl: trackingHint.checkStatusUrl,
+  });
+}
+
 export async function fetchCanonicalPaymentStatus(
   paymentId: string,
   baseUrl: string,
   options: CanonicalPaymentStatusFetchOptions = {}
 ): Promise<HttpPaymentStatusResponse | null> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 15_000);
+  const cappedTimeoutMs = Math.min(
+    Math.max(1, options.timeoutMs ?? 15_000),
+    15_000
+  );
+  const timeout = setTimeout(() => controller.abort(), cappedTimeoutMs);
 
   try {
     const url = options.checkStatusUrl ??
@@ -469,14 +560,16 @@ export async function createApiClient(baseUrl?: string, diagnosticTool = "x402.a
 
       if (attempts >= 1) {
         const paymentSignature = error.config?.headers?.[X402_HEADERS.PAYMENT_SIGNATURE];
-        const paymentId =
+        const clientPaymentIdentifier =
           typeof paymentSignature === "string"
-            ? extractPaymentIdFromPaymentSignature(paymentSignature)
+            ? extractPaymentIdentifierFromPaymentSignature(paymentSignature)
             : null;
         const paymentStatusBaseUrl = resolvePaymentStatusBaseUrl(error.config, url);
-        const canonicalStatus = paymentId
-          ? await fetchCanonicalPaymentStatus(paymentId, paymentStatusBaseUrl)
-          : null;
+        const canonicalStatus = await fetchCanonicalPaymentStatusFromHint(
+          paymentStatusBaseUrl,
+          clientPaymentIdentifier,
+          extractCanonicalPaymentTrackingHint(error.response?.data)
+        );
 
         if (canonicalStatus) {
           const outcome = classifyCanonicalPaymentOutcome(
@@ -497,12 +590,12 @@ export async function createApiClient(baseUrl?: string, diagnosticTool = "x402.a
               `${formatCanonicalPaymentStatusForError(paymentStatusBaseUrl, canonicalStatus, outcome)}`
           );
           attachCanonicalPaymentMetadata(
-            retryError as unknown as Record<string, unknown>,
+            asMetadataTarget(retryError),
             paymentStatusBaseUrl,
             canonicalStatus,
             outcome
           );
-          (retryError as unknown as Record<string, unknown>).config = error.config as unknown;
+          asMetadataTarget(retryError).config = error.config as unknown;
           return Promise.reject(retryError);
         }
 
@@ -514,7 +607,7 @@ export async function createApiClient(baseUrl?: string, diagnosticTool = "x402.a
           emitPaymentDiagnostic({
             event: "payment.fallback_used",
             tool: diagnosticTool,
-            paymentId,
+            paymentId: clientPaymentIdentifier,
             action: "txid_recovery_from_payment_signature",
           });
           const confirmation = await pollTransactionConfirmation(txid, account.network);
@@ -629,11 +722,11 @@ export async function createApiClient(baseUrl?: string, diagnosticTool = "x402.a
 
         const txHex = "0x" + transaction.serialize();
 
-        const paymentId = generatePaymentId();
+        const paymentIdentifier = generatePaymentIdentifier();
         emitPaymentDiagnostic({
           event: "payment.accepted",
           tool: diagnosticTool,
-          paymentId,
+          paymentId: paymentIdentifier,
           action: "submit_paid_request",
         });
 
@@ -643,7 +736,7 @@ export async function createApiClient(baseUrl?: string, diagnosticTool = "x402.a
           resource: paymentRequired.resource,
           accepted: selectedOption,
           payload: { transaction: txHex },
-          extensions: buildPaymentIdentifierExtension(paymentId),
+          extensions: buildPaymentIdentifierExtension(paymentIdentifier),
         });
 
         // Retry the original request with the payment header
@@ -652,16 +745,23 @@ export async function createApiClient(baseUrl?: string, diagnosticTool = "x402.a
         originalRequest.headers[X402_HEADERS.PAYMENT_SIGNATURE] = encodedPayload;
 
         const paidResponse = await axiosInstance.request(originalRequest);
-        const canonicalStatus = await fetchCanonicalPaymentStatus(paymentId, url);
+        const paymentStatusBaseUrl = resolvePaymentStatusBaseUrl(
+          originalRequest,
+          paymentRequired.resource?.url ?? url
+        );
+        const canonicalStatus = await fetchCanonicalPaymentStatusFromHint(
+          paymentStatusBaseUrl,
+          paymentIdentifier,
+          extractCanonicalPaymentTrackingHint(paidResponse.data)
+        );
 
         if (!canonicalStatus) {
           emitPaymentDiagnostic({
             event: "payment.fallback_used",
             tool: diagnosticTool,
-            paymentId,
+            paymentId: paymentIdentifier,
             action: "canonical_status_unavailable_after_paid_response",
           });
-          (paidResponse as unknown as Record<string, unknown>).x402PaymentId = paymentId;
           return paidResponse;
         }
 
@@ -679,8 +779,8 @@ export async function createApiClient(baseUrl?: string, diagnosticTool = "x402.a
           checkStatusUrl: canonicalStatus.checkStatusUrl,
         });
         attachCanonicalPaymentMetadata(
-          paidResponse as unknown as Record<string, unknown>,
-          url,
+          asMetadataTarget(paidResponse),
+          paymentStatusBaseUrl,
           canonicalStatus,
           outcome
         );
@@ -691,11 +791,11 @@ export async function createApiClient(baseUrl?: string, diagnosticTool = "x402.a
 
         const canonicalError = new Error(
           "x402 payment failed after the paid request returned. " +
-            formatCanonicalPaymentStatusForError(url, canonicalStatus, outcome)
+            formatCanonicalPaymentStatusForError(paymentStatusBaseUrl, canonicalStatus, outcome)
         );
         attachCanonicalPaymentMetadata(
-          canonicalError as unknown as Record<string, unknown>,
-          url,
+          asMetadataTarget(canonicalError),
+          paymentStatusBaseUrl,
           canonicalStatus,
           outcome
         );
@@ -705,8 +805,8 @@ export async function createApiClient(baseUrl?: string, diagnosticTool = "x402.a
       } catch (paymentError) {
         if (
           paymentError instanceof Error &&
-          ((paymentError as unknown as Record<string, unknown>).x402PaymentStatus ||
-            (paymentError as unknown as Record<string, unknown>).x402PaymentId)
+          (asMetadataTarget(paymentError).x402PaymentStatus ||
+            asMetadataTarget(paymentError).x402PaymentId)
         ) {
           return Promise.reject(paymentError);
         }

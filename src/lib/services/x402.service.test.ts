@@ -6,8 +6,9 @@ import { NETWORK, type Network } from "../config/networks.js";
 import {
   classifyCanonicalPaymentOutcome,
   createApiClient,
-  extractPaymentIdFromPaymentSignature,
+  extractPaymentIdentifierFromPaymentSignature,
   fetchCanonicalPaymentStatus,
+  getCanonicalPaymentMetadata,
   normalizeCallerFacingPaymentStatus,
   resolveCanonicalCheckStatusUrl,
   mnemonicToAccount,
@@ -161,7 +162,7 @@ describe("createApiClient canonical payment flow", () => {
       }
 
       if (url.pathname === "/paid" && req.headers[X402_HEADERS.PAYMENT_SIGNATURE]) {
-        seen.paymentId = extractPaymentIdFromPaymentSignature(
+        seen.paymentId = extractPaymentIdentifierFromPaymentSignature(
           String(req.headers[X402_HEADERS.PAYMENT_SIGNATURE])
         ) ?? "";
         res.statusCode = 200;
@@ -199,7 +200,7 @@ describe("createApiClient canonical payment flow", () => {
       expect(response.data).toEqual({ ok: true });
       expect(seen.paymentId.startsWith("pay_")).toBe(true);
       expect(seen.canonicalPolls).toBe(0);
-      expect(responseMeta.x402PaymentId).toBe(seen.paymentId);
+      expect(responseMeta.x402PaymentId).toBeUndefined();
       expect(responseMeta.x402CheckUrl).toBeUndefined();
       expect(responseMeta.x402PaymentStatus).toBeUndefined();
       expect(responseMeta.x402PaymentDecision).toBeUndefined();
@@ -262,7 +263,7 @@ describe("createApiClient canonical payment flow", () => {
       }
 
       if (url.pathname === "/paid" && req.headers[X402_HEADERS.PAYMENT_SIGNATURE]) {
-        seen.paymentId = extractPaymentIdFromPaymentSignature(
+        seen.paymentId = extractPaymentIdentifierFromPaymentSignature(
           String(req.headers[X402_HEADERS.PAYMENT_SIGNATURE])
         ) ?? "";
         res.statusCode = 200;
@@ -298,7 +299,7 @@ describe("createApiClient canonical payment flow", () => {
 
       expect(response.data).toEqual({ ok: true });
       expect(seen.canonicalPolls).toBe(0);
-      expect(responseMeta.x402PaymentId).toBe(seen.paymentId);
+      expect(responseMeta.x402PaymentId).toBeUndefined();
       expect(responseMeta.x402CheckUrl).toBeUndefined();
       expect(responseMeta.x402PaymentStatus).toBeUndefined();
       expect(diagnostics.entries).toEqual(
@@ -351,7 +352,7 @@ describe("createApiClient canonical payment flow", () => {
       }
 
       if (url.pathname === "/paid" && req.headers[X402_HEADERS.PAYMENT_SIGNATURE]) {
-        seen.paymentId = extractPaymentIdFromPaymentSignature(
+        seen.paymentId = extractPaymentIdentifierFromPaymentSignature(
           String(req.headers[X402_HEADERS.PAYMENT_SIGNATURE])
         ) ?? "";
         res.statusCode = 200;
@@ -379,7 +380,7 @@ describe("createApiClient canonical payment flow", () => {
       const responseMeta = response as unknown as Record<string, unknown>;
 
       expect(response.data).toEqual({ ok: true });
-      expect(responseMeta.x402PaymentId).toBe(seen.paymentId);
+      expect(responseMeta.x402PaymentId).toBeUndefined();
       expect(responseMeta.x402CheckUrl).toBeUndefined();
       expect(responseMeta.x402PaymentStatus).toBeUndefined();
       expect(diagnostics.entries).toEqual(
@@ -400,6 +401,109 @@ describe("createApiClient canonical payment flow", () => {
       );
     } finally {
       diagnostics.restore();
+      server.close();
+      await once(server, "close");
+    }
+  });
+
+  test("surfaces canonical payment metadata from an explicit upstream hint", async () => {
+    const network = NETWORK as Network;
+    const seen = {
+      paymentIdentifier: "",
+      canonicalPolls: 0,
+    };
+    const relayPaymentId = "pay_relay_123";
+    const server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
+      const url = new URL(req.url ?? "/", "http://127.0.0.1");
+      if (url.pathname === "/paid" && !req.headers[X402_HEADERS.PAYMENT_SIGNATURE]) {
+        res.statusCode = 402;
+        res.setHeader(
+          X402_HEADERS.PAYMENT_REQUIRED,
+          Buffer.from(
+            JSON.stringify({
+              x402Version: 2,
+              resource: { url: `${serverOrigin(server)}/paid` },
+              accepts: [
+                {
+                  scheme: "exact",
+                  network: getStacksChainId(network),
+                  amount: "1",
+                  asset: "STX",
+                  payTo: recipientAddress,
+                  maxTimeoutSeconds: 60,
+                },
+              ],
+            })
+          ).toString("base64")
+        );
+        res.end(JSON.stringify({ error: "payment required" }));
+        return;
+      }
+
+      if (url.pathname === "/paid" && req.headers[X402_HEADERS.PAYMENT_SIGNATURE]) {
+        seen.paymentIdentifier = extractPaymentIdentifierFromPaymentSignature(
+          String(req.headers[X402_HEADERS.PAYMENT_SIGNATURE])
+        ) ?? "";
+        res.statusCode = 200;
+        res.setHeader("content-type", "application/json");
+        res.end(
+          JSON.stringify({
+            ok: true,
+            payment: {
+              checkStatusUrl: `${serverOrigin(server)}/rpc/payment-check/${relayPaymentId}`,
+            },
+          })
+        );
+        return;
+      }
+
+      if (url.pathname === `/rpc/payment-check/${relayPaymentId}`) {
+        seen.canonicalPolls += 1;
+        res.statusCode = 200;
+        res.setHeader("content-type", "application/json");
+        res.end(
+          JSON.stringify({
+            paymentId: relayPaymentId,
+            status: "queued",
+            checkStatusUrl: `${serverOrigin(server)}/rpc/payment-check/${relayPaymentId}`,
+          })
+        );
+        return;
+      }
+
+      res.statusCode = 404;
+      res.end("not found");
+    });
+
+    server.listen(0, "127.0.0.1");
+    await once(server, "listening");
+
+    try {
+      const api = await createApiClient(serverOrigin(server), "test.endpoint");
+      const response = await api.request({ method: "GET", url: "/paid" });
+      const metadata = getCanonicalPaymentMetadata(response);
+
+      expect(response.data).toEqual({
+        ok: true,
+        payment: {
+          checkStatusUrl: `${serverOrigin(server)}/rpc/payment-check/${relayPaymentId}`,
+        },
+      });
+      expect(seen.paymentIdentifier.startsWith("pay_")).toBe(true);
+      expect(seen.paymentIdentifier).not.toBe(relayPaymentId);
+      expect(seen.canonicalPolls).toBe(1);
+      expect(metadata.paymentId).toBe(relayPaymentId);
+      expect(metadata.checkUrl).toBe(
+        `${serverOrigin(server)}/rpc/payment-check/${relayPaymentId}`
+      );
+      expect(metadata.paymentStatus).toMatchObject({
+        paymentId: relayPaymentId,
+        status: "queued",
+      });
+      expect(metadata.paymentDecision).toMatchObject({
+        action: "poll",
+      });
+    } finally {
       server.close();
       await once(server, "close");
     }

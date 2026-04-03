@@ -12,6 +12,7 @@ import {
   classifyCanonicalPaymentOutcome,
   createApiClient,
   createPlainClient,
+  getCanonicalPaymentMetadata,
   probeEndpoint,
   getAccount,
   getWalletAddress,
@@ -35,6 +36,23 @@ interface ParsedUrl {
   requestPath: string;
   fullUrl: string;
   params?: Record<string, string>;
+}
+
+function buildCanonicalPaymentOutput(value: unknown): Record<string, unknown> | undefined {
+  const metadata = getCanonicalPaymentMetadata(value);
+  if (!metadata.paymentStatus || !metadata.paymentDecision || !metadata.paymentId) {
+    return undefined;
+  }
+
+  return {
+    status: metadata.paymentStatus.status,
+    terminalReason: metadata.paymentStatus.terminalReason,
+    action: metadata.paymentDecision.action,
+    guidance: metadata.paymentDecision.guidance,
+    paymentId: metadata.paymentId,
+    checkUrl: metadata.checkUrl,
+    txid: metadata.paymentStatus.txid,
+  };
 }
 
 function parseEndpointUrl(options: {
@@ -268,10 +286,12 @@ program
         if (probeResult.type === "payment_required") {
           const api = await createApiClient(parsed.baseUrl, "x402.execute-endpoint");
           const response = await api.request({ method, url: parsed.requestPath, params, data, headers: customHeaders });
+          const payment = buildCanonicalPaymentOutput(response);
 
           printJson({
             endpoint: `${method} ${fullUrl}`,
             response: response.data,
+            ...(payment ? { payment } : {}),
           });
           return;
         }
@@ -495,6 +515,8 @@ program
             : "Payment accepted, but delivery is not confirmed yet.";
         printJson({
           success: result.messageDelivered ?? true,
+          // Older result shapes omitted messageDelivered; keep success=true for
+          // that backward-compatible case while newer paths rely on the field.
           message,
           recipient: {
             btcAddress: opts.recipientBtcAddress,

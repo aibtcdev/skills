@@ -33,7 +33,7 @@ interface PaymentDiagnosticOptions {
   compatShimUsed?: boolean;
 }
 
-const FALLBACK_REPO_VERSION = "0.36.1";
+const FALLBACK_REPO_VERSION = "unknown";
 
 export function resolvePaymentDiagnosticTool(tool?: string): string {
   if (tool && tool.trim().length > 0) {

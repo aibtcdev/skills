@@ -134,8 +134,8 @@ export interface PaymentIdentifierExtension {
   };
 }
 
-/** Generate a unique payment identifier for relay dedup. */
-export function generatePaymentId(): string {
+/** Generate a unique client-side idempotency key for relay dedup. */
+export function generatePaymentIdentifier(): string {
   const hex = randomUUID().replace(/-/g, "");
   return `pay_${hex}`;
 }
