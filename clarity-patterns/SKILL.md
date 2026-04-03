@@ -227,6 +227,7 @@ Store token balance snapshots at proposal creation time using a composite-key ma
     ;; fold is used (not map) because Clarity has no partial application —
     ;; map requires a bare function identifier, not a call expression.
     ;; proposal-id is threaded as the accumulator so store-snapshot can use it.
+    ;; fold threads proposal-id as accumulator; store-snapshot fires map-set as side effect
     (fold store-snapshot voters proposal-id)
     (map-set Proposals proposal-id {
       votesFor: u0, votesAgainst: u0,
