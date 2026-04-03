@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.36.2](https://github.com/aibtcdev/skills/compare/skills-v0.36.1...skills-v0.36.2) (2026-04-03)
+
+
+### Bug Fixes
+
+* align relay payment polling contract with tx-schemas ([#290](https://github.com/aibtcdev/skills/issues/290)) ([8a0b532](https://github.com/aibtcdev/skills/commit/8a0b532b16684417c230150a1d3fef7d3f8a0d7a))
+
 ## [0.36.1](https://github.com/aibtcdev/skills/compare/skills-v0.36.0...skills-v0.36.1) (2026-03-31)
 
 
