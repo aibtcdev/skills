@@ -1,6 +1,6 @@
 {
-  "version": "0.36.0",
-  "generated": "2026-03-31T18:44:31.581Z",
+  "version": "0.36.1",
+  "generated": "2026-04-03T20:25:13.710Z",
   "skills": [
     {
       "name": "agent-lookup",
@@ -944,7 +944,7 @@
     },
     {
       "name": "nonce-manager",
-      "description": "Cross-process Stacks nonce oracle — atomic acquire/release prevents mempool collisions across skills",
+      "description": "Backup sender nonce tracker for Stacks transactions. Use canonical payment-status polling first; use this for local nonce coordination and recovery.",
       "entry": "nonce-manager/nonce-manager.ts",
       "arguments": [
         "acquire",
@@ -1309,7 +1309,7 @@
     },
     {
       "name": "relay-diagnostic",
-      "description": "Sponsor relay health checks and nonce recovery — diagnose stuck sponsored transactions, check nonce gaps, and attempt RBF or gap-fill recovery.",
+      "description": "Operator relay diagnostics and sponsor nonce recovery. Use canonical payment-status polling for caller-facing payment state; use this for relay health and sponsor recovery.",
       "entry": "relay-diagnostic/relay-diagnostic.ts",
       "arguments": [
         "check-health",
