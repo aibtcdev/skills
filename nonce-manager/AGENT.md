@@ -8,7 +8,7 @@ description: Cross-process Stacks nonce oracle agent guidance for acquiring, rel
 
 ## Purpose
 
-You are managing Stacks transaction nonces to prevent mempool collisions. Every Stacks transaction requires a sequential nonce. When multiple skills send transactions concurrently, they can grab the same nonce from the Hiro API and collide.
+You are managing local sender nonce state for Stacks transactions. Canonical x402 payment state comes from payment-status polling by `paymentId`; this tool is only for sender nonce coordination and recovery when a fresh nonce is actually needed.
 
 ## Prerequisites
 
@@ -19,10 +19,11 @@ You are managing Stacks transaction nonces to prevent mempool collisions. Every 
 
 1. **Always acquire before sending any Stacks transaction.** Never fetch nonce directly from Hiro API.
 2. **Always release after the transaction outcome is known.** This keeps state accurate.
-3. **Distinguish rejected from broadcast failures.** This is the most critical decision:
+3. **Use payment status before local nonce heuristics.** In-flight payment states (`queued`, `broadcasting`, `mempool`) mean the same payment is still active. Do not rebuild or re-sign just because local tooling exists.
+4. **Distinguish rejected from broadcast failures.** This is the most critical local nonce decision:
    - **Rejected**: tx never reached the mempool (signing error, relay pre-broadcast 409). The nonce was NOT consumed. Release with `--failed --rejected` to roll it back.
    - **Broadcast**: tx reached the mempool but may fail on-chain. The nonce IS consumed. Release with `--failed` (or `--failed --broadcast`). Do NOT roll back.
-4. **When in doubt, assume broadcast.** Rolling back a consumed nonce causes a gap. Keeping a rejected nonce causes a skip. Gaps are harder to fix than skips (skips auto-resolve when the nonce is eventually used; gaps require manual fill transactions).
+5. **When in doubt, assume broadcast.** Rolling back a consumed nonce causes a gap. Keeping a rejected nonce causes a skip. Gaps are harder to fix than skips.
 
 ## Error Recovery
 
@@ -63,7 +64,7 @@ try {
   // 2. Build and send transaction with this nonce
   const result = await sendTransaction({ nonce: BigInt(nonce), ... });
 
-  // 3. Release as success (with txid for pending log)
+  // 3. Release as success (with txid or pending:<paymentId> for the local log)
   await releaseNonce(SENDER, nonce, true, undefined, result.txid);
 } catch (error) {
   // 4. Determine if nonce was consumed

@@ -6,7 +6,7 @@ description: x402 paid API endpoint interactions, inbox messaging with sBTC micr
 
 # x402 Agent
 
-This agent handles x402 protocol operations: discovering and executing paid API endpoints, sending inbox messages to other AIBTC agents with automatic sBTC micropayment handling, scaffolding new x402 Cloudflare Worker projects, and exploring OpenRouter AI model options. Payment flows are handled automatically using the configured wallet.
+This agent handles x402 protocol operations: discovering and executing paid API endpoints, sending inbox messages to other AIBTC agents with automatic sBTC micropayment handling, scaffolding new x402 Cloudflare Worker projects, and exploring OpenRouter AI model options. Payment flows are handled automatically using the configured wallet. Caller-facing payment status comes from canonical payment-status polling by `paymentId`; legacy `submitted` is collapsed to `queued`.
 
 ## Prerequisites
 
@@ -56,8 +56,8 @@ This agent handles x402 protocol operations: discovering and executing paid API 
 
 - `list-endpoints`: read `sources[].url` and `sources[].example` to pick an endpoint to probe or execute
 - `probe-endpoint`: if `type === "payment_required"`, read `payment.amount` and `payment.asset` to confirm cost before executing; if `type === "free"`, read `response` for the data
-- `execute-endpoint`: read `response` for the API response data; the payment is already settled
-- `send-inbox-message`: read `success` (boolean); `payment.txid` contains the sponsored transaction ID for tracking
+- `execute-endpoint`: read `response` for the API response data; payment metadata may also be attached internally as canonical status, decision, `paymentId`, and `checkUrl`
+- `send-inbox-message`: read `success` first. By default it is only `true` after confirmed delivery. If `success` is `false`, read `payment.status`, `payment.paymentId`, `payment.checkUrl`, and `payment.terminalReason` to continue canonical polling or inspect the terminal outcome
 - `scaffold-endpoint` / `scaffold-ai-endpoint`: read `projectPath` for the created directory; follow `nextSteps` to install and run
 - `openrouter-models`: read `models[].id` to get the model string to use in `scaffold-ai-endpoint --default-model`
 

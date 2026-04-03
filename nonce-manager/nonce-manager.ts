@@ -1,7 +1,8 @@
 #!/usr/bin/env bun
 /**
  * Nonce Manager skill CLI
- * Cross-process Stacks nonce oracle — atomic acquire/release prevents mempool collisions
+ * Backup sender nonce tracker for Stacks transactions.
+ * Use canonical payment-status polling as the primary x402 state machine.
  *
  * Usage: bun run nonce-manager/nonce-manager.ts <subcommand> [options]
  */
@@ -11,7 +12,7 @@ import { acquireNonce, releaseNonce, syncNonce, getStatus, type FailureKind } fr
 import { printJson, handleError } from "../src/lib/utils/cli.js";
 
 const program = new Command("nonce-manager")
-  .description("Cross-process Stacks nonce oracle — prevents mempool collisions across skills")
+  .description("Backup sender nonce tracker for Stacks transactions — not the primary x402 payment state machine")
   .version("1.0.0");
 
 // ---- acquire ----

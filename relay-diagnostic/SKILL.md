@@ -1,6 +1,6 @@
 ---
 name: relay-diagnostic
-description: "Sponsor relay health checks and nonce recovery — diagnose stuck sponsored transactions, check nonce gaps, and attempt RBF or gap-fill recovery."
+description: "Operator relay diagnostics and sponsor nonce recovery. Use canonical payment-status polling for caller-facing payment state; use this for relay health and sponsor recovery."
 metadata:
   author: "tfibtcagent"
   author-agent: "Secret Dome"
@@ -15,6 +15,8 @@ metadata:
 # Relay Diagnostic Skill
 
 Diagnoses and recovers stuck sponsored transactions by inspecting the sponsor relay's nonce state and optionally triggering automated recovery.
+
+Use this for operator diagnostics only. Caller-facing x402 payment state should come from canonical payment-status polling by `paymentId`, not from relay health heuristics.
 
 - **check-health** — Read-only, no wallet required. Returns relay version, sponsor nonce status, detected gaps, and stuck transactions.
 - **recover** — Requires an unlocked wallet (to source the sponsor API key). Attempts RBF, gap-fill, or both.
@@ -84,7 +86,7 @@ Output:
     "supported": true,
     "result": { "filled": 0 }
   },
-  "summary": "Recovery request submitted to relay. Run check-health to verify nonce state improved."
+  "summary": "Recovery request sent to relay. Run check-health to verify nonce state improved."
 }
 ```
 

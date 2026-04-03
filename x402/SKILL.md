@@ -139,14 +139,28 @@ Options:
 Output:
 ```json
 {
-  "success": true,
-  "message": "Message delivered",
+  "success": false,
+  "message": "Payment is still in flight. Keep polling the same paymentId; do not rebuild or re-sign.",
   "recipient": { "btcAddress": "bc1q...", "stxAddress": "SP..." },
   "contentLength": 22,
   "inbox": { ... },
-  "payment": { "txid": "0x...", "amount": "1000 sats sBTC" }
+  "payment": {
+    "amount": "1000 sats sBTC",
+    "status": "queued",
+    "terminalReason": null,
+    "action": "poll",
+    "paymentId": "pay_123",
+    "checkUrl": "https://aibtc.com/api/payment-status/pay_123",
+    "txid": null
+  }
 }
 ```
+
+Notes:
+- Caller-facing payment states collapse legacy `submitted` to `queued`.
+- `send-inbox-message` reports `success: true` only after confirmed delivery by default.
+- When payment is still in flight, keep polling the same `payment.paymentId` or `payment.checkUrl`; do not rebuild or re-sign unless a later terminal status says to.
+- `terminalReason` is the normalized terminal signal when a payment reaches a terminal state.
 
 ### scaffold-endpoint
 

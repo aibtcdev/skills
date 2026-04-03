@@ -1,5 +1,14 @@
 import axios, { type AxiosInstance } from "axios";
 import {
+  HttpPaymentStatusResponseSchema,
+  type HttpPaymentStatusResponse,
+} from "@aibtc/tx-schemas/http/schemas";
+import {
+  IN_FLIGHT_STATES,
+  type TrackedPaymentState,
+} from "@aibtc/tx-schemas/core/enums";
+import { type TerminalReason } from "@aibtc/tx-schemas/terminal-reasons";
+import {
   makeSTXTokenTransfer,
   makeContractCall,
   uintCV,
@@ -9,9 +18,16 @@ import {
 } from "@stacks/transactions";
 import {
   decodePaymentRequired,
+  decodePaymentPayload,
   encodePaymentPayload,
+  buildPaymentIdentifierExtension,
+  generatePaymentId,
   X402_HEADERS,
 } from "../utils/x402-protocol.js";
+import {
+  extractTxidFromPaymentSignature,
+  pollTransactionConfirmation,
+} from "../utils/x402-recovery.js";
 import { generateWallet, getStxAddress } from "@stacks/wallet-sdk";
 import { NETWORK, API_URL, getStacksNetwork, type Network } from "../config/networks.js";
 import { getNetworkFromStacksChainId } from "../config/caip.js";
@@ -23,6 +39,7 @@ import { getHiroApi } from "./hiro-api.js";
 import { createHash } from "node:crypto";
 import { InsufficientBalanceError } from "../utils/errors.js";
 import { getContracts, parseContractId } from "../config/contracts.js";
+import { emitPaymentDiagnostic } from "../utils/x402-diagnostics.js";
 
 // Track payment attempts per client instance (auto-cleanup via WeakMap)
 const paymentAttempts: WeakMap<AxiosInstance, number> = new WeakMap();
@@ -56,6 +73,302 @@ function safeJsonTransform(data: unknown): unknown {
   } catch {
     return data;
   }
+}
+
+const CALLER_FACING_PAYMENT_STATES = new Set<TrackedPaymentState>([
+  "queued",
+  "broadcasting",
+  "mempool",
+  "confirmed",
+  "failed",
+  "replaced",
+  "not_found",
+]);
+
+const IN_FLIGHT_PAYMENT_STATES = new Set<TrackedPaymentState>(IN_FLIGHT_STATES);
+const SENDER_REBUILD_REASONS = new Set<TerminalReason>([
+  "sender_nonce_stale",
+  "sender_nonce_gap",
+  "sender_nonce_duplicate",
+]);
+const BOUNDED_RETRY_REASONS = new Set<TerminalReason>([
+  "queue_unavailable",
+  "sponsor_failure",
+  "internal_error",
+  "broadcast_failure",
+  "chain_abort",
+]);
+
+export type CanonicalPaymentAction =
+  | "poll"
+  | "success"
+  | "rebuild_resign"
+  | "bounded_retry"
+  | "stop"
+  | "restart";
+
+export interface CanonicalPaymentOutcome {
+  status: TrackedPaymentState;
+  terminalReason?: TerminalReason;
+  action: CanonicalPaymentAction;
+  shouldPollSamePayment: boolean;
+  shouldRebuildResign: boolean;
+  shouldRetryNewPayment: boolean;
+  stopPollingOldPayment: boolean;
+  guidance: string;
+}
+
+export function normalizeCallerFacingPaymentStatus(
+  status: unknown
+): TrackedPaymentState | undefined {
+  if (typeof status !== "string") {
+    return undefined;
+  }
+
+  if (status === "pending" || status === "submitted") {
+    return "queued";
+  }
+
+  if (CALLER_FACING_PAYMENT_STATES.has(status as TrackedPaymentState)) {
+    return status as TrackedPaymentState;
+  }
+
+  return undefined;
+}
+
+export function isInFlightPaymentStatus(
+  status: TrackedPaymentState | undefined
+): status is TrackedPaymentState {
+  return Boolean(status && IN_FLIGHT_PAYMENT_STATES.has(status));
+}
+
+export function buildPaymentStatusCheckUrl(baseUrl: string, paymentId: string): string {
+  const origin = new URL(baseUrl).origin;
+  return `${origin}/api/payment-status/${paymentId}`;
+}
+
+export function resolveCanonicalCheckStatusUrl(
+  baseUrl: string,
+  paymentId: string,
+  checkStatusUrl?: string
+): string {
+  return checkStatusUrl ?? buildPaymentStatusCheckUrl(baseUrl, paymentId);
+}
+
+export function extractPaymentIdFromPaymentSignature(
+  paymentSignatureHeader: string
+): string | null {
+  try {
+    const payload = decodePaymentPayload(paymentSignatureHeader);
+    const maybeId = payload?.extensions?.["payment-identifier"];
+    if (
+      typeof maybeId === "object" &&
+      maybeId !== null &&
+      "info" in maybeId &&
+      typeof maybeId.info === "object" &&
+      maybeId.info !== null &&
+      "id" in maybeId.info &&
+      typeof maybeId.info.id === "string" &&
+      maybeId.info.id.length > 0
+    ) {
+      return maybeId.info.id;
+    }
+  } catch {
+    // best-effort extraction only
+  }
+
+  return null;
+}
+
+function resolvePaymentStatusBaseUrl(
+  requestConfig: { baseURL?: string; url?: string } | undefined,
+  fallbackBaseUrl: string
+): string {
+  if (requestConfig?.baseURL) {
+    return requestConfig.baseURL;
+  }
+
+  if (requestConfig?.url) {
+    try {
+      return new URL(requestConfig.url, fallbackBaseUrl).origin;
+    } catch {
+      // ignore malformed request URLs and fall back
+    }
+  }
+
+  return fallbackBaseUrl;
+}
+
+function formatCanonicalPaymentStatusForError(
+  baseUrl: string,
+  canonicalStatus: HttpPaymentStatusResponse,
+  outcome: CanonicalPaymentOutcome
+): string {
+  return (
+    `${outcome.guidance}\n` +
+    `status: ${canonicalStatus.status}\n` +
+    `terminalReason: ${canonicalStatus.terminalReason ?? "none"}\n` +
+    `paymentId: ${canonicalStatus.paymentId}\n` +
+    `checkUrl: ${resolveCanonicalCheckStatusUrl(
+      baseUrl,
+      canonicalStatus.paymentId,
+      canonicalStatus.checkStatusUrl
+    )}`
+  );
+}
+
+function attachCanonicalPaymentMetadata(
+  target: Record<string, unknown>,
+  baseUrl: string,
+  canonicalStatus: HttpPaymentStatusResponse,
+  outcome: CanonicalPaymentOutcome
+): void {
+  target.x402PaymentStatus = canonicalStatus;
+  target.x402PaymentDecision = outcome;
+  target.x402PaymentId = canonicalStatus.paymentId;
+  target.x402CheckUrl = resolveCanonicalCheckStatusUrl(
+    baseUrl,
+    canonicalStatus.paymentId,
+    canonicalStatus.checkStatusUrl
+  );
+}
+
+export async function fetchCanonicalPaymentStatus(
+  paymentId: string,
+  baseUrl: string
+): Promise<HttpPaymentStatusResponse | null> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15_000);
+
+  try {
+    const url = buildPaymentStatusCheckUrl(baseUrl, paymentId);
+    const response = await fetch(url, {
+      method: "GET",
+      headers: { Accept: "application/json" },
+      signal: controller.signal,
+    });
+
+    if (response.status === 404) {
+      return {
+        paymentId,
+        status: "not_found",
+        terminalReason: "unknown_payment_identity",
+      };
+    }
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const body = safeJsonTransform(await response.text());
+    const parsed = HttpPaymentStatusResponseSchema.safeParse(body);
+    if (!parsed.success) {
+      return null;
+    }
+
+    return parsed.data;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+export function classifyCanonicalPaymentOutcome(
+  status: TrackedPaymentState,
+  terminalReason?: TerminalReason
+): CanonicalPaymentOutcome {
+  if (IN_FLIGHT_PAYMENT_STATES.has(status)) {
+    return {
+      status,
+      terminalReason,
+      action: "poll",
+      shouldPollSamePayment: true,
+      shouldRebuildResign: false,
+      shouldRetryNewPayment: false,
+      stopPollingOldPayment: false,
+      guidance: "Payment is still in flight. Keep polling this paymentId and do not rebuild or re-sign.",
+    };
+  }
+
+  if (status === "confirmed") {
+    return {
+      status,
+      terminalReason,
+      action: "success",
+      shouldPollSamePayment: false,
+      shouldRebuildResign: false,
+      shouldRetryNewPayment: false,
+      stopPollingOldPayment: true,
+      guidance: "Payment confirmed successfully.",
+    };
+  }
+
+  if (status === "failed" && terminalReason && SENDER_REBUILD_REASONS.has(terminalReason)) {
+    return {
+      status,
+      terminalReason,
+      action: "rebuild_resign",
+      shouldPollSamePayment: false,
+      shouldRebuildResign: true,
+      shouldRetryNewPayment: false,
+      stopPollingOldPayment: true,
+      guidance: "Payment failed because the sender nonce is stale, missing, or duplicated. Rebuild and re-sign with a fresh sender nonce.",
+    };
+  }
+
+  if (status === "failed" && terminalReason && BOUNDED_RETRY_REASONS.has(terminalReason)) {
+    return {
+      status,
+      terminalReason,
+      action: "bounded_retry",
+      shouldPollSamePayment: false,
+      shouldRebuildResign: false,
+      shouldRetryNewPayment: true,
+      stopPollingOldPayment: true,
+      guidance: "Payment failed because of relay, sponsor, or settlement handling. Retry only within tool policy and do not treat this as sender nonce recovery.",
+    };
+  }
+
+  if (status === "replaced") {
+    return {
+      status,
+      terminalReason,
+      action: "stop",
+      shouldPollSamePayment: false,
+      shouldRebuildResign: false,
+      shouldRetryNewPayment: false,
+      stopPollingOldPayment: true,
+      guidance: "This payment was replaced. Stop polling the old paymentId and decide explicitly whether to start a new payment flow.",
+    };
+  }
+
+  if (status === "not_found") {
+    return {
+      status,
+      terminalReason,
+      action: "restart",
+      shouldPollSamePayment: false,
+      shouldRebuildResign: false,
+      shouldRetryNewPayment: false,
+      stopPollingOldPayment: true,
+      guidance: "This payment identity is gone or expired. Stop polling the old paymentId and only restart if the higher-level action still needs to pay.",
+    };
+  }
+
+  return {
+    status,
+    terminalReason,
+    action: "stop",
+    shouldPollSamePayment: false,
+    shouldRebuildResign: false,
+    shouldRetryNewPayment: false,
+    stopPollingOldPayment: true,
+    guidance:
+      status === "failed"
+        ? "Payment failed with a terminal outcome that should not be treated as sender nonce recovery."
+        : "Stop the old payment flow and inspect the terminal payment status.",
+  };
 }
 
 /**
@@ -110,7 +423,7 @@ export async function mnemonicToAccount(
  * Create an API client with x402 payment interceptor.
  * Creates a fresh client instance per call with max-1-payment-attempt guard.
  */
-export async function createApiClient(baseUrl?: string): Promise<AxiosInstance> {
+export async function createApiClient(baseUrl?: string, diagnosticTool = "x402.api-client"): Promise<AxiosInstance> {
   const url = baseUrl || API_URL;
 
   // Get account (from managed wallet or env mnemonic)
@@ -122,7 +435,7 @@ export async function createApiClient(baseUrl?: string): Promise<AxiosInstance> 
   // On a second 402 (would-be retry loop), rejects with a user-facing error.
   axiosInstance.interceptors.response.use(
     (response) => response,
-    (error) => {
+    async (error) => {
       // Only intercept 402 payment errors
       if (error.response?.status !== 402) {
         return Promise.reject(error);
@@ -132,10 +445,71 @@ export async function createApiClient(baseUrl?: string): Promise<AxiosInstance> 
       const attempts = paymentAttempts.get(axiosInstance) || 0;
 
       if (attempts >= 1) {
-        // Reject retry - payment already attempted once
+        const paymentSignature = error.config?.headers?.[X402_HEADERS.PAYMENT_SIGNATURE];
+        const paymentId =
+          typeof paymentSignature === "string"
+            ? extractPaymentIdFromPaymentSignature(paymentSignature)
+            : null;
+        const paymentStatusBaseUrl = resolvePaymentStatusBaseUrl(error.config, url);
+        const canonicalStatus = paymentId
+          ? await fetchCanonicalPaymentStatus(paymentId, paymentStatusBaseUrl)
+          : null;
+
+        if (canonicalStatus) {
+          const outcome = classifyCanonicalPaymentOutcome(
+            canonicalStatus.status,
+            canonicalStatus.terminalReason
+          );
+          emitPaymentDiagnostic({
+            event: "payment.finalized",
+            tool: diagnosticTool,
+            paymentId: canonicalStatus.paymentId,
+            status: canonicalStatus.status,
+            terminalReason: canonicalStatus.terminalReason,
+            action: outcome.action,
+            checkStatusUrl: canonicalStatus.checkStatusUrl,
+          });
+          const retryError = new Error(
+            `Payment retry limit exceeded (max 1 attempt).\n` +
+              `${formatCanonicalPaymentStatusForError(paymentStatusBaseUrl, canonicalStatus, outcome)}`
+          );
+          attachCanonicalPaymentMetadata(
+            retryError as unknown as Record<string, unknown>,
+            paymentStatusBaseUrl,
+            canonicalStatus,
+            outcome
+          );
+          (retryError as unknown as Record<string, unknown>).config = error.config as unknown;
+          return Promise.reject(retryError);
+        }
+
+        const txid =
+          typeof paymentSignature === "string"
+            ? extractTxidFromPaymentSignature(paymentSignature)
+            : null;
+        if (txid) {
+          emitPaymentDiagnostic({
+            event: "payment.fallback_used",
+            tool: diagnosticTool,
+            paymentId,
+            action: "txid_recovery_from_payment_signature",
+          });
+          const confirmation = await pollTransactionConfirmation(txid, account.network);
+          return Promise.reject(
+            new Error(
+              "Payment retry limit exceeded (max 1 attempt). " +
+                "Canonical payment status was unavailable, so txid recovery was used as backup.\n" +
+                `txid: ${confirmation.txid}\n` +
+                `status: ${confirmation.status}\n` +
+                `explorer: ${confirmation.explorer}`
+            )
+          );
+        }
+
         return Promise.reject(
           new Error(
-            "Payment retry limit exceeded (max 1 attempt). This endpoint may have payment/settlement issues. Check balance and try again."
+            "Payment retry limit exceeded (max 1 attempt). " +
+              "This endpoint may have payment or settlement issues, and canonical payment status was unavailable."
           )
         );
       }
@@ -232,12 +606,21 @@ export async function createApiClient(baseUrl?: string): Promise<AxiosInstance> 
 
         const txHex = "0x" + transaction.serialize();
 
+        const paymentId = generatePaymentId();
+        emitPaymentDiagnostic({
+          event: "payment.accepted",
+          tool: diagnosticTool,
+          paymentId,
+          action: "submit_paid_request",
+        });
+
         // Encode PaymentPayloadV2 into payment-signature header
         const encodedPayload = encodePaymentPayload({
           x402Version: 2,
           resource: paymentRequired.resource,
           accepted: selectedOption,
           payload: { transaction: txHex },
+          extensions: buildPaymentIdentifierExtension(paymentId),
         });
 
         // Retry the original request with the payment header
@@ -245,8 +628,68 @@ export async function createApiClient(baseUrl?: string): Promise<AxiosInstance> 
         originalRequest.headers = originalRequest.headers || {};
         originalRequest.headers[X402_HEADERS.PAYMENT_SIGNATURE] = encodedPayload;
 
-        return axiosInstance.request(originalRequest);
+        const paidResponse = await axiosInstance.request(originalRequest);
+        const canonicalStatus = await fetchCanonicalPaymentStatus(paymentId, url);
+
+        if (!canonicalStatus) {
+          emitPaymentDiagnostic({
+            event: "payment.fallback_used",
+            tool: diagnosticTool,
+            paymentId,
+            action: "canonical_status_unavailable_after_paid_response",
+            checkStatusUrl: buildPaymentStatusCheckUrl(url, paymentId),
+          });
+          (paidResponse as unknown as Record<string, unknown>).x402PaymentId = paymentId;
+          (paidResponse as unknown as Record<string, unknown>).x402CheckUrl =
+            buildPaymentStatusCheckUrl(url, paymentId);
+          return paidResponse;
+        }
+
+        const outcome = classifyCanonicalPaymentOutcome(
+          canonicalStatus.status,
+          canonicalStatus.terminalReason
+        );
+        emitPaymentDiagnostic({
+          event: outcome.action === "poll" ? "payment.poll" : "payment.finalized",
+          tool: diagnosticTool,
+          paymentId: canonicalStatus.paymentId,
+          status: canonicalStatus.status,
+          terminalReason: canonicalStatus.terminalReason,
+          action: outcome.action,
+          checkStatusUrl: canonicalStatus.checkStatusUrl,
+        });
+        attachCanonicalPaymentMetadata(
+          paidResponse as unknown as Record<string, unknown>,
+          url,
+          canonicalStatus,
+          outcome
+        );
+
+        if (outcome.action === "success" || outcome.action === "poll") {
+          return paidResponse;
+        }
+
+        const canonicalError = new Error(
+          "x402 payment failed after the paid request returned. " +
+            formatCanonicalPaymentStatusForError(url, canonicalStatus, outcome)
+        );
+        attachCanonicalPaymentMetadata(
+          canonicalError as unknown as Record<string, unknown>,
+          url,
+          canonicalStatus,
+          outcome
+        );
+        return Promise.reject(
+          canonicalError
+        );
       } catch (paymentError) {
+        if (
+          paymentError instanceof Error &&
+          ((paymentError as unknown as Record<string, unknown>).x402PaymentStatus ||
+            (paymentError as unknown as Record<string, unknown>).x402PaymentId)
+        ) {
+          return Promise.reject(paymentError);
+        }
         return Promise.reject(
           new Error(
             `x402 payment failed: ${paymentError instanceof Error ? paymentError.message : String(paymentError)}`

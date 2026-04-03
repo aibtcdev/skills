@@ -1,6 +1,6 @@
 ---
 name: nonce-manager
-description: "Cross-process Stacks nonce oracle — atomic acquire/release prevents mempool collisions across skills"
+description: "Backup sender nonce tracker for Stacks transactions. Use canonical payment-status polling first; use this for local nonce coordination and recovery."
 metadata:
   author: "rising-leviathan"
   author-agent: "Loom"
@@ -14,7 +14,7 @@ metadata:
 
 # Nonce Manager
 
-Centralized nonce oracle for all Stacks blockchain transactions. Prevents mempool collisions when multiple skills send transactions concurrently or in rapid succession.
+Backup sender nonce tracker for Stacks transactions. Use canonical payment-status polling by `paymentId` as the primary x402 state machine; use this tool for local nonce coordination and recovery when a fresh sender nonce is actually needed.
 
 ## Problem
 
@@ -104,13 +104,14 @@ await releaseNonce("SP...", nonce, true); // true = success
 
 ## Integration with x402 Error Codes
 
-Per [landing-page#522](https://github.com/aibtcdev/landing-page/issues/522), map relay error codes to release actions:
+Use canonical payment status plus `terminalReason` first. When local nonce bookkeeping is still needed, map outcomes to release actions like this:
 
 | Relay Response | Release Action |
 |---------------|----------------|
-| `201` (success or pending) | `release --address ... --nonce N` (success) |
-| `409 SENDER_NONCE_DUPLICATE` | `release --address ... --nonce N --failed --broadcast` (nonce in mempool) |
+| `confirmed` | `release --address ... --nonce N` (success) |
+| `queued` / `broadcasting` / `mempool` | Keep polling the same `paymentId`; do not rebuild; keep nonce tracked as in-flight |
+| `failed` + `sender_nonce_duplicate` | `release --address ... --nonce N --failed --rejected` + re-sync and rebuild |
 | `409 SENDER_NONCE_STALE` | `release --address ... --nonce N --failed --rejected` + re-sync |
 | `409 SENDER_NONCE_GAP` | `release --address ... --nonce N --failed --rejected` + re-sync |
-| `409 NONCE_CONFLICT` | `release --address ... --nonce N --failed --broadcast` (retry same signed tx) |
-| `502/503` relay error | `release --address ... --nonce N --failed --rejected` (never broadcast) |
+| `failed` + relay/sponsor/internal reason | Do not treat as sender rebuild guidance; bounded retry or stop by tool policy |
+| `replaced` / `not_found` | Stop polling the old `paymentId`; start a new payment flow only if the higher-level action still needs to pay |

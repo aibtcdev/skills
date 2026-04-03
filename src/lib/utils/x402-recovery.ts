@@ -4,8 +4,8 @@
  * Helpers for extracting transaction IDs from payment-signature headers
  * and polling transaction confirmation status.
  *
- * Used by inbox.tools.ts and endpoint.tools.ts to provide txid recovery
- * info when settlement fails after payment was submitted.
+ * Used by inbox tools and endpoint tools to provide txid recovery
+ * info when settlement fails after a payment attempt.
  */
 
 import { deserializeTransaction } from "@stacks/transactions";

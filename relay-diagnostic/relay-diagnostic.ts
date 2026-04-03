@@ -1,7 +1,8 @@
 #!/usr/bin/env bun
 /**
  * Relay Diagnostic skill CLI
- * Sponsor relay health checks and nonce recovery for stuck sponsored transactions
+ * Operator relay diagnostics and sponsor nonce recovery for stuck sponsored transactions.
+ * This tool does not define caller-facing payment states.
  *
  * Usage: bun run relay-diagnostic/relay-diagnostic.ts <subcommand> [options]
  */
@@ -406,7 +407,7 @@ const program = new Command();
 program
   .name("relay-diagnostic")
   .description(
-    "Sponsor relay health checks and nonce recovery — diagnose stuck sponsored transactions and attempt automated RBF or gap-fill recovery"
+    "Operator relay diagnostics and sponsor nonce recovery — diagnose stuck sponsored transactions and attempt automated RBF or gap-fill recovery without redefining caller-facing payment state"
   )
   .version("0.1.0");
 
@@ -418,7 +419,7 @@ program
   .command("check-health")
   .description(
     "Check the sponsor relay health and nonce status. Read-only — no wallet required. " +
-      "Inspects relay availability, sponsor nonce state, nonce gaps, mempool desync, and stuck transactions."
+      "Inspects operator diagnostics only: relay availability, sponsor nonce state, nonce gaps, mempool desync, and stuck transactions."
   )
   .action(async () => {
     try {
@@ -513,7 +514,7 @@ program
         );
 
         results.summary = anySupported
-          ? "Recovery request submitted to relay. Run check-health to verify nonce state improved."
+          ? "Recovery request sent to relay. Run check-health to verify nonce state improved."
           : anyUnsupported
           ? "Relay does not yet support automated recovery. Run check-health for txids and nonces to share with the AIBTC team."
           : "Recovery attempted.";

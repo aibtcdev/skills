@@ -9,6 +9,7 @@
 import { Command } from "commander";
 import { NETWORK, API_URL } from "../src/lib/config/networks.js";
 import {
+  classifyCanonicalPaymentOutcome,
   createApiClient,
   createPlainClient,
   probeEndpoint,
@@ -265,7 +266,7 @@ program
         const probeResult = await probeEndpoint({ method, url: fullUrl, params, data });
 
         if (probeResult.type === "payment_required") {
-          const api = await createApiClient(parsed.baseUrl);
+          const api = await createApiClient(parsed.baseUrl, "x402.execute-endpoint");
           const response = await api.request({ method, url: parsed.requestPath, params, data, headers: customHeaders });
 
           printJson({
@@ -478,14 +479,23 @@ program
           },
           network: NETWORK,
           contentHash,
+          diagnosticTool: "x402.send-inbox-message",
         });
 
         // Step 5: Format and print result
-        printJson({
-          success: true,
-          message: result.recovered
+        const paymentOutcome = result.paymentStatus
+          ? classifyCanonicalPaymentOutcome(result.paymentStatus, result.terminalReason)
+          : null;
+        const message = result.messageDelivered
+          ? result.recovered
             ? "Message delivered (auto-recovered)"
-            : "Message delivered",
+            : "Message delivered"
+          : paymentOutcome?.action === "poll"
+            ? "Payment is still in flight. Keep polling the same paymentId; do not rebuild or re-sign."
+            : "Payment accepted, but delivery is not confirmed yet.";
+        printJson({
+          success: result.messageDelivered ?? true,
+          message,
           recipient: {
             btcAddress: opts.recipientBtcAddress,
             stxAddress: opts.recipientStxAddress,
@@ -496,10 +506,15 @@ program
           payment: {
             amount: accept.amount + " sats sBTC",
             status: result.paymentStatus ?? (result.settlementTxid ? "confirmed" : undefined),
+            terminalReason: result.terminalReason,
+            action: result.paymentAction ?? paymentOutcome?.action,
+            guidance: paymentOutcome?.guidance,
             paymentId: result.paymentId,
-            checkUrl: result.paymentId
-              ? `https://aibtc.com/api/payment-status/${result.paymentId}`
-              : undefined,
+            checkUrl:
+              result.checkUrl ??
+              (result.paymentId
+                ? `https://aibtc.com/api/payment-status/${result.paymentId}`
+                : undefined),
             txid: result.settlementTxid,
             explorer: result.settlementTxid
               ? getExplorerTxUrl(result.settlementTxid, NETWORK)

@@ -1,11 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import {
+  classifyRetryableError,
   extractInboxPaymentMetadata,
   resolveInboxPaymentTracking,
 } from "./x402-retry.js";
 
 describe("extractInboxPaymentMetadata", () => {
-  test("returns pending payment metadata nested under inbox", () => {
+  test("collapses legacy pending into queued caller-facing status", () => {
     expect(
       extractInboxPaymentMetadata({
         inbox: {
@@ -15,7 +16,8 @@ describe("extractInboxPaymentMetadata", () => {
       })
     ).toEqual({
       paymentId: "pay_123",
-      paymentStatus: "pending",
+      paymentStatus: "queued",
+      compatShimUsed: true,
     });
   });
 
@@ -28,7 +30,11 @@ describe("extractInboxPaymentMetadata", () => {
           paymentStatus: "unknown",
         },
       })
-    ).toEqual({});
+    ).toEqual({
+      paymentId: undefined,
+      paymentStatus: undefined,
+      compatShimUsed: false,
+    });
   });
 });
 
@@ -38,10 +44,11 @@ describe("resolveInboxPaymentTracking", () => {
       paymentId: "pay_sent",
       paymentStatus: undefined,
       nonceReference: "",
+      compatShimUsed: false,
     });
   });
 
-  test("uses a pending nonce reference when the inbox reports pending status", () => {
+  test("uses an in-flight nonce reference when the inbox reports queued status", () => {
     expect(
       resolveInboxPaymentTracking(
         {
@@ -53,8 +60,31 @@ describe("resolveInboxPaymentTracking", () => {
       )
     ).toEqual({
       paymentId: "pay_sent",
-      paymentStatus: "pending",
+      paymentStatus: "queued",
       nonceReference: "pending:pay_sent",
+      compatShimUsed: true,
+    });
+  });
+});
+
+describe("classifyRetryableError", () => {
+  test("treats sender nonce duplicate as sender-side rebuild guidance", () => {
+    expect(
+      classifyRetryableError(409, { code: "SENDER_NONCE_DUPLICATE" })
+    ).toEqual({
+      retryable: true,
+      delayMs: 0,
+      relaySideConflict: false,
+    });
+  });
+
+  test("keeps relay nonce conflict on the same signed payment", () => {
+    expect(
+      classifyRetryableError(409, { code: "NONCE_CONFLICT", retryAfter: 7 })
+    ).toEqual({
+      retryable: true,
+      delayMs: 7000,
+      relaySideConflict: true,
     });
   });
 });

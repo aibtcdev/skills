@@ -6,7 +6,9 @@ description: Sponsor relay health checks and nonce recovery — diagnose stuck s
 
 # Relay Diagnostic Agent
 
-This agent diagnoses stuck sponsored transactions on the Stacks network. Sponsored transactions route through the AIBTC relay, which maintains a nonce queue for the sponsor address. If that queue develops gaps or desynchronises from the mempool, new transactions stall. This skill surfaces the relay's nonce state and provides automated recovery paths.
+This agent diagnoses stuck sponsored transactions on the Stacks network. Sponsored transactions route through the AIBTC relay, which maintains a nonce queue for the sponsor address. If that queue develops gaps or desynchronises from the mempool, new transactions stall. This skill surfaces relay operator diagnostics and automated recovery paths.
+
+Do not use relay health output as the caller-facing x402 payment state machine. Caller-facing state should come from canonical payment-status polling by `paymentId`.
 
 ## Prerequisites
 
