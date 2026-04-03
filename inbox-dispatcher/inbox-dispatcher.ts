@@ -130,10 +130,12 @@ const ackCmd = new Command("ack")
       const data = await res.json();
 
       const messages: Array<{ id: string; content: string }> = data.inbox?.messages || [];
-      const toAck = messages.filter(m => {
-        const { priority } = scoreMessage(m.content);
-        return priority >= threshold;
+      // Precompute scores to avoid repeated calls
+      const scoredMessages = messages.map(msg => {
+        const { priority, category } = scoreMessage(msg.content);
+        return { id: msg.id, content: msg.content, priority, category };
       });
+      const toAck = scoredMessages.filter(m => m.priority >= threshold);
 
       // Process each message: sign the "Inbox Read | {messageId}" message and PATCH
       const results = [];
@@ -155,15 +157,15 @@ const ackCmd = new Command("ack")
               id: msg.id,
               success: false,
               error: `HTTP ${patchRes.status}: ${body}`,
-              priority: scoreMessage(msg.content).priority,
-              category: scoreMessage(msg.content).category
+              priority: msg.priority,
+              category: msg.category
             });
           } else {
             results.push({
               id: msg.id,
               success: true,
-              priority: scoreMessage(msg.content).priority,
-              category: scoreMessage(msg.content).category
+              priority: msg.priority,
+              category: msg.category
             });
           }
         } catch (err) {
@@ -171,8 +173,8 @@ const ackCmd = new Command("ack")
             id: msg.id,
             success: false,
             error: err.message,
-            priority: scoreMessage(msg.content).priority,
-            category: scoreMessage(msg.content).category
+            priority: msg.priority,
+            category: msg.category
           });
         }
       }
