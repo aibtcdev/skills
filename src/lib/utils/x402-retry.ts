@@ -324,11 +324,16 @@ async function getCanonicalPaymentAssessment(
   terminalReason?: TerminalReason;
   paymentAction: CanonicalPaymentAction;
   guidance: string;
-  checkUrl: string;
+  checkUrl?: string;
   settlementTxid?: string;
 }> {
   const baseUrl = new URL(inboxUrl).origin;
-  const canonical = await fetchCanonicalPaymentStatus(paymentId, baseUrl);
+  const canonical = await fetchCanonicalPaymentStatus(
+    paymentId,
+    baseUrl,
+    undefined,
+    true
+  );
   if (!canonical) {
     throw new Error("canonical payment status unavailable");
   }
@@ -575,11 +580,7 @@ export async function executeInboxWithRetry(
         (paymentStatus
           ? classifyCanonicalPaymentOutcome(paymentStatus, terminalReason).action
           : undefined);
-      const checkUrl =
-        canonicalAssessment?.checkUrl ??
-        (resolvedPaymentId
-          ? resolveCanonicalCheckStatusUrl(new URL(inboxUrl).origin, resolvedPaymentId)
-          : undefined);
+      const checkUrl = canonicalAssessment?.checkUrl;
       const effectiveNonceReference =
         txid ??
         (isInFlightPaymentStatus(paymentStatus) && resolvedPaymentId

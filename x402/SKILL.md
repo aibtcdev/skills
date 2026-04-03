@@ -150,7 +150,7 @@ Output:
     "terminalReason": null,
     "action": "poll",
     "paymentId": "pay_123",
-    "checkUrl": "https://aibtc.com/api/payment-status/pay_123",
+    "checkUrl": "https://aibtc.com/rpc/payment-check/pay_123",
     "txid": null
   }
 }
@@ -159,7 +159,7 @@ Output:
 Notes:
 - Caller-facing payment states collapse legacy `submitted` to `queued`.
 - `send-inbox-message` reports `success: true` only after confirmed delivery by default.
-- When payment is still in flight, keep polling the same `payment.paymentId` or `payment.checkUrl`; do not rebuild or re-sign unless a later terminal status says to.
+- When payment is still in flight, keep polling the same `payment.paymentId`. Use `payment.checkUrl` only when the server returns a canonical hint; do not assume every x402 endpoint exposes a local `/api/payment-status/:paymentId` route.
 - `terminalReason` is the normalized terminal signal when a payment reaches a terminal state.
 
 ### scaffold-endpoint

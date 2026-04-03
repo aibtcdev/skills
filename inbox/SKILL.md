@@ -120,4 +120,5 @@ Output:
 - The AIBTC inbox API base URL is `https://aibtc.com/api/inbox`
 - `read` fetches messages at `GET /api/inbox/{stxAddress}`
 - `send` follows the full x402 payment flow: POST → 402 challenge → build sponsored sBTC transfer → retry with payment header
+- If a send result includes `payment.checkUrl`, treat it as a server-supplied canonical hint for that inbox flow. Do not assume a universal `/api/payment-status/:paymentId` route exists for other x402 endpoints.
 - Sponsored transactions mean the relay pays gas; sender only needs sBTC for the message cost

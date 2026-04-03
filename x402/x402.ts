@@ -510,11 +510,7 @@ program
             action: result.paymentAction ?? paymentOutcome?.action,
             guidance: paymentOutcome?.guidance,
             paymentId: result.paymentId,
-            checkUrl:
-              result.checkUrl ??
-              (result.paymentId
-                ? `https://aibtc.com/api/payment-status/${result.paymentId}`
-                : undefined),
+            checkUrl: result.checkUrl,
             txid: result.settlementTxid,
             explorer: result.settlementTxid
               ? getExplorerTxUrl(result.settlementTxid, NETWORK)

@@ -45,6 +45,6 @@ This agent handles AIBTC inbox protocol operations: sending paid x402 messages t
 
 ## Output Handling
 
-- `send`: read `success` (boolean); if `true`, `payment.txid` contains the sponsored sBTC transaction ID; `contentLength` confirms message was sent
+- `send`: read `success` (boolean); if `true`, `payment.txid` contains the sponsored sBTC transaction ID; `contentLength` confirms message was sent. If `payment.checkUrl` is present, treat it as a server-supplied canonical hint rather than a universally available local route pattern.
 - `read`: read `messages[]` array; each message has `id`, `from`, `content`, and `timestamp`; `count` is the total number returned
 - `status`: read `inbox.total` (all messages), `inbox.unread` (unread count), `inbox.lastReceived` (ISO timestamp of most recent message)

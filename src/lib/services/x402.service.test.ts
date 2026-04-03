@@ -4,10 +4,10 @@ import { once } from "node:events";
 import { getStacksChainId } from "../config/caip.js";
 import { NETWORK, type Network } from "../config/networks.js";
 import {
-  buildPaymentStatusCheckUrl,
   classifyCanonicalPaymentOutcome,
   createApiClient,
   extractPaymentIdFromPaymentSignature,
+  fetchCanonicalPaymentStatus,
   normalizeCallerFacingPaymentStatus,
   resolveCanonicalCheckStatusUrl,
   mnemonicToAccount,
@@ -126,10 +126,10 @@ describe("createApiClient canonical payment flow", () => {
     }
   });
 
-  test("uses the relay-supplied canonical poll hint after a paid response", async () => {
+  test("degrades explicitly after a paid response when no canonical hint is available", async () => {
     const diagnostics = capturePaymentDiagnostics();
     const network = NETWORK as Network;
-    const originState = {
+    const seen = {
       paymentId: "",
       canonicalPolls: 0,
     };
@@ -161,7 +161,7 @@ describe("createApiClient canonical payment flow", () => {
       }
 
       if (url.pathname === "/paid" && req.headers[X402_HEADERS.PAYMENT_SIGNATURE]) {
-        originState.paymentId = extractPaymentIdFromPaymentSignature(
+        seen.paymentId = extractPaymentIdFromPaymentSignature(
           String(req.headers[X402_HEADERS.PAYMENT_SIGNATURE])
         ) ?? "";
         res.statusCode = 200;
@@ -170,19 +170,15 @@ describe("createApiClient canonical payment flow", () => {
         return;
       }
 
-      if (
-        originState.paymentId &&
-        url.pathname === `/api/payment-status/${originState.paymentId}`
-      ) {
-        originState.canonicalPolls += 1;
-        const canonicalHint = `${serverOrigin(server)}/rpc/payment-check/${originState.paymentId}`;
+      if (seen.paymentId && url.pathname === `/api/payment-status/${seen.paymentId}`) {
+        seen.canonicalPolls += 1;
         res.statusCode = 200;
         res.setHeader("content-type", "application/json");
         res.end(
           JSON.stringify({
-            paymentId: originState.paymentId,
+            paymentId: seen.paymentId,
             status: "queued",
-            checkStatusUrl: canonicalHint,
+            checkStatusUrl: `${serverOrigin(server)}/rpc/payment-check/${seen.paymentId}`,
           })
         );
         return;
@@ -201,39 +197,29 @@ describe("createApiClient canonical payment flow", () => {
       const responseMeta = response as unknown as Record<string, unknown>;
 
       expect(response.data).toEqual({ ok: true });
-      expect(originState.paymentId.startsWith("pay_")).toBe(true);
-      expect(originState.canonicalPolls).toBe(1);
-      expect(responseMeta.x402PaymentId).toBe(originState.paymentId);
-      expect(responseMeta.x402CheckUrl).toBe(
-        `${serverOrigin(server)}/rpc/payment-check/${originState.paymentId}`
-      );
-      expect(responseMeta.x402PaymentStatus).toMatchObject({
-        checkStatusUrl: `${serverOrigin(server)}/rpc/payment-check/${originState.paymentId}`,
-      });
-      expect(responseMeta.x402PaymentDecision).toMatchObject({
-        action: "poll",
-        shouldPollSamePayment: true,
-      });
+      expect(seen.paymentId.startsWith("pay_")).toBe(true);
+      expect(seen.canonicalPolls).toBe(0);
+      expect(responseMeta.x402PaymentId).toBe(seen.paymentId);
+      expect(responseMeta.x402CheckUrl).toBeUndefined();
+      expect(responseMeta.x402PaymentStatus).toBeUndefined();
+      expect(responseMeta.x402PaymentDecision).toBeUndefined();
       expect(diagnostics.entries).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
             event: "payment.accepted",
             tool: "test.endpoint",
-            paymentId: originState.paymentId,
+            paymentId: seen.paymentId,
             action: "submit_paid_request",
           }),
           expect.objectContaining({
-            event: "payment.poll",
+            event: "payment.fallback_used",
             tool: "test.endpoint",
-            paymentId: originState.paymentId,
-            status: "queued",
-            action: "poll",
-            checkStatusUrl_present: true,
-            compat_shim_used: false,
+            paymentId: seen.paymentId,
+            action: "canonical_status_unavailable_after_paid_response",
+            checkStatusUrl_present: false,
           }),
         ])
       );
-      expect(diagnostics.entries.some((entry) => entry.event === "payment.fallback_used")).toBe(false);
     } finally {
       diagnostics.restore();
       server.close();
@@ -241,7 +227,7 @@ describe("createApiClient canonical payment flow", () => {
     }
   });
 
-  test("builds a fallback poll hint when canonical status omits checkStatusUrl", async () => {
+  test("does not use an origin-local status route when canonical hints are absent", async () => {
     const diagnostics = capturePaymentDiagnostics();
     const network = NETWORK as Network;
     const seen: { paymentId: string; canonicalPolls: number } = {
@@ -311,26 +297,18 @@ describe("createApiClient canonical payment flow", () => {
       const responseMeta = response as unknown as Record<string, unknown>;
 
       expect(response.data).toEqual({ ok: true });
-      expect(seen.canonicalPolls).toBe(1);
+      expect(seen.canonicalPolls).toBe(0);
       expect(responseMeta.x402PaymentId).toBe(seen.paymentId);
-      expect(responseMeta.x402CheckUrl).toBe(
-        buildPaymentStatusCheckUrl(serverOrigin(server), seen.paymentId)
-      );
-      expect(responseMeta.x402PaymentStatus).toMatchObject({
-        paymentId: seen.paymentId,
-        status: "queued",
-      });
-      expect((responseMeta.x402PaymentStatus as { checkStatusUrl?: string }).checkStatusUrl).toBeUndefined();
+      expect(responseMeta.x402CheckUrl).toBeUndefined();
+      expect(responseMeta.x402PaymentStatus).toBeUndefined();
       expect(diagnostics.entries).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
-            event: "payment.poll",
+            event: "payment.fallback_used",
             tool: "test.endpoint",
             paymentId: seen.paymentId,
-            status: "queued",
-            action: "poll",
+            action: "canonical_status_unavailable_after_paid_response",
             checkStatusUrl_present: false,
-            compat_shim_used: false,
           }),
         ])
       );
@@ -402,9 +380,7 @@ describe("createApiClient canonical payment flow", () => {
 
       expect(response.data).toEqual({ ok: true });
       expect(responseMeta.x402PaymentId).toBe(seen.paymentId);
-      expect(responseMeta.x402CheckUrl).toBe(
-        `${serverOrigin(server)}/api/payment-status/${seen.paymentId}`
-      );
+      expect(responseMeta.x402CheckUrl).toBeUndefined();
       expect(responseMeta.x402PaymentStatus).toBeUndefined();
       expect(diagnostics.entries).toEqual(
         expect.arrayContaining([
@@ -418,7 +394,7 @@ describe("createApiClient canonical payment flow", () => {
             tool: "test.endpoint",
             paymentId: seen.paymentId,
             action: "canonical_status_unavailable_after_paid_response",
-            checkStatusUrl_present: true,
+            checkStatusUrl_present: false,
           }),
         ])
       );
@@ -429,88 +405,6 @@ describe("createApiClient canonical payment flow", () => {
     }
   });
 
-  test("uses canonical polling before txid backup on retry-limit failures", async () => {
-    const network = NETWORK as Network;
-    const seen: { paymentId: string } = { paymentId: "" };
-    const server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
-      const url = new URL(req.url ?? "/", "http://127.0.0.1");
-      if (url.pathname === "/paid" && !req.headers[X402_HEADERS.PAYMENT_SIGNATURE]) {
-        res.statusCode = 402;
-        res.setHeader(
-          X402_HEADERS.PAYMENT_REQUIRED,
-          Buffer.from(
-            JSON.stringify({
-              x402Version: 2,
-              resource: { url: "http://example.test/paid" },
-              accepts: [
-                {
-                  scheme: "exact",
-                  network: getStacksChainId(network),
-                  amount: "1",
-                  asset: "STX",
-                  payTo: recipientAddress,
-                  maxTimeoutSeconds: 60,
-                },
-              ],
-            })
-          ).toString("base64")
-        );
-        res.end(JSON.stringify({ error: "payment required" }));
-        return;
-      }
-
-      if (url.pathname === "/paid" && req.headers[X402_HEADERS.PAYMENT_SIGNATURE]) {
-        seen.paymentId = extractPaymentIdFromPaymentSignature(
-          String(req.headers[X402_HEADERS.PAYMENT_SIGNATURE])
-        ) ?? "";
-        res.statusCode = 402;
-        res.setHeader("content-type", "application/json");
-        res.end(JSON.stringify({ error: "still settling" }));
-        return;
-      }
-
-      if (seen.paymentId && url.pathname === `/api/payment-status/${seen.paymentId}`) {
-        res.statusCode = 200;
-        res.setHeader("content-type", "application/json");
-        res.end(
-          JSON.stringify({
-            paymentId: seen.paymentId,
-            status: "failed",
-            terminalReason: "sender_nonce_stale",
-            checkStatusUrl: `${serverOrigin(server)}/api/payment-status/${seen.paymentId}`,
-          })
-        );
-        return;
-      }
-
-      res.statusCode = 404;
-      res.end("not found");
-    });
-
-    server.listen(0, "127.0.0.1");
-    await once(server, "listening");
-
-    try {
-      const api = await createApiClient(serverOrigin(server));
-      try {
-        await api.request({ method: "GET", url: "/paid" });
-        throw new Error("expected request to fail");
-      } catch (error) {
-        const paymentError = error as Error & {
-          x402PaymentId?: string;
-          x402PaymentStatus?: { terminalReason?: string };
-        };
-        expect(paymentError.message).toContain("sender nonce is stale");
-        expect(paymentError.x402PaymentId).toBe(seen.paymentId);
-        expect(paymentError.x402PaymentStatus?.terminalReason).toBe(
-          "sender_nonce_stale"
-        );
-      }
-    } finally {
-      server.close();
-      await once(server, "close");
-    }
-  });
 });
 
 describe("resolveCanonicalCheckStatusUrl", () => {
@@ -524,13 +418,109 @@ describe("resolveCanonicalCheckStatusUrl", () => {
     ).toBe("https://relay.example/rpc/payment-check/pay_123");
   });
 
-  test("constructs the default poll hint when the canonical hint is absent", () => {
+  test("stays explicit when the canonical hint is absent", () => {
     expect(
       resolveCanonicalCheckStatusUrl(
         "https://x402-relay.aibtc.com/some/paid/path",
         "pay_123"
       )
-    ).toBe("https://x402-relay.aibtc.com/api/payment-status/pay_123");
+    ).toBeUndefined();
+  });
+});
+
+describe("fetchCanonicalPaymentStatus", () => {
+  test("consumes an explicit canonical poll hint when provided", async () => {
+    const seen = { hintHits: 0, localRouteHits: 0 };
+    const server = createServer((req: IncomingMessage, res: ServerResponse) => {
+      const url = new URL(req.url ?? "/", "http://127.0.0.1");
+      if (url.pathname === "/rpc/payment-check/pay_123") {
+        seen.hintHits += 1;
+        res.statusCode = 200;
+        res.setHeader("content-type", "application/json");
+        res.end(
+          JSON.stringify({
+            paymentId: "pay_123",
+            status: "queued",
+            checkStatusUrl: `${serverOrigin(server)}/rpc/payment-check/pay_123`,
+          })
+        );
+        return;
+      }
+
+      if (url.pathname === "/api/payment-status/pay_123") {
+        seen.localRouteHits += 1;
+        res.statusCode = 500;
+        res.end("should not be called");
+        return;
+      }
+
+      res.statusCode = 404;
+      res.end("not found");
+    });
+
+    server.listen(0, "127.0.0.1");
+    await once(server, "listening");
+
+    try {
+      expect(
+        await fetchCanonicalPaymentStatus(
+          "pay_123",
+          serverOrigin(server),
+          `${serverOrigin(server)}/rpc/payment-check/pay_123`
+        )
+      ).toMatchObject({
+        paymentId: "pay_123",
+        status: "queued",
+        checkStatusUrl: `${serverOrigin(server)}/rpc/payment-check/pay_123`,
+      });
+      expect(seen.hintHits).toBe(1);
+      expect(seen.localRouteHits).toBe(0);
+    } finally {
+      server.close();
+      await once(server, "close");
+    }
+  });
+
+  test("does not poll a synthesized local route unless explicitly enabled", async () => {
+    const seen = { localRouteHits: 0 };
+    const server = createServer((req: IncomingMessage, res: ServerResponse) => {
+      const url = new URL(req.url ?? "/", "http://127.0.0.1");
+      if (url.pathname === "/api/payment-status/pay_123") {
+        seen.localRouteHits += 1;
+        res.statusCode = 200;
+        res.setHeader("content-type", "application/json");
+        res.end(JSON.stringify({ paymentId: "pay_123", status: "queued" }));
+        return;
+      }
+
+      res.statusCode = 404;
+      res.end("not found");
+    });
+
+    server.listen(0, "127.0.0.1");
+    await once(server, "listening");
+
+    try {
+      expect(
+        await fetchCanonicalPaymentStatus("pay_123", serverOrigin(server))
+      ).toBeNull();
+      expect(seen.localRouteHits).toBe(0);
+      expect(
+        await fetchCanonicalPaymentStatus(
+          "pay_123",
+          serverOrigin(server),
+          undefined,
+          true
+        )
+      ).toMatchObject({
+        paymentId: "pay_123",
+        status: "queued",
+      });
+      expect(seen.localRouteHits).toBe(1);
+    } finally {
+      server.close();
+      await once(server, "close");
+    }
   });
 });
 

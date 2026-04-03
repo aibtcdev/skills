@@ -57,7 +57,7 @@ This agent handles x402 protocol operations: discovering and executing paid API 
 - `list-endpoints`: read `sources[].url` and `sources[].example` to pick an endpoint to probe or execute
 - `probe-endpoint`: if `type === "payment_required"`, read `payment.amount` and `payment.asset` to confirm cost before executing; if `type === "free"`, read `response` for the data
 - `execute-endpoint`: read `response` for the API response data; payment metadata may also be attached internally as canonical status, decision, `paymentId`, and `checkUrl`
-- `send-inbox-message`: read `success` first. By default it is only `true` after confirmed delivery. If `success` is `false`, read `payment.status`, `payment.paymentId`, `payment.checkUrl`, and `payment.terminalReason` to continue canonical polling or inspect the terminal outcome
+- `send-inbox-message`: read `success` first. By default it is only `true` after confirmed delivery. If `success` is `false`, read `payment.status`, `payment.paymentId`, and `payment.terminalReason`. Use `payment.checkUrl` only when present as a canonical hint instead of assuming a universal local status route.
 - `scaffold-endpoint` / `scaffold-ai-endpoint`: read `projectPath` for the created directory; follow `nextSteps` to install and run
 - `openrouter-models`: read `models[].id` to get the model string to use in `scaffold-ai-endpoint --default-model`
 

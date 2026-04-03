@@ -142,17 +142,21 @@ export function isInFlightPaymentStatus(
   return Boolean(status && IN_FLIGHT_PAYMENT_STATES.has(status));
 }
 
+/**
+ * Local compatibility helper for inbox or other explicitly bounded first-party
+ * flows. This is not a generic caller-facing x402 contract.
+ */
 export function buildPaymentStatusCheckUrl(baseUrl: string, paymentId: string): string {
   const origin = new URL(baseUrl).origin;
   return `${origin}/api/payment-status/${paymentId}`;
 }
 
 export function resolveCanonicalCheckStatusUrl(
-  baseUrl: string,
-  paymentId: string,
+  _baseUrl: string,
+  _paymentId: string,
   checkStatusUrl?: string
-): string {
-  return checkStatusUrl ?? buildPaymentStatusCheckUrl(baseUrl, paymentId);
+): string | undefined {
+  return checkStatusUrl;
 }
 
 export function extractPaymentIdFromPaymentSignature(
@@ -213,7 +217,7 @@ function formatCanonicalPaymentStatusForError(
       baseUrl,
       canonicalStatus.paymentId,
       canonicalStatus.checkStatusUrl
-    )}`
+    ) ?? "unavailable"}`
   );
 }
 
@@ -226,22 +230,31 @@ function attachCanonicalPaymentMetadata(
   target.x402PaymentStatus = canonicalStatus;
   target.x402PaymentDecision = outcome;
   target.x402PaymentId = canonicalStatus.paymentId;
-  target.x402CheckUrl = resolveCanonicalCheckStatusUrl(
+  const checkUrl = resolveCanonicalCheckStatusUrl(
     baseUrl,
     canonicalStatus.paymentId,
     canonicalStatus.checkStatusUrl
   );
+  if (checkUrl) {
+    target.x402CheckUrl = checkUrl;
+  }
 }
 
 export async function fetchCanonicalPaymentStatus(
   paymentId: string,
-  baseUrl: string
+  baseUrl: string,
+  checkStatusUrl?: string,
+  allowLocalRouteFallback = false
 ): Promise<HttpPaymentStatusResponse | null> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 15_000);
 
   try {
-    const url = buildPaymentStatusCheckUrl(baseUrl, paymentId);
+    const url = checkStatusUrl ??
+      (allowLocalRouteFallback ? buildPaymentStatusCheckUrl(baseUrl, paymentId) : null);
+    if (!url) {
+      return null;
+    }
     const response = await fetch(url, {
       method: "GET",
       headers: { Accept: "application/json" },
@@ -637,11 +650,8 @@ export async function createApiClient(baseUrl?: string, diagnosticTool = "x402.a
             tool: diagnosticTool,
             paymentId,
             action: "canonical_status_unavailable_after_paid_response",
-            checkStatusUrl: buildPaymentStatusCheckUrl(url, paymentId),
           });
           (paidResponse as unknown as Record<string, unknown>).x402PaymentId = paymentId;
-          (paidResponse as unknown as Record<string, unknown>).x402CheckUrl =
-            buildPaymentStatusCheckUrl(url, paymentId);
           return paidResponse;
         }
 
