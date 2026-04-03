@@ -136,7 +136,9 @@ async function submitToSponsorRelay(
       "Content-Type": "application/json",
       "Authorization": `Bearer ${apiKey}`,
     },
-    body: JSON.stringify({ transaction }),
+    body: JSON.stringify({
+      transaction: transaction.startsWith("0x") ? transaction : "0x" + transaction,
+    }),
   });
 
   const responseText = await response.text();
