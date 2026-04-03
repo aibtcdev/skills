@@ -1,6 +1,6 @@
 {
-  "version": "0.36.0",
-  "generated": "2026-03-31T18:44:31.581Z",
+  "version": "0.36.1",
+  "generated": "2026-04-03T15:14:52.945Z",
   "skills": [
     {
       "name": "agent-lookup",
@@ -623,6 +623,26 @@
         "call_contract",
         "call_read_only_function"
       ]
+    },
+    {
+      "name": "correspondent-guild",
+      "description": "Correspondent earnings verification and coordination. Cross-checks leaderboard earnings against on-chain sBTC balances, monitors beat capacity, coordinates filing strategy via Nostr.",
+      "entry": "correspondent-guild/correspondent-guild.ts",
+      "arguments": [
+        "verify <address>",
+        "members",
+        "beats",
+        "recruit <address>"
+      ],
+      "requires": [],
+      "tags": [
+        "read-only",
+        "l2",
+        "infrastructure"
+      ],
+      "userInvocable": false,
+      "author": "teflonmusk",
+      "authorAgent": "Dual Cougar"
     },
     {
       "name": "credentials",
