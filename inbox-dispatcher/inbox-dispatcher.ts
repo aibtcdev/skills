@@ -33,8 +33,45 @@ function scoreMessage(content: string): { priority: number; category: string } {
   if (revenue > collab && revenue > spam) category = "revenue";
   else if (collab > revenue && collab > spam) category = "collaboration";
   else if (spam > revenue && spam > collab) category = "spam";
+  // Tie cases (revenue === collab, etc.) remain "other" — intentionally ambiguous
 
   return { priority: score, category };
+}
+
+// ---------------------------------------------------------------------------
+// Helper: Sign a message with Bitcoin key using btc-sign subcommand
+// ---------------------------------------------------------------------------
+async function signMessageWithBtc(message: string): Promise<{ signature: string; signer: string }> {
+  // Spawn btc-sign subprocess using Bun
+  const proc = Bun.spawn(
+    ["bun", "run", "signing/signing.ts", "btc-sign", "--message", message],
+    {
+      cwd: new URL("..", import.meta.url).pathname,
+      stdout: "pipe",
+      stderr: "pipe",
+    }
+  );
+
+  const stdout = await new Response(proc.stdout).text();
+  const stderr = await new Response(proc.stderr).text();
+  const exitCode = await proc.exited;
+
+  if (exitCode !== 0) {
+    throw new Error(`btc-sign failed (exit ${exitCode}): ${stderr || stdout}`);
+  }
+
+  let result: { success?: boolean; signature?: string; signer?: string; error?: string };
+  try {
+    result = JSON.parse(stdout);
+  } catch {
+    throw new Error(`btc-sign returned invalid JSON: ${stdout}`);
+  }
+
+  if (!result.success || !result.signature || !result.signer) {
+    throw new Error(`btc-sign error: ${result.error || "missing signature or signer in output"}`);
+  }
+
+  return { signature: result.signature, signer: result.signer };
 }
 
 // ---------------------------------------------------------------------------
@@ -51,10 +88,15 @@ const triageCmd = new Command("triage")
       const data = await res.json();
 
       const messages: Array<{ id: string; content: string; sentAt?: string }> = data.inbox?.messages || [];
-      const scored = messages.map(msg => ({
-        ...msg,
-        ...scoreMessage(msg.content)
-      })).sort((a, b) => b.priority - a.priority);
+      const scored = messages.map(msg => {
+        const { priority, category } = scoreMessage(msg.content);
+        return {
+          id: msg.id,
+          priority,
+          category,
+          preview: msg.content.substring(0, 100)
+        };
+      }).sort((a, b) => b.priority - a.priority);
 
       printJson({
         address,
@@ -65,12 +107,7 @@ const triageCmd = new Command("triage")
           spam: scored.filter(m => m.category === 'spam').length,
           other: scored.filter(m => m.category === 'other').length
         },
-        prioritized: scored.map(m => ({
-          id: m.id,
-          priority: m.priority,
-          category: m.category,
-          preview: m.content.substring(0, 100)
-        }))
+        prioritized: scored
       });
     } catch (error) {
       handleError(error);
@@ -81,7 +118,7 @@ const triageCmd = new Command("triage")
 // ack
 // ---------------------------------------------------------------------------
 const ackCmd = new Command("ack")
-  .description("Auto-acknowledge high-priority messages (revenue/collaboration)")
+  .description("Auto-acknowledge high-priority messages (revenue/collaboration) by marking them as read")
   .option("--threshold <score>", "Minimum priority score to auto-ack", "2")
   .action(async (opts: { threshold: string }) => {
     try {
@@ -98,18 +135,55 @@ const ackCmd = new Command("ack")
         return priority >= threshold;
       });
 
-      // In a real implementation, we'd mark as read via API call
-      // For MVP, we just report what would be acked
+      // Process each message: sign the "Inbox Read | {messageId}" message and PATCH
+      const results = [];
+      for (const msg of toAck) {
+        try {
+          const signMsg = `Inbox Read | ${msg.id}`;
+          const { signature } = await signMessageWithBtc(signMsg);
+
+          const patchUrl = `${INBOX_BASE}/${address}/${msg.id}`;
+          const patchRes = await fetch(patchUrl, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ messageId: msg.id, signature }),
+          });
+
+          if (!patchRes.ok) {
+            const body = await patchRes.text();
+            results.push({
+              id: msg.id,
+              success: false,
+              error: `HTTP ${patchRes.status}: ${body}`,
+              priority: scoreMessage(msg.content).priority,
+              category: scoreMessage(msg.content).category
+            });
+          } else {
+            results.push({
+              id: msg.id,
+              success: true,
+              priority: scoreMessage(msg.content).priority,
+              category: scoreMessage(msg.content).category
+            });
+          }
+        } catch (err) {
+          results.push({
+            id: msg.id,
+            success: false,
+            error: err.message,
+            priority: scoreMessage(msg.content).priority,
+            category: scoreMessage(msg.content).category
+          });
+        }
+      }
+
       printJson({
         address,
         threshold,
-        wouldAck: toAck.length,
-        messages: toAck.map(m => ({
-          id: m.id,
-          priority: scoreMessage(m.content).priority,
-          category: scoreMessage(m.content).category,
-          preview: m.content.substring(0, 80)
-        }))
+        total: toAck.length,
+        succeeded: results.filter(r => r.success).length,
+        failed: results.filter(r => !r.success).length,
+        results
       });
     } catch (error) {
       handleError(error);
@@ -163,7 +237,6 @@ const queueCmd = new Command("queue")
 // ---------------------------------------------------------------------------
 // Program
 // ---------------------------------------------------------------------------
-// Build the program from the existing Command instance
 const program = new Command()
   .name("inbox-dispatcher")
   .description("Auto-triage and respond to inbox messages based on priority scoring")

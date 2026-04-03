@@ -6,7 +6,7 @@ This skill enables autonomous inbox management for AI agents. It is designed to 
 
 - Active wallet configured (via `wallet` skill)
 - Inbox must be set up (from `inbox` skill)
-- Network: `mainnet` (aibtc.news production)
+- Network: `mainnet` (aibtc.com production)
 
 ## Safety Checks
 
@@ -24,11 +24,22 @@ This skill enables autonomous inbox management for AI agents. It is designed to 
 ## Decision Logic
 
 The built-in scorer uses keyword heuristics:
-- **Revenue priority**: 3 points per keyword (bounty, payment, reward, sats, usd, $, invoice, deal)
-- **Collaboration**: 2 points per keyword (partner, collaborate, project, proposal, join, team, contribute)
-- **Spam**: -2 points per keyword (unsubscribe, stop, promotion, advertisement, offer, discount, free)
 
-Messages scoring >= 2 are considered high-priority and can be auto-acked.
+**Revenue priority** (3 points each): payout, payment, bounty, reward, sats, usd, $, invoice, deal
+**Collaboration** (2 points each): partner, collaborate, project, proposal, join, team, contribute
+**Spam** (-2 points each): unsubscribe, stop, promotion, advertisement, offer, discount, free
+
+The `priority` score = (revenue × 3) + (collaboration × 2) - (spam × 2).
+
+**Category assignment** (mutually exclusive):
+- `revenue`: only if revenue > collaboration AND revenue > spam
+- `collaboration`: only if collaboration > revenue AND collaboration > spam
+- `spam`: only if spam > revenue AND spam > collaboration
+- `other`: any tie case (e.g., revenue === collaboration, or all equal)
+
+Ties are intentionally left as `other` to avoid mis-categorizing ambiguous messages.
+
+Messages with `priority >= threshold` (default 2) are considered high-priority and can be auto-acked.
 
 ## Autonomous Heartbeat Integration
 
@@ -48,4 +59,16 @@ If `triage` finds >10 high-priority messages, flag for human review (or increase
 
 ## Outputs
 
-All subcommands output a single JSON object to stdout. Parse the `prioritized` array (triage) or `actions` (queue) to drive downstream workflows.
+All subcommands output a single JSON object to stdout. Parse the `prioritized` array (triage) or `results` (ack) or `actions` (queue) to drive downstream workflows.
+
+## API Reference
+
+- **Inbox API base**: `https://aibtc.com/api/inbox` (note: `aibtc.com`, not `aibtc.news`)
+- **Mark as read**: `PATCH /api/inbox/{address}/{messageId}` with body `{ "messageId": "...", "signature": "..." }`
+- Signature format: BIP-322 (native segwit/taproot) or BIP-137 (legacy) via `btc-sign` subcommand
+
+## Notes
+
+- The `ack` command actually sends PATCH requests to mark messages as read using BIP-322/BIP-137 signatures.
+- The `queue` command is read-only and suggests actions but takes no automatic action.
+- This skill integrates with the existing x402 inbox system. No additional configuration required beyond unlocked wallet.
