@@ -103,7 +103,16 @@ async function checkRelayHealth(
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 30000);
-    let healthData: { status?: string; version?: string };
+    let healthData: {
+      status?: string;
+      version?: string;
+      nonce?: {
+        circuitBreakerOpen?: boolean;
+        poolStatus?: string;
+        effectiveCapacity?: number;
+        conflictsDetected?: number;
+      };
+    };
     try {
       const healthRes = await fetch(`${relayUrl}/health`, {
         method: "GET",
@@ -128,6 +137,19 @@ async function checkRelayHealth(
 
     if (healthData.status !== "ok") {
       issues.push(`Relay status: ${healthData.status ?? "unknown"}`);
+    }
+
+    if (healthData.nonce?.circuitBreakerOpen) {
+      issues.push("Relay nonce circuit breaker is OPEN — sponsored transactions will fail");
+    }
+    if (healthData.nonce?.poolStatus && healthData.nonce.poolStatus !== "healthy") {
+      issues.push(`Relay nonce pool status: ${healthData.nonce.poolStatus}`);
+    }
+    if (healthData.nonce?.effectiveCapacity !== undefined && healthData.nonce.effectiveCapacity < 3) {
+      issues.push(`Relay nonce pool capacity low: ${healthData.nonce.effectiveCapacity} wallets available`);
+    }
+    if (healthData.nonce?.conflictsDetected !== undefined && healthData.nonce.conflictsDetected > 5) {
+      issues.push(`Relay nonce conflicts elevated: ${healthData.nonce.conflictsDetected} detected`);
     }
 
     const sponsorAddress = SPONSOR_ADDRESSES[network];
@@ -162,7 +184,7 @@ async function checkRelayHealth(
       issues.push(
         `Mempool desync detected: sponsor nonce ${lastExecuted} (executed) vs ${lastMempool} (mempool), gap of ${desyncGap}`
       );
-    } else if (nonceInfo.detected_mempool_nonces.length > 10) {
+    } else if (nonceInfo.detected_mempool_nonces.length > 5) {
       issues.push(
         `Sponsor has ${nonceInfo.detected_mempool_nonces.length} transactions stuck in mempool`
       );

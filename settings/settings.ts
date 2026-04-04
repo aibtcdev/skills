@@ -307,7 +307,7 @@ program
   .option(
     "--relay-url <url>",
     "Base URL of the sponsor relay",
-    "https://sponsor.aibtc.dev"
+    "https://x402-relay.aibtc.com"
   )
   .option(
     "--sponsor-address <address>",
@@ -380,6 +380,18 @@ program
 
         if (!relayReachable) {
           issues.push(`Relay unreachable: ${relayError ?? "unknown error"}`);
+        }
+
+        if (relayHealth) {
+          const nonce = (relayHealth as Record<string, unknown>).nonce as
+            | Record<string, unknown>
+            | undefined;
+          if (nonce?.circuitBreakerOpen === true) {
+            issues.push("Relay nonce circuit breaker is OPEN — sponsored transactions will fail");
+          }
+          if (nonce?.poolStatus && nonce.poolStatus !== "healthy") {
+            issues.push(`Relay nonce pool status: ${String(nonce.poolStatus)}`);
+          }
         }
 
         if (nonceData) {
