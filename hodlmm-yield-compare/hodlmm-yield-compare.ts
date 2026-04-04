@@ -88,19 +88,25 @@ interface YieldSource {
   protocol: string;
   asset: string;
   aprPct: number;
+  dataAvailable: boolean;
   riskScore: number;
   riskLabel: "low" | "medium" | "high";
   tvlUsd: number;
   details: Record<string, unknown>;
 }
 
+/** YieldSource with risk-adjusted score promoted to a top-level typed field */
+interface RankedYieldSource extends YieldSource {
+  riskAdjustedScore: number;
+}
+
 interface ComparisonResult {
   network: string;
   hodlmmPools: YieldSource[];
   alternatives: YieldSource[];
-  ranked: YieldSource[];
+  ranked: RankedYieldSource[];
   bestOverall: YieldSource;
-  bestRiskAdjusted: YieldSource;
+  bestRiskAdjusted: RankedYieldSource;
   summary: string;
   timestamp: string;
 }
@@ -131,7 +137,7 @@ async function postJson<T>(url: string, body: Record<string, unknown>): Promise<
 // ---------------------------------------------------------------------------
 // Output helpers
 // ---------------------------------------------------------------------------
-function printJson(data: Record<string, unknown>): void {
+function printJson(data: unknown): void {
   console.log(JSON.stringify(data, null, 2));
 }
 
@@ -214,6 +220,7 @@ function hodlmmPoolToYieldSource(pool: HodlmmRichPool): YieldSource {
     protocol: "Bitflow HODLMM",
     asset: `${xSym}/${ySym}`,
     aprPct: pool.apr ?? 0,
+    dataAvailable: pool.apr !== undefined,
     riskScore,
     riskLabel: classifyRisk(riskScore),
     tvlUsd: pool.tvlUsd ?? 0,
@@ -245,6 +252,7 @@ async function getZestLendingApy(): Promise<YieldSource> {
     protocol: "Zest Protocol",
     asset: "sBTC",
     aprPct: 0,
+    dataAvailable: false,
     riskScore: 20,
     riskLabel: "low",
     tvlUsd: 0,
@@ -294,6 +302,7 @@ async function getZestLendingApy(): Promise<YieldSource> {
       source.details.totalBorrowsStable = String(borrowsStable?.value ?? 0);
       source.details.rawLiquidityRate = String(rateValue ?? 0);
       source.details.dataSource = "on-chain read-only call (Zest pool-borrow-v2-3)";
+      source.dataAvailable = true;
     }
   } catch (e) {
     source.details.error = String(e);
@@ -309,6 +318,7 @@ function getStackingYield(): YieldSource {
     protocol: "STX Stacking (PoX)",
     asset: "STX",
     aprPct: 8.0,
+    dataAvailable: true,
     riskScore: 10,
     riskLabel: "low",
     tvlUsd: 0,
@@ -355,18 +365,12 @@ async function buildComparison(): Promise<ComparisonResult> {
 
   // Rank all sources by risk-adjusted score
   const allSources = [...hodlmmSources, ...alternatives];
-  const ranked = allSources
+  const ranked: RankedYieldSource[] = allSources
     .map((s) => ({
       ...s,
-      details: {
-        ...s.details,
-        riskAdjustedScore: riskAdjustedScore(s.aprPct, s.riskScore),
-      },
+      riskAdjustedScore: riskAdjustedScore(s.aprPct, s.riskScore),
     }))
-    .sort(
-      (a, b) =>
-        (b.details.riskAdjustedScore as number) - (a.details.riskAdjustedScore as number)
-    );
+    .sort((a, b) => b.riskAdjustedScore - a.riskAdjustedScore);
 
   const bestOverall = [...allSources].sort((a, b) => b.aprPct - a.aprPct)[0];
   const bestRiskAdjusted = ranked[0];
@@ -382,7 +386,7 @@ async function buildComparison(): Promise<ComparisonResult> {
     `Compared ${hodlmmCount} HODLMM pool(s) (${activeHodlmm.length} with active volume) against ${alternatives.length} alternative yield sources. ` +
     `${hodlmmBetterThanZest} HODLMM pool(s) outperform Zest lending (${zest.aprPct}% APR). ` +
     `Best overall: ${bestOverall.protocol} ${bestOverall.asset} at ${bestOverall.aprPct}% APR. ` +
-    `Best risk-adjusted: ${bestRiskAdjusted.protocol} ${bestRiskAdjusted.asset} (score: ${(bestRiskAdjusted.details.riskAdjustedScore as number).toFixed(2)}).`;
+    `Best risk-adjusted: ${bestRiskAdjusted.protocol} ${bestRiskAdjusted.asset} (score: ${bestRiskAdjusted.riskAdjustedScore.toFixed(2)}).`;
 
   return {
     network: NETWORK,
@@ -502,7 +506,7 @@ program
   .action(async () => {
     try {
       const result = await buildComparison();
-      printJson(result as unknown as Record<string, unknown>);
+      printJson(result);
     } catch (error) {
       handleError(error);
     }
@@ -527,9 +531,10 @@ program
         protocol: s.protocol,
         asset: s.asset,
         aprPct: s.aprPct,
+        dataAvailable: s.dataAvailable,
         riskScore: s.riskScore,
         riskLabel: s.riskLabel,
-        riskAdjustedScore: s.details.riskAdjustedScore,
+        riskAdjustedScore: s.riskAdjustedScore,
         tvlUsd: s.tvlUsd,
       }));
 
