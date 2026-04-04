@@ -9,6 +9,9 @@
  */
 
 import { Command } from "commander";
+import { createHash } from "node:crypto";
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { dirname } from "node:path";
 import { NETWORK, getApiBaseUrl } from "../src/lib/config/networks.js";
 import { getSponsorRelayUrl } from "../src/lib/config/sponsor.js";
 import { printJson, handleError } from "../src/lib/utils/cli.js";
@@ -18,7 +21,9 @@ import { printJson, handleError } from "../src/lib/utils/cli.js";
 const HIRO_BASE = getApiBaseUrl(NETWORK);
 const MEMPOOL_BASE = "https://mempool.space/api";
 const X402_RELAY = getSponsorRelayUrl(NETWORK);
-const SPONSOR_ADDRESS = "SP1PMPPVCMVW96FSWFV30KJQ4MNBMZ8MRWR3JWQ7";
+
+// Staleness: 4 hours — agents legitimately idle between tasks
+const APP_SIGNAL_STALE_MS = 4 * 60 * 60 * 1000;
 
 interface LayerResult {
   name: string;
@@ -36,10 +41,29 @@ interface Verdict {
   degradedLayers?: string[];
 }
 
-// Anti-replay store
-const executedJobs = new Map<string, { timestamp: number; jobId: string }>();
+// ============ ANTI-REPLAY PERSISTENCE ============
+
+const REPLAY_STORE_PATH = process.env.REPLAY_STORE_PATH ?? "db/execution-guard-replay.json";
 const REPLAY_WINDOW_MS = 24 * 60 * 60 * 1000;
 const REPLAY_MAX_SIZE = 1000;
+
+type ReplayEntry = { timestamp: number; jobId: string };
+
+function loadReplayStore(): Map<string, ReplayEntry> {
+  if (!existsSync(REPLAY_STORE_PATH)) return new Map();
+  try {
+    const data = JSON.parse(readFileSync(REPLAY_STORE_PATH, "utf8"));
+    return new Map(Object.entries(data));
+  } catch {
+    return new Map();
+  }
+}
+
+function saveReplayStore(store: Map<string, ReplayEntry>): void {
+  const dir = dirname(REPLAY_STORE_PATH);
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+  writeFileSync(REPLAY_STORE_PATH, JSON.stringify(Object.fromEntries(store)));
+}
 
 // ============ UTILITY ============
 
@@ -106,7 +130,7 @@ async function evaluateChainLiveness(): Promise<LayerResult> {
 
 // ============ LAYER 2: PAYMENT HEALTH ============
 
-async function evaluatePaymentHealth(): Promise<LayerResult> {
+async function evaluatePaymentHealth(sponsorAddress?: string): Promise<LayerResult> {
   const layer: LayerResult = { name: "payment_health", status: "unknown", score: 0, signals: {} };
 
   // x402 relay basic health
@@ -125,29 +149,33 @@ async function evaluatePaymentHealth(): Promise<LayerResult> {
   }
 
   // Sponsor nonce state — query blockchain directly for ground truth
-  try {
-    const resp = await fetchWithTimeout(
-      `${HIRO_BASE}/extended/v1/address/${SPONSOR_ADDRESS}/nonces`, 5000
-    );
-    if (resp.ok) {
-      const nonces = await resp.json();
-      const missing: number[] = nonces.detected_missing_nonces ?? [];
-      const lastExec: number = nonces.last_executed_tx_nonce ?? 0;
-      const lastMem: number = nonces.last_mempool_tx_nonce ?? 0;
-      const desync = lastMem - lastExec;
+  if (sponsorAddress) {
+    try {
+      const resp = await fetchWithTimeout(
+        `${HIRO_BASE}/extended/v1/address/${sponsorAddress}/nonces`, 5000
+      );
+      if (resp.ok) {
+        const nonces = await resp.json();
+        const missing: number[] = nonces.detected_missing_nonces ?? [];
+        const lastExec: number = nonces.last_executed_tx_nonce ?? 0;
+        const lastMem: number = nonces.last_mempool_tx_nonce ?? 0;
+        const desync = lastMem - lastExec;
 
-      layer.signals.sponsorNonce = {
-        lastExecuted: lastExec,
-        lastMempool: lastMem,
-        possibleNext: nonces.possible_next_nonce,
-        detectedMissing: missing,
-      };
-      layer.signals.nonceGap = missing.length;
-      layer.signals.mempoolDesync = desync > 10;
-      layer.signals.desyncGap = desync;
+        layer.signals.sponsorNonce = {
+          lastExecuted: lastExec,
+          lastMempool: lastMem,
+          possibleNext: nonces.possible_next_nonce,
+          detectedMissing: missing,
+        };
+        layer.signals.nonceGap = missing.length;
+        layer.signals.mempoolDesync = desync > 10;
+        layer.signals.desyncGap = desync;
+      }
+    } catch {
+      // nonce check is supplementary
     }
-  } catch {
-    // nonce check is supplementary
+  } else {
+    layer.signals.sponsorNonceSkipped = "No --sponsor-address provided";
   }
 
   // Stacks mempool accessibility
@@ -165,8 +193,8 @@ async function evaluatePaymentHealth(): Promise<LayerResult> {
   }
 
   // Score
+  const gap = typeof layer.signals.nonceGap === "number" ? layer.signals.nonceGap : 0;
   if (layer.signals.relayUp && !layer.signals.mempoolDesync) {
-    const gap = (layer.signals.nonceGap as number) ?? 0;
     if (gap <= 2) { layer.score = 100; layer.status = "healthy"; }
     else if (gap <= 5) { layer.score = 60; layer.status = "degraded"; }
     else { layer.score = 25; layer.status = "unhealthy"; }
@@ -208,7 +236,7 @@ async function evaluateAppSignal(address?: string): Promise<LayerResult> {
             age < 3600000
               ? `${Math.round(age / 60000)}m ago`
               : `${Math.round(age / 3600000)}h ago`;
-          layer.signals.stale = age > 15 * 60 * 1000;
+          layer.signals.stale = age > APP_SIGNAL_STALE_MS;
         }
       } else {
         layer.signals.apiReachable = false;
@@ -254,15 +282,14 @@ async function evaluateInternalSanity(): Promise<LayerResult> {
     layer.signals.hiroLatencyMs = Date.now() - start;
   }
 
-  layer.signals.replayStoreSize = executedJobs.size;
-  layer.signals.replayStoreHealthy = executedJobs.size < REPLAY_MAX_SIZE;
+  const store = loadReplayStore();
+  layer.signals.replayStoreSize = store.size;
+  layer.signals.replayStoreHealthy = store.size < REPLAY_MAX_SIZE;
 
-  if (typeof process !== "undefined" && process.memoryUsage) {
-    const mem = process.memoryUsage();
-    layer.signals.heapUsedMB = Math.round(mem.heapUsed / 1048576);
-    layer.signals.heapTotalMB = Math.round(mem.heapTotal / 1048576);
-    layer.signals.memoryPressure = mem.heapUsed / mem.heapTotal > 0.9;
-  }
+  const mem = process.memoryUsage();
+  layer.signals.heapUsedMB = Math.round(mem.heapUsed / 1048576);
+  layer.signals.heapTotalMB = Math.round(mem.heapTotal / 1048576);
+  layer.signals.memoryPressure = mem.heapUsed / mem.heapTotal > 0.9;
 
   let score = 100;
   if (!layer.signals.hiroResponsive) score -= 40;
@@ -341,18 +368,20 @@ function computeVerdict(layers: LayerResult[]): Verdict {
 
 // ============ FULL EVALUATION ============
 
-async function evaluate(address?: string) {
+async function evaluate(address?: string, sponsorAddress?: string) {
   const startTime = Date.now();
 
-  const [chainLayer, paymentLayer, appLayer] = await Promise.all([
+  const [chainLayer, paymentLayer, appLayer, internalLayer] = await Promise.all([
     evaluateChainLiveness(),
-    evaluatePaymentHealth(),
+    evaluatePaymentHealth(sponsorAddress),
     evaluateAppSignal(address),
+    evaluateInternalSanity(),
   ]);
-  const internalLayer = await evaluateInternalSanity();
 
   const layers = [chainLayer, paymentLayer, appLayer, internalLayer];
   const verdict = computeVerdict(layers);
+
+  const store = loadReplayStore();
 
   return {
     verdict: verdict.verdict,
@@ -364,47 +393,57 @@ async function evaluate(address?: string) {
     layers,
     evaluationMs: Date.now() - startTime,
     timestamp: new Date().toISOString(),
-    antiReplay: { tracked: executedJobs.size, windowMs: REPLAY_WINDOW_MS },
+    antiReplay: { tracked: store.size, windowMs: REPLAY_WINDOW_MS },
   };
 }
 
 // ============ ANTI-REPLAY ============
 
 function hashJob(jobId: string, nonce: number, timestamp: number): string {
-  const raw = `${jobId}:${nonce}:${timestamp}`;
-  let hash = 0;
-  for (let i = 0; i < raw.length; i++) {
-    const chr = raw.charCodeAt(i);
-    hash = ((hash << 5) - hash) + chr;
-    hash |= 0;
-  }
-  return `job_${Math.abs(hash).toString(36)}`;
+  return createHash("sha256")
+    .update(`${jobId}:${nonce}:${timestamp}`)
+    .digest("hex")
+    .slice(0, 16);
 }
 
 function checkAndRecordJob(jobId: string, nonce: number, timestamp: number) {
   const hash = hashJob(jobId, nonce, timestamp);
   const now = Date.now();
+  const store = loadReplayStore();
 
-  for (const [key, entry] of executedJobs.entries()) {
-    if (now - entry.timestamp > REPLAY_WINDOW_MS) executedJobs.delete(key);
+  // Clean expired entries
+  for (const [key, entry] of store.entries()) {
+    if (now - entry.timestamp > REPLAY_WINDOW_MS) store.delete(key);
   }
 
-  if (executedJobs.has(hash)) {
+  // Check for duplicate
+  if (store.has(hash)) {
     return {
       allowed: false,
       reason: "duplicate",
       hash,
-      originalExecution: new Date(executedJobs.get(hash)!.timestamp).toISOString(),
+      originalExecution: new Date(store.get(hash)!.timestamp).toISOString(),
     };
   }
 
-  executedJobs.set(hash, { timestamp: now, jobId });
+  // Enforce size limit
+  if (store.size >= REPLAY_MAX_SIZE) {
+    const oldest = [...store.entries()]
+      .sort((a, b) => a[1].timestamp - b[1].timestamp)
+      .slice(0, store.size - REPLAY_MAX_SIZE + 1);
+    for (const [key] of oldest) store.delete(key);
+  }
+
+  // Record and persist
+  store.set(hash, { timestamp: now, jobId });
+  saveReplayStore(store);
+
   return { allowed: true, hash, recorded: true };
 }
 
 // ============ DOCTOR ============
 
-async function doctor() {
+async function doctor(sponsorAddress?: string) {
   const checks: Record<string, Record<string, unknown>> = {};
 
   try {
@@ -444,24 +483,27 @@ async function doctor() {
     checks.x402Relay = { status: "down", error: (e as Error).message };
   }
 
-  // Sponsor nonce health
-  try {
-    const resp = await fetchWithTimeout(
-      `${HIRO_BASE}/extended/v1/address/${SPONSOR_ADDRESS}/nonces`, 5000
-    );
-    if (resp.ok) {
-      const nonces = await resp.json();
-      const missing: number[] = nonces.detected_missing_nonces ?? [];
-      checks.sponsorNonce = {
-        status: missing.length === 0 ? "ok" : "degraded",
-        lastExecuted: nonces.last_executed_tx_nonce,
-        lastMempool: nonces.last_mempool_tx_nonce,
-        missingNonces: missing.length,
-        desyncGap: (nonces.last_mempool_tx_nonce ?? 0) - (nonces.last_executed_tx_nonce ?? 0),
-      };
+  // Sponsor nonce health (only if address provided)
+  if (sponsorAddress) {
+    try {
+      const resp = await fetchWithTimeout(
+        `${HIRO_BASE}/extended/v1/address/${sponsorAddress}/nonces`, 5000
+      );
+      if (resp.ok) {
+        const nonces = await resp.json();
+        const missing: number[] = nonces.detected_missing_nonces ?? [];
+        checks.sponsorNonce = {
+          status: missing.length === 0 ? "ok" : "degraded",
+          address: sponsorAddress,
+          lastExecuted: nonces.last_executed_tx_nonce,
+          lastMempool: nonces.last_mempool_tx_nonce,
+          missingNonces: missing.length,
+          desyncGap: (nonces.last_mempool_tx_nonce ?? 0) - (nonces.last_executed_tx_nonce ?? 0),
+        };
+      }
+    } catch {
+      checks.sponsorNonce = { status: "unavailable" };
     }
-  } catch {
-    checks.sponsorNonce = { status: "unavailable" };
   }
 
   const statuses = Object.values(checks).map((c) => c.status);
@@ -487,9 +529,11 @@ program
   .command("evaluate")
   .description("Run full 4-layer evaluation and return verdict")
   .option("--address <stx-address>", "Stacks address for app signal layer")
+  .option("--sponsor-address <stx-address>", "Sponsor STX address for nonce health check (env: SPONSOR_ADDRESS)")
   .action(async (opts) => {
     try {
-      const result = await evaluate(opts.address);
+      const sponsor = opts.sponsorAddress ?? process.env.SPONSOR_ADDRESS;
+      const result = await evaluate(opts.address, sponsor);
       printJson(result);
     } catch (error) {
       handleError(error);
@@ -514,9 +558,11 @@ program
 program
   .command("doctor")
   .description("Health check across all upstream dependencies")
-  .action(async () => {
+  .option("--sponsor-address <stx-address>", "Sponsor STX address for nonce health check (env: SPONSOR_ADDRESS)")
+  .action(async (opts) => {
     try {
-      const result = await doctor();
+      const sponsor = opts.sponsorAddress ?? process.env.SPONSOR_ADDRESS;
+      const result = await doctor(sponsor);
       printJson(result);
     } catch (error) {
       handleError(error);
