@@ -82,6 +82,19 @@ Composite score (0-100) weighted across four factors:
 | Fee efficiency | 20% | Lower fees = better execution |
 | Composition balance | 10% | Balanced pools = two-sided liquidity |
 
+## Output contract
+
+All commands return structured JSON to stdout with a top-level `status` field:
+
+```json
+{ "status": "ok", "network": "mainnet", "...": "command-specific data" }
+```
+
+On error:
+```json
+{ "status": "error", "error": "descriptive message" }
+```
+
 ## Known constraints
 
 - Mainnet only.

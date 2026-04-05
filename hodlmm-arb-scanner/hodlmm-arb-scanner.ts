@@ -101,13 +101,17 @@ async function fetchJson<T>(url: string): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-function printJson(data: unknown): void {
-  console.log(JSON.stringify(data, null, 2));
+function printResult(data: unknown): void {
+  console.log(
+    JSON.stringify({ status: "ok" as const, ...data as Record<string, unknown> }, null, 2)
+  );
 }
 
-function handleError(error: unknown): void {
+function printError(error: unknown): void {
   const message = error instanceof Error ? error.message : String(error);
-  console.log(JSON.stringify({ error: message }, null, 2));
+  console.log(
+    JSON.stringify({ status: "error" as const, error: message }, null, 2)
+  );
   process.exit(1);
 }
 
@@ -377,9 +381,9 @@ program
         (checks.quotesApi as Record<string, unknown>).status === "ok" &&
         (checks.appApi as Record<string, unknown>).status === "ok";
 
-      printJson({ ...checks, healthy: allOk, timestamp: new Date().toISOString() });
+      printResult({ ...checks, healthy: allOk, timestamp: new Date().toISOString() });
     } catch (error) {
-      handleError(error);
+      printError(error);
     }
   });
 
@@ -393,9 +397,9 @@ program
   )
   .action(async () => {
     try {
-      printJson(await runScan());
+      printResult(await runScan());
     } catch (error) {
-      handleError(error);
+      printError(error);
     }
   });
 
@@ -423,13 +427,13 @@ program
         );
       }
 
-      printJson({
+      printResult({
         network: NETWORK,
         ...match,
         timestamp: new Date().toISOString(),
       });
     } catch (error) {
-      handleError(error);
+      printError(error);
     }
   });
 
@@ -460,7 +464,7 @@ program
       const best = match.pools[0]; // Already sorted by routing score
       const alt = match.pools.length > 1 ? match.pools[1] : null;
 
-      printJson({
+      printResult({
         network: NETWORK,
         pair: match.displayPair,
         recommendation: {
@@ -489,7 +493,7 @@ program
         timestamp: new Date().toISOString(),
       });
     } catch (error) {
-      handleError(error);
+      printError(error);
     }
   });
 

@@ -20,16 +20,19 @@ description: "Cross-pool HODLMM efficiency scanner: compares fees, depth, volume
 4. Run `scan` for a complete cross-pool overview of all multi-pool pairs.
 5. Use the `bestForSwap` and `bestForLp` recommendations to guide downstream actions.
 
-## Guardrails
+## Refusal conditions
 
-- This skill is read-only. It never writes to chain or moves funds.
-- Routing scores are heuristic. Actual swap outcomes depend on trade size and bin depth.
-- Pools with zero volume are flagged as inactive. Do not route swaps to inactive pools.
-- Pools with very low TVL (< $100) carry high slippage risk regardless of routing score.
-- Always verify the recommendation is still current before executing. Pool state changes.
-- Never expose secrets or private keys in args or logs.
+1. Never route swaps to a pool with `volumeUsd1d: 0`. Zero volume means the pool is inactive and likely has stale pricing.
+2. Never recommend a pool with `tvlUsd < 100` for swap execution. Thin liquidity causes excessive slippage.
+3. Never present routing scores without the underlying data (TVL, volume, fees). Agents must see the basis for the recommendation.
+4. Never recommend LP placement in a pool with `compositionBalance < 0.1`. Single-sided pools cannot generate fee income.
+5. Never cache or persist routing recommendations across calls. Pool state changes between invocations.
+6. Never expose secrets, private keys, or wallet passwords in arguments or output.
+7. Never execute trades or move funds. This skill is strictly read-only.
 
 ## Composability
+
+Pre-swap routing workflow:
 
 ```
 hodlmm-arb-scanner route    -> which pool to use for this pair?
@@ -38,9 +41,35 @@ bitflow get-quote            -> confirm executable price on the chosen pool
 bitflow swap                 -> execute the trade
 ```
 
+Pre-LP workflow:
+
+```
+hodlmm-arb-scanner scan     -> compare APR and composition across pools
+hodlmm-yield-compare rank   -> is HODLMM the best yield source vs alternatives?
+hodlmm-risk assess-pool     -> check volatility regime before adding LP
+bitflow-lp-sniper deploy    -> execute the LP position
+```
+
 ## Output contract
 
-All commands return structured JSON to stdout.
+All commands return structured JSON to stdout with a top-level `status` field.
+
+**Success:**
+```json
+{
+  "status": "ok",
+  "network": "mainnet",
+  "...": "command-specific fields"
+}
+```
+
+**Error:**
+```json
+{
+  "status": "error",
+  "error": "descriptive message"
+}
+```
 
 **doctor:** API health, pool count, and multi-pool pair listing.
 
@@ -52,7 +81,7 @@ All commands return structured JSON to stdout.
 
 ## On error
 
-- Errors are returned as JSON: `{ "error": "descriptive message" }`
+- All errors are returned as JSON with `status: "error"` and non-zero exit code.
 - If a pair name doesn't match, the error lists available multi-pool pairs.
 - Do not retry silently. Surface errors to the user.
 
