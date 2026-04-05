@@ -199,9 +199,11 @@ Prevent rapid repeated actions.
     (ok true)))
 ```
 
-### DAO Proposals with Historic Balances
+### DAO Proposals with Snapshot Voting
 
-Use `at-block` for snapshot voting.
+Store token balance snapshots at proposal creation time.
+
+> **Breaking change (Stacks 3.4 / SIP-042, April 2026):** `at-block` has been removed from the Clarity VM. Contracts using `at-block` will fail to deploy or execute. Use the storage-based snapshot pattern below instead.
 
 ```clarity
 (define-map Proposals uint {
@@ -209,14 +211,27 @@ Use `at-block` for snapshot voting.
   votesAgainst: uint,
   status: uint,
   liquidTokens: uint,
-  blockHash: (buff 32)
+  createdAt: uint
 })
 
-;; Get voting power at proposal creation
+;; Store token balance snapshots when proposal is created
+(define-map ProposalSnapshots
+  {proposalId: uint, voter: principal}
+  {balance: uint}
+)
+
+;; Record snapshot at proposal creation (called per eligible voter)
+(define-public (record-snapshot (proposal-id uint) (voter principal))
+  (let ((balance (unwrap-panic (contract-call? .token get-balance voter))))
+    (map-set ProposalSnapshots
+      {proposalId: proposal-id, voter: voter}
+      {balance: balance})
+    (ok balance)))
+
+;; Get voting power from stored snapshot
 (define-read-only (get-vote-power (proposal-id uint) (voter principal))
-  (let ((proposal (unwrap! (map-get? Proposals proposal-id) u0)))
-    (at-block (get blockHash proposal)
-      (contract-call? .token get-balance voter))))
+  (default-to u0
+    (get balance (map-get? ProposalSnapshots {proposalId: proposal-id, voter: voter}))))
 
 ;; Quorum check: (>= (/ (* total-votes u100) liquid-supply) QUORUM_PERCENT)
 ```
