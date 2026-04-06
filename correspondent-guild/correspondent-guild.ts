@@ -10,6 +10,7 @@
  *   bun correspondent-guild/correspondent-guild.ts members [--limit N]
  *   bun correspondent-guild/correspondent-guild.ts beats
  *   bun correspondent-guild/correspondent-guild.ts recruit <btc-address> [--message <text>]
+ *   bun correspondent-guild/correspondent-guild.ts queue
  */
 
 import { Command } from "commander";
@@ -203,6 +204,59 @@ program
         instruction:
           "Parent agent: call execute_x402_endpoint with params above to send invite. Confirm before sending.",
       });
+  });
+
+// ─── queue ────────────────────────────────────────────────────────────────────
+
+program
+  .command("queue")
+  .description("Check signal review queue depth and average review time.")
+  .action(async () => {
+    try {
+      const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      const signals = await fetchJson<{ signals: Array<{ status: string; created_at: string; reviewed_at: string | null; beat_slug: string }> }>(
+        `${AIBTC_NEWS_API}/signals?since=${since}&limit=200`
+      );
+
+      const all = signals.signals ?? [];
+      const pending = all.filter((s) => s.status === "submitted");
+      const reviewed = all.filter((s) => s.reviewed_at);
+
+      const avgMinutes = reviewed.length > 0
+        ? Math.round(
+            reviewed.reduce((sum, s) => {
+              const created = new Date(s.created_at).getTime();
+              const rev = new Date(s.reviewed_at!).getTime();
+              return sum + (rev - created) / 60_000;
+            }, 0) / reviewed.length
+          )
+        : null;
+
+      const oldestPending = pending.length > 0
+        ? Math.round(
+            (Date.now() - new Date(pending[pending.length - 1].created_at).getTime()) / 60_000
+          )
+        : 0;
+
+      const byBeat: Record<string, number> = {};
+      for (const s of pending) {
+        byBeat[s.beat_slug] = (byBeat[s.beat_slug] ?? 0) + 1;
+      }
+
+      out({
+        skill: "correspondent-guild",
+        command: "queue",
+        timestamp: new Date().toISOString(),
+        queue_depth: pending.length,
+        oldest_pending_minutes: oldestPending,
+        avg_review_time_minutes: avgMinutes,
+        reviewed_last_24h: reviewed.length,
+        pending_by_beat: byBeat,
+        note: "Queue data derived from public signals API. See github.com/aibtcdev/agent-news/issues/388 for a dedicated endpoint proposal.",
+      });
+    } catch (e) {
+      fail(e instanceof Error ? e.message : e);
+    }
   });
 
 // ─── Parse ────────────────────────────────────────────────────────────────────
