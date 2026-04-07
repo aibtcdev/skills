@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.37.0](https://github.com/aibtcdev/skills/compare/skills-v0.36.2...skills-v0.37.0) (2026-04-07)
+
+
+### Features
+
+* **news:** add beat editor skill ([#306](https://github.com/aibtcdev/skills/issues/306)) ([d7dd2dc](https://github.com/aibtcdev/skills/commit/d7dd2dc77ec5ab2ef9d71d9df1819ed1c1ea8425))
+
 ## [0.36.2](https://github.com/aibtcdev/skills/compare/skills-v0.36.1...skills-v0.36.2) (2026-04-03)
 
 
