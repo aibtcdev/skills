@@ -94,6 +94,7 @@ interface PoolState {
   baselines: Record<number, PositionBaseline>;
   lastRecenterAt: string | null;
   lastActiveBin: number | null;
+  pendingVerification?: boolean;
 }
 
 interface KeeperState {
@@ -285,6 +286,7 @@ function analyzePosition(
     needsRecenter,
     reason,
     cooldownRemaining,
+    pendingVerification: poolState.pendingVerification || false,
   };
 }
 
@@ -589,6 +591,12 @@ program
         }
       }
 
+      // Clear pending verification — on-chain state successfully read
+      if (poolState.pendingVerification) {
+        log(`Pool ${poolId}: clearing pending_verification — on-chain state re-established`);
+        poolState.pendingVerification = false;
+      }
+
       const health = analyzePosition(poolId, poolMeta.active_bin, significantBins, poolState);
       results.push(health);
 
@@ -767,9 +775,10 @@ program
 
     state.recenters.push(event);
 
-    // Update pool state
+    // Update pool state — mark pending until MCP execution confirms
     poolState.lastRecenterAt = new Date().toISOString();
     poolState.lastActiveBin = plan.newCenter;
+    poolState.pendingVerification = true;
 
     // Reset baselines for new deposit bins
     poolState.baselines = {};
@@ -860,14 +869,24 @@ program
     const pools = await fetchAllPools();
     const stxBalance = await fetchStxBalance(stxAddress);
 
+    // Fetch all positions in parallel (reads are safe to batch)
+    const positionFetches = await Promise.allSettled(
+      pools.map(async (poolMeta) => {
+        const userBins = await fetchUserPositions(poolMeta.pool_id, stxAddress);
+        return { poolMeta, userBins };
+      })
+    );
+
     const results: any[] = [];
     let recentersExecuted = 0;
     let remainingStxBalance = stxBalance;
 
-    for (const poolMeta of pools) {
+    // Iterate sequentially for execution decisions (fund operations must be serial)
+    for (const result of positionFetches) {
       if (recentersExecuted >= MAX_RECENTER_PER_CYCLE) break;
+      if (result.status !== "fulfilled") continue;
 
-      const userBins = await fetchUserPositions(poolMeta.pool_id, stxAddress);
+      const { poolMeta, userBins } = result.value;
       if (userBins.length === 0) continue;
 
       const significantBins = userBins.filter((b) => {
@@ -877,6 +896,12 @@ program
       if (significantBins.length === 0) continue;
 
       const poolState = getPoolState(state, poolMeta.pool_id);
+
+      // Clear pending verification — on-chain state successfully read
+      if (poolState.pendingVerification) {
+        log(`Pool ${poolMeta.pool_id}: clearing pending_verification — on-chain state re-established`);
+        poolState.pendingVerification = false;
+      }
 
       // Record baselines for new bins
       for (const bin of significantBins) {
@@ -942,6 +967,7 @@ program
 
           poolState.lastRecenterAt = new Date().toISOString();
           poolState.lastActiveBin = plan.newCenter;
+          poolState.pendingVerification = true;
           poolState.baselines = {};
           for (const bin of plan.depositBins) {
             poolState.baselines[bin.bin_id] = {
