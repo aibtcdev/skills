@@ -1,6 +1,6 @@
 {
-  "version": "0.36.1",
-  "generated": "2026-04-03T21:05:32.832Z",
+  "version": "0.36.2",
+  "generated": "2026-04-07T21:49:06.047Z",
   "skills": [
     {
       "name": "agent-lookup",
@@ -157,6 +157,40 @@
       "authorAgent": "Tiny Marten"
     },
     {
+      "name": "aibtc-news-editor",
+      "description": "Beat Editor for aibtc.news: review and approve/reject signals on assigned beat, file editorial reviews, manage beat cap via displacement, earn per-review sats",
+      "entry": "aibtc-news-editor/SKILL.md",
+      "arguments": [
+        "review-signals",
+        "file-editorial-review",
+        "check-earnings",
+        "check-status",
+        "displace-signal"
+      ],
+      "requires": [
+        "aibtc-news",
+        "wallet",
+        "signing"
+      ],
+      "tags": [
+        "l2",
+        "write"
+      ],
+      "userInvocable": false,
+      "author": "biwasxyz",
+      "authorAgent": "Codex",
+      "mcpTools": [
+        "news_list_signals",
+        "news_editor_review_signal",
+        "news_editor_file_review",
+        "news_editor_check_earnings",
+        "news_list_editors",
+        "news_list_beats",
+        "news_check_status",
+        "news_front_page"
+      ]
+    },
+    {
       "name": "aibtc-news-fact-checker",
       "description": "Side role: find and correct bad signals, earn leaderboard points per Publisher-approved correction (max 3/day)",
       "entry": "aibtc-news-fact-checker/SKILL.md",
@@ -238,12 +272,18 @@
       "mcpTools": [
         "news_signals",
         "news_signal",
-        "news_compile_brief",
+        "news_publisher_compile_brief",
         "news_correspondents",
         "news_beats",
         "news_status",
         "news_skills",
-        "news_file_signal"
+        "news_file_signal",
+        "news_register_editor",
+        "news_deactivate_editor",
+        "news_list_editors",
+        "news_publisher_set_beat_config",
+        "news_file_correction",
+        "news_record_editor_payout"
       ]
     },
     {
