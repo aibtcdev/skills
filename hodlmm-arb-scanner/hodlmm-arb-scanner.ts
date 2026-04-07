@@ -269,7 +269,10 @@ async function runScan(): Promise<ScanResult> {
       try {
         const rich = await getRichPool(item.pool_id);
         return { item, rich };
-      } catch {
+      } catch (e) {
+        process.stderr.write(
+          JSON.stringify({ warning: `Failed to fetch rich data for ${item.pool_id}`, error: String(e) }) + "\n"
+        );
         return null;
       }
     })
