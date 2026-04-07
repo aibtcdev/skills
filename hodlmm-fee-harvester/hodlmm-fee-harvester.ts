@@ -156,8 +156,10 @@ async function getUserPositionBins(
     );
     // Handle different response shapes
     return data?.bins ?? data?.position_bins ?? data?.positions?.bins ?? [];
-  } catch {
-    return [];
+  } catch (e) {
+    // 404 = no position (expected). Other errors should propagate.
+    if (e instanceof Error && e.message.includes("404")) return [];
+    throw e;
   }
 }
 
@@ -319,7 +321,10 @@ async function scanAllPools(): Promise<PoolScanResult> {
     activeList.map(async (item) => {
       try {
         return await getRichPool(item.pool_id);
-      } catch {
+      } catch (e) {
+        process.stderr.write(
+          JSON.stringify({ warning: `Failed to fetch pool ${item.pool_id}`, error: String(e) }) + "\n"
+        );
         return null;
       }
     })
@@ -558,7 +563,10 @@ program
             const pool = await getRichPool(item.pool_id);
             const estimate = await estimatePositionFees(opts.address, item.pool_id, pool);
             return estimate;
-          } catch {
+          } catch (e) {
+            process.stderr.write(
+              JSON.stringify({ warning: `Failed to check position in ${item.pool_id}`, error: String(e) }) + "\n"
+            );
             return null;
           }
         })
