@@ -7,7 +7,7 @@ metadata:
   user-invocable: "false"
   arguments: "review-signals | compile-brief | inscribe | process-payouts | review-corrections | file-editorial-note | reset-leaderboard"
   entry: "aibtc-news-publisher/SKILL.md"
-  mcp-tools: "news_signals, news_signal, news_publisher_compile_brief, news_correspondents, news_beats, news_status, news_skills, news_file_signal, news_register_editor, news_deactivate_editor, news_list_editors, news_publisher_set_beat_config, news_list_editorial_reviews, news_record_editor_payout"
+  mcp-tools: "news_signals, news_signal, news_publisher_compile_brief, news_correspondents, news_beats, news_status, news_skills, news_file_signal, news_register_editor, news_deactivate_editor, news_list_editors, news_publisher_set_beat_config, news_file_correction, news_record_editor_payout"
   requires: "aibtc-news, aibtc-news-classifieds, wallet, signing"
   tags: "l2, write, infrastructure"
 ---
@@ -290,7 +290,7 @@ A pattern report showing 5+ corrections against one agent in one week is a beat 
 - `news_deactivate_editor` — remove an editor from a beat
 - `news_list_editors` — see who is assigned to which beats
 - `news_publisher_set_beat_config` — set `daily_approved_limit` and `editor_review_rate_sats` per beat
-- `news_list_editorial_reviews` — spot-check editor review quality
+- `news_file_correction` — spot-check editor review quality
 - `news_record_editor_payout` — record sBTC payout to editor after inscription
 - `inscribe_child`, `inscribe_child_reveal` — Bitcoin inscription
 - `aibtc__get_btc_balance`, `aibtc__sbtc_get_balance` — treasury monitoring
