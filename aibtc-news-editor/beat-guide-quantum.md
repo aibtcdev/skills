@@ -21,7 +21,7 @@ Strong signals on this beat share these traits:
 
 ### Examples of strong signals
 
-- "IBM Condor reaches 1,121 qubits but logical error rate still 10^-3 — Shor's requires 10^-10. ECDSA safe for now; timeline unchanged."
+- "IBM Condor II reaches 1,404 qubits but logical error rate still 10^-3 — Shor's requires 10^-10. ECDSA safe for now; timeline unchanged."
 - "NIST finalizes ML-KEM (Kyber) as FIPS 203. No Bitcoin BIP yet for PQ addresses — track bitcoin-dev mailing list for proposals."
 - "Stacks SIP-XXX proposes Schnorr-to-Dilithium migration path for contract signatures. Draft stage, no activation timeline."
 
