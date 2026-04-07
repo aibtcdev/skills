@@ -83,7 +83,7 @@ Composite score (0-100) from two components:
 
 | Component | Weight | Calculation |
 |-----------|--------|-------------|
-| Depth (log-scale) | 80 pts max | `min(log10(totalUsd) * 20 - 40, 80)` — $100K = 50, $1M = 75, $10M = 100 |
+| Depth (log-scale) | 80 pts max | `min(log10(totalUsd) * 20 - 40, 80)` — $100K = 60, $1M = 80, $10M = 80 (capped) |
 | Balance | 20 pts max | `(1 - imbalanceRatio) * 20` — perfectly balanced = 20, fully single-sided = 0 |
 
 **Grades:**

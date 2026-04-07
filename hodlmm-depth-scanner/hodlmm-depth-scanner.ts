@@ -141,22 +141,6 @@ async function getPoolBins(poolId: string): Promise<BinListResponse> {
 // ---------------------------------------------------------------------------
 
 /**
- * Compute USD value of reserves in a bin, normalized by token decimals.
- */
-function binValueUsd(
-  reserveX: number,
-  reserveY: number,
-  xDecimals: number,
-  yDecimals: number,
-  xPriceUsd: number,
-  yPriceUsd: number
-): number {
-  const normalizedX = reserveX / Math.pow(10, xDecimals);
-  const normalizedY = reserveY / Math.pow(10, yDecimals);
-  return normalizedX * xPriceUsd + normalizedY * yPriceUsd;
-}
-
-/**
  * Analyze depth around the active bin.
  *
  * Buy side: bins below active (hold tokenY — what buyers consume).
@@ -174,6 +158,10 @@ function analyzeDepth(
   xPriceUsd: number,
   yPriceUsd: number
 ): { buySide: DepthSide; sellSide: DepthSide; slippageTiers: SlippageTier[]; imbalanceRatio: number } {
+  // Pre-compute decimal factors
+  const xFactor = 10 ** xDecimals;
+  const yFactor = 10 ** yDecimals;
+
   // Filter bins within analysis radius
   const nearbyBins = bins
     .filter((b) => Math.abs(b.bin_id - activeBinId) <= DEPTH_RADIUS_BINS)
@@ -191,7 +179,7 @@ function analyzeDepth(
     const ry = Number(b.reserve_y);
     if (ry > 0) {
       buyTotalRaw += ry;
-      buyTotalUsd += (ry / Math.pow(10, yDecimals)) * yPriceUsd;
+      buyTotalUsd += (ry / yFactor) * yPriceUsd;
       buyNonEmpty++;
     }
   }
@@ -203,7 +191,7 @@ function analyzeDepth(
     const rx = Number(b.reserve_x);
     if (rx > 0) {
       sellTotalRaw += rx;
-      sellTotalUsd += (rx / Math.pow(10, xDecimals)) * xPriceUsd;
+      sellTotalUsd += (rx / xFactor) * xPriceUsd;
       sellNonEmpty++;
     }
   }
@@ -211,7 +199,8 @@ function analyzeDepth(
   // Compute slippage tiers
   // Each bin crossed = binStep basis points of price impact
   const slippageTiers: SlippageTier[] = SLIPPAGE_TIERS_PCT.map((targetPct) => {
-    const binsForSlippage = Math.floor((targetPct * 10000) / (binStep || 1));
+    // targetPct is in percent (e.g. 1.0 = 1% = 100 bps). Each bin = binStep bps.
+    const binsForSlippage = Math.floor((targetPct * 100) / (binStep || 1));
 
     // Buy capacity: sum tokenY in bins below active, up to binsForSlippage
     let buyCapUsd = 0;
@@ -220,12 +209,12 @@ function analyzeDepth(
       .sort((a, b) => b.bin_id - a.bin_id) // closest to active first
       .slice(0, binsForSlippage);
     for (const b of buySlice) {
-      buyCapUsd += (Number(b.reserve_y) / Math.pow(10, yDecimals)) * yPriceUsd;
+      buyCapUsd += (Number(b.reserve_y) / yFactor) * yPriceUsd;
     }
     // Include active bin's Y reserves
     const activeBin = bins.find((b) => b.bin_id === activeBinId);
     if (activeBin) {
-      buyCapUsd += (Number(activeBin.reserve_y) / Math.pow(10, yDecimals)) * yPriceUsd;
+      buyCapUsd += (Number(activeBin.reserve_y) / yFactor) * yPriceUsd;
     }
 
     // Sell capacity: sum tokenX in bins above active, up to binsForSlippage
@@ -235,11 +224,11 @@ function analyzeDepth(
       .sort((a, b) => a.bin_id - b.bin_id) // closest to active first
       .slice(0, binsForSlippage);
     for (const b of sellSlice) {
-      sellCapUsd += (Number(b.reserve_x) / Math.pow(10, xDecimals)) * xPriceUsd;
+      sellCapUsd += (Number(b.reserve_x) / xFactor) * xPriceUsd;
     }
     // Include active bin's X reserves
     if (activeBin) {
-      sellCapUsd += (Number(activeBin.reserve_x) / Math.pow(10, xDecimals)) * xPriceUsd;
+      sellCapUsd += (Number(activeBin.reserve_x) / xFactor) * xPriceUsd;
     }
 
     return {
@@ -309,12 +298,13 @@ function classifyDepth(score: number): "deep" | "moderate" | "shallow" | "empty"
   return "empty";
 }
 
-async function buildDepthProfile(
+function buildDepthProfile(
   poolId: string,
   richPool: HodlmmRichPool,
   binsData: BinListResponse
-): Promise<DepthProfile> {
-  const activeBinId = binsData.active_bin_id ?? 0;
+): DepthProfile {
+  const activeBinId = binsData.active_bin_id;
+  if (activeBinId === undefined) throw new Error(`API did not return active_bin_id for pool ${poolId}`);
   const binStep = Number(richPool.binStep ?? 10);
   const xDecimals = richPool.tokens?.tokenX?.decimals ?? 8;
   const yDecimals = richPool.tokens?.tokenY?.decimals ?? 6;
@@ -446,7 +436,7 @@ program
               getPoolBins(item.pool_id),
             ]);
             if (!bins.bins || bins.bins.length === 0) return null;
-            return await buildDepthProfile(item.pool_id, rich, bins);
+            return buildDepthProfile(item.pool_id, rich, bins);
           } catch (e) {
             process.stderr.write(
               JSON.stringify({ warning: `Failed to scan ${item.pool_id}`, error: String(e) }) + "\n"
@@ -511,7 +501,7 @@ program
         throw new Error("No bins returned for this pool");
       }
 
-      const profile = await buildDepthProfile(opts.poolId, rich, bins);
+      const profile = buildDepthProfile(opts.poolId, rich, bins);
 
       const tier1 = profile.slippageTiers.find((t) => t.slippagePct === 1.0);
       const verdict = profile.depthGrade === "deep"
@@ -549,7 +539,7 @@ program
         throw new Error("No bins returned for this pool");
       }
 
-      const profile = await buildDepthProfile(opts.poolId, rich, bins);
+      const profile = buildDepthProfile(opts.poolId, rich, bins);
 
       printResult({
         network: NETWORK,
