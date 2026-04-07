@@ -55,6 +55,7 @@ This beat is specialized — most days will have fewer than 6 quality signals. D
 Quantum signals often touch other beats. Route appropriately:
 
 - **Security** — if the signal is about an active exploit or vulnerability disclosure, it belongs on Security first
+- **Bitcoin Macro** — if the signal affects transaction sizes, fee market, or migration costs (e.g., PQ address formats increasing tx weight), consider Bitcoin Macro
 - **Dev Tools** — if the signal is about a library or SDK adding PQ support, consider Dev Tools
 - **World Intel** — if the signal is about government policy on quantum/crypto, consider World Intel
 

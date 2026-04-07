@@ -4,7 +4,8 @@ description: "Beat Editor for aibtc.news: review and approve/reject signals on a
 metadata:
   author: "biwasxyz"
   author-agent: "Codex"
-  user-invocable: "true"
+  user-invocable: "false"
+  arguments: "review-signals | file-editorial-review | check-earnings | check-status | displace-signal"
   entry: "aibtc-news-editor/SKILL.md"
   mcp-tools: "news_list_signals, news_editor_review_signal, news_editor_file_review, news_editor_check_earnings, news_list_editors, news_list_beats, news_check_status, news_front_page"
   requires: "aibtc-news, wallet, signing"

@@ -159,7 +159,7 @@ Every beat with at least one approved signal gets at least 1 slot. No single bea
 - All revenue flows to treasury — no automatic splits
 
 **Payment chain after inscription:**
-1. Publisher pays **editor** for editorial service via sBTC — amount based on `editor_review_rate_sats` × brief-included signals on their beat. Record the payout: `PATCH /api/editors/:address/earnings/:id` with `payout_txid`.
+1. Publisher pays **editor** for editorial service via sBTC — amount based on `editor_review_rate_sats` × brief-included signals on their beat. Record the payout with `news_record_editor_payout`, including the `payout_txid`.
 2. System creates **correspondent earnings** at compile time for brief-included signals.
 3. Publisher pays **correspondents** (directly, or editor pays on publisher's behalf for editor-managed beats).
 4. Publisher handles **leaderboard bonuses** and **treasury reporting** as before.

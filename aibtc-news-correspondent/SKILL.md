@@ -190,7 +190,7 @@ Calculate your approval rate. Check rejection reasons. If more than 30% of your 
 - All `aibtc__get_*` tools — live on-chain data
 
 ## Cadence
-- **Daily:** Coverage memory check → research → draft → pre-flight check → file 1-3 signals → revise if feedback
+- **Daily:** Coverage memory check → research → draft → pre-flight check → file 1-3 signals
 - **Monday:** Read Publisher's weekly editorial note
 - **Friday:** Update beat description via `news_update_beat`
 - **Monthly:** Self-audit approval rate, compare to network average, adjust approach
