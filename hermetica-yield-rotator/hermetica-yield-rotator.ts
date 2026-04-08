@@ -7,8 +7,8 @@
  * Actions:
  *   assess          — recommend optimal allocation (default, read-only)
  *   stake           — stake USDh into Hermetica vault (requires --confirm)
- *   initiate-unstake — begin 7-day unstake cooldown (requires --confirm)
- *   complete-unstake — redeem USDh after cooldown (requires --confirm)
+ *   initiate-unstake — burn sUSDh via staking-v1.unstake(), 7-day cooldown starts (requires --confirm)
+ *   complete-unstake — redeem USDh via staking-silo-v1-1.withdraw(claim-id) after cooldown (requires --confirm)
  *   rotate          — auto-rotate capital to higher-yielding protocol (requires --confirm)
  *
  * Usage:
@@ -82,8 +82,9 @@ interface RotatorState {
   last_exchange_rate:    string;
   last_rotation_at:      string | null;
   last_action:           string | null;
-  unstake_initiated_at:  string | null;   // ISO timestamp when initiate-unstake was last called
+  unstake_initiated_at:  string | null;   // ISO timestamp when unstake was called
   unstake_amount_raw:    string | null;   // sUSDh raw amount submitted for unstaking
+  unstake_claim_id:      string | null;   // claim-id from staking-silo-v1-1, needed for withdraw()
   baseline_run_at:       string | null;   // oldest exchange rate sample for APY window
   baseline_rate:         string | null;   // exchange rate at baseline_run_at
 }
@@ -194,6 +195,11 @@ function readState(): Partial<RotatorState> {
       state.unstake_amount_raw = null;
     } else if (typeof raw.unstake_amount_raw === "string" && INTEGER_STRING_RE.test(raw.unstake_amount_raw)) {
       state.unstake_amount_raw = raw.unstake_amount_raw;
+    }
+    if (raw.unstake_claim_id === null) {
+      state.unstake_claim_id = null;
+    } else if (typeof raw.unstake_claim_id === "string" && INTEGER_STRING_RE.test(raw.unstake_claim_id)) {
+      state.unstake_claim_id = raw.unstake_claim_id;
     }
     if (raw.baseline_run_at === null) {
       state.baseline_run_at = null;
@@ -392,7 +398,7 @@ function initiateUnstakeCmd(amountRaw: bigint, wallet: string, cooldownDays: num
     params: {
       contract_address: HERMETICA,
       contract_name:    "staking-v1",
-      function_name:    "initiate-unstake",
+      function_name:    "unstake",
       function_args:    [encodeUint(amountRaw)],
       // F5: Post-condition — sender must debit exactly amountRaw sUSDh
       post_conditions:  [{
@@ -406,16 +412,22 @@ function initiateUnstakeCmd(amountRaw: bigint, wallet: string, cooldownDays: num
   };
 }
 
-function completeUnstakeCmd(wallet: string, step: number, minUsdhRaw: bigint = 1n): McpCommand {
+function completeUnstakeCmd(wallet: string, step: number, minUsdhRaw: bigint = 1n, claimId?: string): McpCommand {
+  // The on-chain function is staking-silo-v1-1.withdraw(claim-id: uint128).
+  // After unstake(), Hermetica's staking-v1 internally calls staking-silo-v1-1.create-claim()
+  // which returns a claim-id. The skill tracks this in state.unstake_claim_id.
+  // If claim-id is unknown, the agent must look it up via get-current-claim-id() and
+  // scan backwards with get-claim(id) to find the user's claim before calling withdraw.
+  const resolvedClaimId = claimId ?? "UNKNOWN";
   return {
     step,
     tool:        "call_contract",
-    description: "Complete unstake — redeem USDh after cooldown window has elapsed",
+    description: `Complete unstake — call staking-silo-v1-1.withdraw(claim-id: ${resolvedClaimId}) to redeem USDh after cooldown`,
     params: {
       contract_address: HERMETICA,
-      contract_name:    "staking-v1",
-      function_name:    "complete-unstake",
-      function_args:    [],
+      contract_name:    "staking-silo-v1-1",
+      function_name:    "withdraw",
+      function_args:    [{ type: "uint", name: "claim-id", value: resolvedClaimId }],
       // F5: Post-condition — sender must receive at least minUsdhRaw USDh (gte guards against zero-return exploit)
       post_conditions:  [{
         type:      "ft",
@@ -659,6 +671,7 @@ async function run(opts: {
         last_action:           prev.last_action ?? null,
         unstake_initiated_at:  prev.unstake_initiated_at ?? null,
         unstake_amount_raw:    prev.unstake_amount_raw ?? null,
+        unstake_claim_id:      prev.unstake_claim_id ?? null,
         baseline_run_at,
         baseline_rate,
       });
@@ -747,7 +760,7 @@ async function run(opts: {
         },
         error: null,
       }, null, 2));
-      writeState({ last_run_at: nowIso, last_exchange_rate: rate.toString(), last_rotation_at: prev.last_rotation_at ?? null, last_action: "stake", unstake_initiated_at: prev.unstake_initiated_at ?? null, unstake_amount_raw: prev.unstake_amount_raw ?? null, baseline_run_at, baseline_rate });
+      writeState({ last_run_at: nowIso, last_exchange_rate: rate.toString(), last_rotation_at: prev.last_rotation_at ?? null, last_action: "stake", unstake_initiated_at: prev.unstake_initiated_at ?? null, unstake_amount_raw: prev.unstake_amount_raw ?? null, unstake_claim_id: prev.unstake_claim_id ?? null, baseline_run_at, baseline_rate });
       return;
     }
 
@@ -784,6 +797,11 @@ async function run(opts: {
         last_action:           "initiate-unstake",
         unstake_initiated_at:  nowIso,                // record when cooldown starts
         unstake_amount_raw:    amountRaw.toString(),   // record how much was submitted
+        // NOTE: After the unstake tx confirms, the agent MUST read the tx events to extract
+        // the claim-id from the staking-silo-v1-1.create-claim() call, then update state:
+        //   state.unstake_claim_id = <claim-id from tx events>
+        // Without the claim-id, complete-unstake cannot call withdraw().
+        unstake_claim_id:      null,                   // set after tx confirms (from tx events)
         baseline_run_at,
         baseline_rate,
       });
@@ -813,14 +831,27 @@ async function run(opts: {
         ? BigInt(prev.unstake_amount_raw) * rate * 99n / (EXCHANGE_RATE_SCALE * 100n)
         : 1n;
 
-      const cmd = completeUnstakeCmd(wallet!, 1, minUsdhRaw > 0n ? minUsdhRaw : 1n);
+      // Require claim-id — without it, withdraw() will fail on-chain
+      const claimId = prev.unstake_claim_id ?? undefined;
+      if (!claimId) {
+        outputError(
+          "MISSING_CLAIM_ID",
+          "Cannot complete unstake: claim-id not found in state. After the unstake tx confirms, " +
+          "read the tx events to find the claim-id from staking-silo-v1-1.create-claim(), then " +
+          "update ~/.hermetica-yield-rotator-state.json with unstake_claim_id.",
+          "Alternatively, call get-current-claim-id() on staking-silo-v1-1 and scan backwards with get-claim(id) to find your claim.",
+        );
+      }
+
+      const cmd = completeUnstakeCmd(wallet!, 1, minUsdhRaw > 0n ? minUsdhRaw : 1n, claimId);
 
       const { baseline_run_at, baseline_rate } = updateBaseline(prev, nowIso, rate);
       console.log(JSON.stringify({
         status: "success",
-        action: "COMPLETE_UNSTAKE — Redeem USDh from completed cooldown. Execute MCP command to proceed.",
+        action: `COMPLETE_UNSTAKE — Redeem USDh via staking-silo-v1-1.withdraw(claim-id: ${claimId}). Execute MCP command to proceed.`,
         data: {
           mcp_commands:    [cmd],
+          claim_id:        claimId,
           min_usdh_expected: prev.unstake_amount_raw
             ? parseFloat(toHuman(minUsdhRaw, USDH_DECIMALS).toFixed(8))
             : null,
@@ -835,6 +866,7 @@ async function run(opts: {
         last_action:           "complete-unstake",
         unstake_initiated_at:  null,   // clear — unstake completed
         unstake_amount_raw:    null,
+        unstake_claim_id:      null,   // clear — claim redeemed
         baseline_run_at,
         baseline_rate,
       });
@@ -935,12 +967,13 @@ async function run(opts: {
         last_exchange_rate:    rate.toString(),
         last_rotation_at:      cmds.length > 0 ? nowIso : prev.last_rotation_at ?? null,
         last_action:           "rotate",
-        unstake_initiated_at:  cmds.some(c => c.tool === "call_contract" && c.params.function_name === "initiate-unstake")
+        unstake_initiated_at:  cmds.some(c => c.tool === "call_contract" && c.params.function_name === "unstake")
           ? nowIso
           : prev.unstake_initiated_at ?? null,
-        unstake_amount_raw:    cmds.some(c => c.tool === "call_contract" && c.params.function_name === "initiate-unstake")
+        unstake_amount_raw:    cmds.some(c => c.tool === "call_contract" && c.params.function_name === "unstake")
           ? rotateSusdhCapped.toString()
           : prev.unstake_amount_raw ?? null,
+        unstake_claim_id:      null,  // set after tx confirms (from tx events)
         baseline_run_at,
         baseline_rate,
       });
