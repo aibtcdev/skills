@@ -7,7 +7,7 @@ metadata:
   user-invocable: "false"
   arguments: "doctor | assess | exit | scan"
   entry: "hodlmm-emergency-exit/hodlmm-emergency-exit.ts"
-  requires: "wallet"
+  requires: ""
   tags: "l2, defi, write, mainnet-only"
 ---
 
@@ -41,6 +41,8 @@ This skill closes the loop: it reads the risk signals, applies hardcoded safety 
 | `DEPTH_CRISIS_THRESHOLD` | Score 5 | Depth below 5/100 = liquidity evaporated |
 | `FEE_DEAD_POOL_THRESHOLD` | $0 (7d) | Zero fees in 7 days = dead pool |
 | `VOLATILITY_CRISIS_BINS` | 30 bins | Active bin moved 30+ bins from position center |
+| `IN_RANGE_BIN_RADIUS` | 5 bins | Position bins within 5 of active = still in range |
+| `SCAN_BATCH_SIZE` | 5 pools | Concurrent API calls per batch to avoid rate limits |
 
 All limits are enforced in TypeScript, not just documented. The `exit` command will not emit a withdrawal command unless all three gates pass.
 

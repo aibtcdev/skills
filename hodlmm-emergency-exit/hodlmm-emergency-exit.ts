@@ -30,6 +30,8 @@ const IMBALANCE_WARNING_THRESHOLD = 0.60; // 60% single-sided = warning
 const DEPTH_CRISIS_THRESHOLD = 5; // Depth score below 5 = crisis
 const FEE_DEAD_POOL_THRESHOLD = 0; // Zero 7-day fees = dead pool
 const VOLATILITY_CRISIS_BINS = 30; // Active bin moved 30+ bins from position center = crisis
+const IN_RANGE_BIN_RADIUS = 5; // Position bins within 5 of active = in range
+const SCAN_BATCH_SIZE = 5; // Process pools in batches to avoid rate limits
 
 // ---------------------------------------------------------------------------
 // Types
@@ -164,16 +166,23 @@ async function getUserPositionBins(
 function computeDepthScore(
   bins: BinData[],
   activeBinId: number,
-  radius: number
+  radius: number,
+  xDecimals: number,
+  yDecimals: number,
+  xPriceUsd: number,
+  yPriceUsd: number
 ): number {
+  const xFactor = 10 ** xDecimals;
+  const yFactor = 10 ** yDecimals;
   const nearby = bins.filter((b) => Math.abs(b.bin_id - activeBinId) <= radius);
-  let totalReserves = 0;
+  let totalUsd = 0;
   for (const b of nearby) {
-    totalReserves += Number(b.reserve_x) + Number(b.reserve_y);
+    totalUsd += (Number(b.reserve_x) / xFactor) * xPriceUsd;
+    totalUsd += (Number(b.reserve_y) / yFactor) * yPriceUsd;
   }
-  // Simple log-scale depth: 0-100
-  if (totalReserves <= 0) return 0;
-  return Math.min(100, Math.round(Math.log10(totalReserves) * 10));
+  // Log-scale depth in USD: $100 = 20, $10K = 40, $100K = 60, $1M = 80
+  if (totalUsd <= 0) return 0;
+  return Math.min(100, Math.round(Math.log10(totalUsd) * 20));
 }
 
 function assessRisk(
@@ -191,9 +200,11 @@ function assessRisk(
   const yPriceUsd = pool.tokens?.tokenY?.priceUsd ?? 0;
 
   // Pool metrics
+  // imbalanceRatio: the larger side's share as a fraction (0.50 = balanced, 1.0 = single-sided)
+  // pctX=85 → ratio=0.85 (crisis), pctX=60 → ratio=0.60 (warning)
   const pctX = pool.poolComposition?.tokenX?.percentage ?? 50;
-  const imbalanceRatio = Math.abs(pctX - 50) / 50; // 0 = balanced, 1 = single-sided
-  const depthScore = computeDepthScore(bins.bins, activeBinId, 20);
+  const imbalanceRatio = Math.max(pctX, 100 - pctX) / 100;
+  const depthScore = computeDepthScore(bins.bins, activeBinId, 20, xDecimals, yDecimals, xPriceUsd, yPriceUsd);
   const feesUsd7d = pool.feesUsd7d ?? 0;
   const volumeUsd7d = pool.volumeUsd7d ?? 0;
   const apr = pool.apr ?? 0;
@@ -204,7 +215,7 @@ function assessRisk(
     ? Math.round(positionBinIds.reduce((s, id) => s + id, 0) / positionBinIds.length)
     : activeBinId;
   const driftFromActive = Math.abs(positionCenter - activeBinId);
-  const inRange = positionBinIds.some((id) => Math.abs(id - activeBinId) <= 5);
+  const inRange = positionBinIds.some((id) => Math.abs(id - activeBinId) <= IN_RANGE_BIN_RADIUS);
 
   // Compute position value in USD
   let positionValueUsd = 0;
@@ -555,34 +566,49 @@ program
         .filter((p) => p.active !== false)
         .map((p) => p.pool_id);
 
-      const results = await Promise.all(
-        poolIds.map(async (poolId) => {
-          try {
-            const [pool, bins, positionBins] = await Promise.all([
-              getRichPool(poolId),
-              getPoolBins(poolId),
-              getUserPositionBins(opts.address, poolId),
-            ]);
+      // Process pools in batches to avoid rate limits
+      const results: Array<{
+        poolId: string;
+        pair: string;
+        urgency: ExitUrgency;
+        score: number;
+        triggers: string[];
+        poolMetrics: RiskAssessment["poolMetrics"];
+        positionMetrics: RiskAssessment["positionMetrics"];
+      } | null> = [];
 
-            if (positionBins.length === 0) return null;
+      for (let i = 0; i < poolIds.length; i += SCAN_BATCH_SIZE) {
+        const batch = poolIds.slice(i, i + SCAN_BATCH_SIZE);
+        const batchResults = await Promise.all(
+          batch.map(async (poolId) => {
+            try {
+              const [pool, bins, positionBins] = await Promise.all([
+                getRichPool(poolId),
+                getPoolBins(poolId),
+                getUserPositionBins(opts.address, poolId),
+              ]);
 
-            const assessment = assessRisk(pool, bins, positionBins);
-            const xSym = pool.tokens?.tokenX?.symbol ?? "?";
-            const ySym = pool.tokens?.tokenY?.symbol ?? "?";
+              if (positionBins.length === 0) return null;
 
-            return {
-              poolId,
-              pair: `${xSym}/${ySym}`,
-              ...assessment,
-            };
-          } catch (e) {
-            process.stderr.write(
-              JSON.stringify({ warning: `Failed to scan ${poolId}`, error: String(e) }) + "\n"
-            );
-            return null;
-          }
-        })
-      );
+              const assessment = assessRisk(pool, bins, positionBins);
+              const xSym = pool.tokens?.tokenX?.symbol ?? "?";
+              const ySym = pool.tokens?.tokenY?.symbol ?? "?";
+
+              return {
+                poolId,
+                pair: `${xSym}/${ySym}`,
+                ...assessment,
+              };
+            } catch (e) {
+              process.stderr.write(
+                JSON.stringify({ warning: `Failed to scan ${poolId}`, error: String(e) }) + "\n"
+              );
+              return null;
+            }
+          })
+        );
+        results.push(...batchResults);
+      }
 
       const positions = results.filter((r) => r !== null);
       const criticalCount = positions.filter((p) => p.urgency === "critical").length;
