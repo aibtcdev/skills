@@ -184,27 +184,6 @@ function round(n: number, decimals: number): number {
 // Trend from snapshot history
 // ---------------------------------------------------------------------------
 
-function computeTrend(
-  snapshots: PulseSnapshot[],
-  current: MomentumMetrics
-): TrendDirection {
-  if (snapshots.length < 2) return "new";
-
-  // Compare current feeVelocity to the last 3 snapshots
-  const recent = snapshots.slice(-3).map((s) => s.metrics.feeVelocity);
-  const allIncreasing = recent.every((v, i) =>
-    i === 0 ? true : v >= recent[i - 1]!
-  );
-  const allDecreasing = recent.every((v, i) =>
-    i === 0 ? true : v <= recent[i - 1]!
-  );
-
-  if (current.signal === "flat") return "flat";
-  if (allIncreasing && current.metrics) return "accelerating";
-  if (allDecreasing) return "cooling";
-  return "stable";
-}
-
 function computeTrendFromHistory(
   history: PulseSnapshot[],
   current: MomentumMetrics
