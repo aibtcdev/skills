@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.38.0](https://github.com/aibtcdev/skills/compare/skills-v0.37.0...skills-v0.38.0) (2026-04-08)
+
+
+### Features
+
+* **dca:** add BFF Skills Comp Day 10 winner by [@k9dreamermacmini-coder](https://github.com/k9dreamermacmini-coder) ([#299](https://github.com/aibtcdev/skills/issues/299)) ([306fdfe](https://github.com/aibtcdev/skills/commit/306fdfea45daf8de905f33db32bd204f73358dc4))
+* **hermetica-yield-rotator:** add BFF Skills Comp Day 4 winner by [@cliqueengagements](https://github.com/cliqueengagements) ([#273](https://github.com/aibtcdev/skills/issues/273)) ([f6e0e5d](https://github.com/aibtcdev/skills/commit/f6e0e5dfb89c9d38a84981e92949743c62f8d0b0))
+* **hodlmm-bin-guardian:** add BFF Skills Comp Day 3 winner by [@cliqueengagements](https://github.com/cliqueengagements) ([#265](https://github.com/aibtcdev/skills/issues/265)) ([f9dc292](https://github.com/aibtcdev/skills/commit/f9dc292150e05cc32dcb8c242e483f444bcd86fd))
+* **hodlmm-pulse:** add BFF Skills Comp Day 6 winner by [@ghislo749](https://github.com/ghislo749) ([#281](https://github.com/aibtcdev/skills/issues/281)) ([ffe20a1](https://github.com/aibtcdev/skills/commit/ffe20a1a530fe0e800c8ce9d3e115b5a606f6566))
+* **hodlmm-range-keeper:** add BFF Skills Comp Day 12 winner by [@tearful-saw](https://github.com/tearful-saw) ([#308](https://github.com/aibtcdev/skills/issues/308)) ([61f8ac1](https://github.com/aibtcdev/skills/commit/61f8ac12f51f6c7ab7863d3b4f3113670cd0149b))
+* **hodlmm-signal-allocator:** add BFF Skills Comp Day 11 winner by @IamHarrie-Labs ([#303](https://github.com/aibtcdev/skills/issues/303)) ([2b12f5a](https://github.com/aibtcdev/skills/commit/2b12f5ae70ee3a7be78db98da475aa8af7f76cf2))
+* **jingswap-cycle-agent:** add BFF Skills Comp Day 9 winner by [@teflonmusk](https://github.com/teflonmusk) ([#294](https://github.com/aibtcdev/skills/issues/294)) ([237b5fd](https://github.com/aibtcdev/skills/commit/237b5fdcdfbf9b972e39c86d25658e82fc547e1d))
+* **sbtc-auto-funnel:** add BFF Skills Comp Day 5 winner by [@secret-mars](https://github.com/secret-mars) ([#278](https://github.com/aibtcdev/skills/issues/278)) ([05e758f](https://github.com/aibtcdev/skills/commit/05e758fd152a1c5cdc1f251d4391aba91aa49b06))
+
+
+### Bug Fixes
+
+* **hodlmm-pulse:** remove unused computeTrend() and regenerate manifest ([#311](https://github.com/aibtcdev/skills/issues/311)) ([0762ec0](https://github.com/aibtcdev/skills/commit/0762ec0d4bae22dba9891efede9385761990a643))
+
 ## [0.37.0](https://github.com/aibtcdev/skills/compare/skills-v0.36.2...skills-v0.37.0) (2026-04-07)
 
 
