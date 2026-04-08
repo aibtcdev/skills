@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.38.1](https://github.com/aibtcdev/skills/compare/skills-v0.38.0...skills-v0.38.1) (2026-04-08)
+
+
+### Bug Fixes
+
+* **sponsor-builder:** add 0x prefix to serialized tx before relay submission ([#292](https://github.com/aibtcdev/skills/issues/292)) ([e5c3140](https://github.com/aibtcdev/skills/commit/e5c3140909e67d8f95973389f173bf386febb945)), closes [#268](https://github.com/aibtcdev/skills/issues/268)
+
 ## [0.38.0](https://github.com/aibtcdev/skills/compare/skills-v0.37.0...skills-v0.38.0) (2026-04-08)
 
 
