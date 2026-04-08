@@ -6,6 +6,8 @@ import {
 import { getStacksNetwork, type Network } from "../config/networks.js";
 import { getSponsorRelayUrl, getSponsorApiKey } from "../config/sponsor.js";
 import type { Account, ContractCallOptions, TransferResult } from "./builder.js";
+import { acquireNonce, releaseNonce } from "../services/nonce-tracker.js";
+import { classifyRelayError, sleep } from "./retry-strategy.js";
 
 export interface SponsoredTransferOptions {
   senderKey: string;
@@ -98,6 +100,170 @@ export async function sponsoredContractCall(
 }
 
 /**
+ * Sponsored contract call with nonce-tracker integration and retry logic.
+ *
+ * Acquires a sender nonce from nonce-tracker before building the transaction,
+ * ensuring concurrent dispatch cycles don't collide on the same nonce.
+ *
+ * Retry behaviour:
+ * - Relay-side conflict (NONCE_CONFLICT): sleep retryAfter, resubmit same serialized tx
+ * - Sender-side conflict (ConflictingNonceInMempool): release as rejected, re-acquire, rebuild
+ * - Transient errors: sleep, resubmit same serialized tx
+ * - Non-retryable errors: release as broadcast, throw
+ *
+ * @param account     - Wallet account (must have privateKey + address)
+ * @param options     - Contract call options (nonce field ignored; managed internally)
+ * @param network     - Target network
+ * @param maxAttempts - Maximum submission attempts (default: 3)
+ */
+export async function sponsoredContractCallWithRetry(
+  account: Account,
+  options: ContractCallOptions,
+  network: Network,
+  maxAttempts = 3
+): Promise<TransferResult> {
+  const apiKey = resolveSponsorApiKey(account);
+  const networkName = getStacksNetwork(network);
+  const stxAddress = account.address;
+
+  let acquired = await acquireNonce(stxAddress);
+  let nonce = acquired.nonce;
+  let serializedTx: string | null = null;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    // Build (or rebuild after nonce re-acquisition)
+    if (serializedTx === null) {
+      const transaction = await makeContractCall({
+        contractAddress: options.contractAddress,
+        contractName: options.contractName,
+        functionName: options.functionName,
+        functionArgs: options.functionArgs,
+        senderKey: account.privateKey,
+        network: networkName,
+        postConditionMode: options.postConditionMode || PostConditionMode.Deny,
+        postConditions: options.postConditions || [],
+        sponsored: true,
+        fee: 0n,
+        nonce: BigInt(nonce),
+      });
+      serializedTx = transaction.serialize();
+    }
+
+    const response = await submitToSponsorRelay(serializedTx, network, apiKey);
+
+    if (response.success && response.txid) {
+      await releaseNonce(stxAddress, nonce, true, undefined, response.txid);
+      return { txid: response.txid, rawTx: serializedTx };
+    }
+
+    // Last attempt — give up
+    if (attempt === maxAttempts - 1) {
+      await releaseNonce(stxAddress, nonce, false, "broadcast");
+      throw new Error(formatRelayError(response));
+    }
+
+    const retry = classifyRelayError(response);
+
+    if (!retry.retryable) {
+      await releaseNonce(stxAddress, nonce, false, "broadcast");
+      throw new Error(formatRelayError(response));
+    }
+
+    if (retry.senderSideConflict) {
+      // Nonce not consumed by Hiro — safe to roll back and re-acquire a fresh one
+      await releaseNonce(stxAddress, nonce, false, "rejected");
+      acquired = await acquireNonce(stxAddress);
+      nonce = acquired.nonce;
+      serializedTx = null; // Force rebuild with new nonce
+      // No sleep — re-acquire already syncs from Hiro
+    } else {
+      // Relay-side conflict, transient, rate-limited: resubmit same serialized tx
+      await sleep(retry.delayMs);
+    }
+  }
+
+  // Should not reach here but TypeScript requires a return path
+  await releaseNonce(stxAddress, nonce, false, "broadcast");
+  throw new Error(`sponsoredContractCallWithRetry: exhausted ${maxAttempts} attempts`);
+}
+
+/**
+ * Sponsored STX transfer with nonce-tracker integration and retry logic.
+ *
+ * Same retry semantics as sponsoredContractCallWithRetry.
+ *
+ * @param account     - Wallet account (must have privateKey + address)
+ * @param recipient   - Recipient Stacks address
+ * @param amount      - Amount in micro-STX
+ * @param memo        - Optional memo string
+ * @param network     - Target network
+ * @param maxAttempts - Maximum submission attempts (default: 3)
+ */
+export async function transferStxSponsoredWithRetry(
+  account: Account,
+  recipient: string,
+  amount: bigint,
+  memo: string | undefined,
+  network: Network,
+  maxAttempts = 3
+): Promise<TransferResult> {
+  const apiKey = resolveSponsorApiKey(account);
+  const networkName = getStacksNetwork(network);
+  const stxAddress = account.address;
+
+  let acquired = await acquireNonce(stxAddress);
+  let nonce = acquired.nonce;
+  let serializedTx: string | null = null;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    if (serializedTx === null) {
+      const transaction = await makeSTXTokenTransfer({
+        recipient,
+        amount,
+        senderKey: account.privateKey,
+        network: networkName,
+        memo: memo || "",
+        sponsored: true,
+        fee: 0n,
+        nonce: BigInt(nonce),
+      });
+      serializedTx = transaction.serialize();
+    }
+
+    const response = await submitToSponsorRelay(serializedTx, network, apiKey);
+
+    if (response.success && response.txid) {
+      await releaseNonce(stxAddress, nonce, true, undefined, response.txid);
+      return { txid: response.txid, rawTx: serializedTx };
+    }
+
+    if (attempt === maxAttempts - 1) {
+      await releaseNonce(stxAddress, nonce, false, "broadcast");
+      throw new Error(formatRelayError(response));
+    }
+
+    const retry = classifyRelayError(response);
+
+    if (!retry.retryable) {
+      await releaseNonce(stxAddress, nonce, false, "broadcast");
+      throw new Error(formatRelayError(response));
+    }
+
+    if (retry.senderSideConflict) {
+      await releaseNonce(stxAddress, nonce, false, "rejected");
+      acquired = await acquireNonce(stxAddress);
+      nonce = acquired.nonce;
+      serializedTx = null;
+    } else {
+      await sleep(retry.delayMs);
+    }
+  }
+
+  await releaseNonce(stxAddress, nonce, false, "broadcast");
+  throw new Error(`transferStxSponsoredWithRetry: exhausted ${maxAttempts} attempts`);
+}
+
+/**
  * Build and submit a sponsored STX transfer transaction
  */
 export async function transferStxSponsored(
@@ -121,9 +287,10 @@ export async function transferStxSponsored(
 }
 
 /**
- * Submit a serialized transaction to the sponsor relay
+ * Submit a serialized transaction to the sponsor relay.
+ * Exported to allow resubmission of the same serialized tx in retry loops.
  */
-async function submitToSponsorRelay(
+export async function submitToSponsorRelay(
   transaction: string,
   network: Network,
   apiKey: string
