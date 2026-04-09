@@ -149,7 +149,11 @@ function c32decode(input: string): Buffer {
       output.push((value >> bits) & 0xff);
     }
   }
-  return Buffer.from(output);
+  const buf = Buffer.from(output);
+  if (buf.length < 24) {
+    throw new Error(`c32decode: expected 24 bytes (checksum+hash160), got ${buf.length} — address may be truncated or invalid`);
+  }
+  return buf;
 }
 
 /**
@@ -439,14 +443,12 @@ async function preflight(): Promise<{
     }
   }
 
-  // Check Zest positions
+  // Check Zest positions — parallel to avoid 90s worst-case sequential timeout
   const positions: ZestPosition[] = [];
   if (wallet) {
-    for (const asset of ZEST_ASSETS) {
-      const pos = await getZestPosition(asset);
-      if (pos && pos.debtValue > 0) {
-        positions.push(pos);
-      }
+    const posResults = await Promise.all(ZEST_ASSETS.map((a) => getZestPosition(a)));
+    for (const pos of posResults) {
+      if (pos && pos.debtValue > 0) positions.push(pos);
     }
   }
 
@@ -531,16 +533,6 @@ program
     const targetLtv = targetLtvRaw;
     const maxRepay = Math.min(parseInt(opts.maxRepay, 10), HARD_CAP_PER_REPAY);
     const interval = Math.max(60, parseInt(opts.interval, 10));
-
-    // Validate max repay
-    if (maxRepay > HARD_CAP_PER_REPAY) {
-      blocked("Max repay exceeds hard cap", {
-        code: "exceeds_hard_cap",
-        message: `Requested ${opts.maxRepay} sats exceeds hard cap of ${HARD_CAP_PER_REPAY} sats`,
-        next: `Use --max-repay <= ${HARD_CAP_PER_REPAY}`,
-      });
-      return;
-    }
 
     // Pre-flight
     const pf = await preflight();
@@ -669,8 +661,8 @@ program
         if (safeAmount <= 0) {
           fail("Cannot repay — would breach wallet reserve", {
             code: "insufficient_balance",
-            message: `Balance ${pf.sbtcBalance} sats minus reserve ${MIN_WALLET_RESERVE} sats = 0 available`,
-            next: "Deposit more sBTC or reduce reserve with caution",
+            message: `Balance ${repayAssetBalance} sats minus reserve ${MIN_WALLET_RESERVE} sats = 0 available`,
+            next: `Deposit more ${asset} or reduce reserve with caution`,
           });
           return;
         }
