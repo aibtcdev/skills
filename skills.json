@@ -1,6 +1,6 @@
 {
   "version": "0.38.1",
-  "generated": "2026-04-09T03:10:38.032Z",
+  "generated": "2026-04-09T03:31:17.750Z",
   "skills": [
     {
       "name": "agent-lookup",
@@ -406,9 +406,7 @@
         "scan-pools",
         "watchlist"
       ],
-      "requires": [
-        "wallet"
-      ],
+      "requires": [],
       "tags": [
         "l2",
         "defi",

@@ -25,10 +25,11 @@ import { printJson, handleError } from "../src/lib/utils/cli.js";
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
-const HODLMM_API = "https://bff.bitflowapis.finance/api/quotes/v1";
 const DEFAULT_AMOUNT = "10.0";
 const DEFAULT_MIN_SPREAD = 0.1;
 const DEFAULT_TOP = 10;
+
+const SCAN_CONCURRENCY = 5;
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -36,6 +37,17 @@ function ensureMainnet(): void {
   if (NETWORK !== "mainnet") {
     throw new Error("Bitflow arbitrage scanner is mainnet only. Set NETWORK=mainnet.");
   }
+}
+
+function tokenSymbol(id: string): string {
+  return id.replace("token-", "").replace("-auto", "").toUpperCase();
+}
+
+interface BinEntry {
+  bin_id: number;
+  price?: string;
+  reserve_x?: string;
+  reserve_y?: string;
 }
 
 interface RouteBreakdown {
@@ -81,8 +93,16 @@ function calculateSpread(
   tokenY: string,
   amountIn: string
 ): ArbOpportunity | null {
-  const bestSdk = sdkRoutes[0];
-  const bestHodlmm = hodlmmRoutes[0];
+  // Sort each source by best output descending
+  const sortedSdk = [...sdkRoutes].sort(
+    (a, b) => parseFloat(b.amountOutHuman) - parseFloat(a.amountOutHuman)
+  );
+  const sortedHodlmm = [...hodlmmRoutes].sort(
+    (a, b) => parseFloat(b.amountOutHuman) - parseFloat(a.amountOutHuman)
+  );
+
+  const bestSdk = sortedSdk[0];
+  const bestHodlmm = sortedHodlmm[0];
 
   if (!bestSdk || !bestHodlmm) return null;
 
@@ -96,23 +116,17 @@ function calculateSpread(
   const spreadPct = ((maxOut - minOut) / minOut) * 100;
 
   const bestSource = hodlmmOut > sdkOut ? "hodlmm" : "sdk";
-  const avgFeeBps = Math.round(
-    ((bestSdk.priceImpact?.totalFeeBps ?? 0) +
-      (bestHodlmm.priceImpact?.totalFeeBps ?? 0)) /
-      2
-  );
-  const netSpreadPct = Math.max(0, spreadPct - avgFeeBps / 100);
 
-  // Extract labels
+  // Use the fee of the route you'd actually take (the better one)
+  const bestRoute = bestSource === "hodlmm" ? bestHodlmm : bestSdk;
+  const bestRouteFeeBps = bestRoute.priceImpact?.totalFeeBps ?? 0;
+  const netSpreadPct = Math.max(0, spreadPct - bestRouteFeeBps / 100);
+
   const sdkLabel = bestSdk.label || bestSdk.poolContracts?.[0] || "sdk";
   const hodlmmLabel = bestHodlmm.label || bestHodlmm.poolContracts?.[0] || "hodlmm";
 
-  // Extract token symbols from IDs
-  const xSymbol = tokenX.replace("token-", "").replace("-auto", "").toUpperCase();
-  const ySymbol = tokenY.replace("token-", "").replace("-auto", "").toUpperCase();
-
   return {
-    pair: `${xSymbol}/${ySymbol}`,
+    pair: `${tokenSymbol(tokenX)}/${tokenSymbol(tokenY)}`,
     tokenX,
     tokenY,
     amountIn,
@@ -120,7 +134,7 @@ function calculateSpread(
     hodlmmAmountOut: bestHodlmm.amountOutHuman,
     spreadPct: spreadPct.toFixed(2),
     bestSource,
-    estimatedFeeBps: avgFeeBps,
+    estimatedFeeBps: bestRouteFeeBps,
     netSpreadPct: netSpreadPct.toFixed(2),
     sdkRoute: sdkLabel,
     hodlmmPool: hodlmmLabel,
@@ -160,13 +174,16 @@ program
 
       const opportunities: ArbOpportunity[] = [];
       const scannedPairs = new Set<string>();
+      let skippedCount = 0;
 
-      // Scan each token pair
+      // Collect all unique pairs first
+      const pairQueue: [string, string][] = [];
       for (const tokenX of tokenIds) {
         let targets: string[];
         try {
           targets = await service.getPossibleSwapTargets(tokenX);
         } catch {
+          skippedCount++;
           continue;
         }
 
@@ -174,28 +191,36 @@ program
           const pairKey = [tokenX, tokenY].sort().join("|");
           if (scannedPairs.has(pairKey)) continue;
           scannedPairs.add(pairKey);
+          pairQueue.push([tokenX, tokenY]);
+        }
+      }
 
-          try {
+      // Scan pairs in batches for concurrency
+      for (let i = 0; i < pairQueue.length; i += SCAN_CONCURRENCY) {
+        const batch = pairQueue.slice(i, i + SCAN_CONCURRENCY);
+        const results = await Promise.allSettled(
+          batch.map(async ([tokenX, tokenY]) => {
             const routes = await service.getUnifiedRouteQuotes(tokenX, tokenY, amount);
-
             const sdkRoutes = routes.filter((r) => r.source === "sdk");
             const hodlmmRoutes = routes.filter((r) => r.source === "hodlmm");
+            if (sdkRoutes.length === 0 || hodlmmRoutes.length === 0) return null;
+            return calculateSpread(sdkRoutes, hodlmmRoutes, tokenX, tokenY, amount);
+          })
+        );
 
-            if (sdkRoutes.length === 0 || hodlmmRoutes.length === 0) continue;
-
-            const opp = calculateSpread(sdkRoutes, hodlmmRoutes, tokenX, tokenY, amount);
-            if (opp && parseFloat(opp.spreadPct) >= minSpread) {
-              opportunities.push(opp);
+        for (const result of results) {
+          if (result.status === "fulfilled" && result.value) {
+            if (parseFloat(result.value.spreadPct) >= minSpread) {
+              opportunities.push(result.value);
             }
-          } catch {
-            // Skip pairs that fail to quote
-            continue;
+          } else if (result.status === "rejected") {
+            skippedCount++;
           }
         }
       }
 
-      // Sort by spread descending, take top N
-      opportunities.sort((a, b) => parseFloat(b.spreadPct) - parseFloat(a.spreadPct));
+      // Sort by fee-adjusted spread descending, take top N
+      opportunities.sort((a, b) => parseFloat(b.netSpreadPct) - parseFloat(a.netSpreadPct));
       const topOpps = opportunities.slice(0, top);
 
       printJson({
@@ -205,6 +230,7 @@ program
         minSpreadPct: minSpread,
         opportunityCount: topOpps.length,
         totalPairsScanned: scannedPairs.size,
+        skippedCount,
         opportunities: topOpps,
       });
     } catch (err) {
@@ -251,17 +277,12 @@ program
       const bestOut = parseFloat(best.amountOutHuman);
       const worstOut = parseFloat(worst.amountOutHuman);
       const spreadPct = worstOut > 0 ? ((bestOut - worstOut) / worstOut) * 100 : 0;
-      const avgFeeBps = Math.round(
-        routes.reduce((sum, r) => sum + (r.priceImpact?.totalFeeBps ?? 0), 0) / routes.length
-      );
-      const netSpreadPct = Math.max(0, spreadPct - avgFeeBps / 100);
-
-      const xSymbol = tokenX.replace("token-", "").replace("-auto", "").toUpperCase();
-      const ySymbol = tokenY.replace("token-", "").replace("-auto", "").toUpperCase();
+      const bestFeeBps = best.priceImpact?.totalFeeBps ?? 0;
+      const netSpreadPct = Math.max(0, spreadPct - bestFeeBps / 100);
 
       printJson({
         network: NETWORK,
-        pair: `${xSymbol}/${ySymbol}`,
+        pair: `${tokenSymbol(tokenX)}/${tokenSymbol(tokenY)}`,
         tokenX,
         tokenY,
         amountIn,
@@ -318,11 +339,11 @@ program
           const bins = binsResponse.bins;
 
           // Find active bin and nearby bins
-          const activeBin = bins.find((b: any) => b.bin_id === activeBinId);
+          const activeBin = (bins as BinEntry[]).find((b) => b.bin_id === activeBinId);
           if (!activeBin) continue;
 
           // Calculate price deviation: compare active bin price to weighted average of nearby bins
-          const nearbyBins = bins.filter((b: any) => {
+          const nearbyBins = (bins as BinEntry[]).filter((b) => {
             const diff = Math.abs(b.bin_id - activeBinId);
             return diff > 0 && diff <= 3;
           });
@@ -433,10 +454,8 @@ program
 
           const opp = calculateSpread(sdkRoutes, hodlmmRoutes, tokenX, tokenY, amount);
           if (opp && parseFloat(opp.spreadPct) >= minSpread) {
-            const xSymbol = tokenX.replace("token-", "").replace("-auto", "").toUpperCase();
-            const ySymbol = tokenY.replace("token-", "").replace("-auto", "").toUpperCase();
             alerts.push({
-              pair: `${xSymbol}/${ySymbol}`,
+              pair: `${tokenSymbol(tokenX)}/${tokenSymbol(tokenY)}`,
               spreadPct: opp.spreadPct,
               bestSource: opp.bestSource,
               amountIn: amount,

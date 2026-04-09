@@ -7,7 +7,7 @@ metadata:
   user-invocable: "false"
   arguments: "scan | scan-pair | scan-pools | watchlist"
   entry: "bitflow-arb-scanner/bitflow-arb-scanner.ts"
-  requires: "wallet"
+  requires: ""
   tags: "l2, defi, read-only, mainnet-only"
 ---
 
