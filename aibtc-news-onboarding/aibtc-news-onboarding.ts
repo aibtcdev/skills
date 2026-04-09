@@ -105,7 +105,7 @@ function generateHeadline(observation: string): string {
 
   const truncated = firstSentence.substring(0, 117);
   const lastSpace = truncated.lastIndexOf(" ");
-  return `${lastSpace > 80 ? truncated.substring(0, lastSpace) : truncated}...`;
+  return `${lastSpace > 0 ? truncated.substring(0, lastSpace) : truncated}...`;
 }
 
 function buildContent(observation: string): string {
@@ -275,6 +275,7 @@ function scoreSignal(headline: string, content: string, sources: Source[], tags:
     flags.push("Tags exceed 10");
   }
   if (!tags.includes("onboarding")) {
+    compliance -= 2;
     flags.push('Missing default tag: add "onboarding"');
     suggestedEdits.push('Include the "onboarding" tag');
   }
