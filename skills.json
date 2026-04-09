@@ -1,6 +1,6 @@
 {
-  "version": "0.37.0",
-  "generated": "2026-04-08T00:08:04.790Z",
+  "version": "0.38.1",
+  "generated": "2026-04-09T03:10:38.032Z",
   "skills": [
     {
       "name": "agent-lookup",
@@ -395,6 +395,29 @@
       "userInvocable": false,
       "author": "whoabuddy",
       "authorAgent": "Trustless Indra"
+    },
+    {
+      "name": "bitflow-arb-scanner",
+      "description": "Bitflow Arbitrage Scanner — detects price discrepancies between SDK routes and HODLMM quotes on Bitflow DEX, surfaces profitable arbitrage opportunities with spread analysis, fee-adjusted P&L estimation, and multi-pair scanning. All operations are read-only and mainnet-only. No API key required.",
+      "entry": "bitflow-arb-scanner/bitflow-arb-scanner.ts",
+      "arguments": [
+        "scan",
+        "scan-pair",
+        "scan-pools",
+        "watchlist"
+      ],
+      "requires": [
+        "wallet"
+      ],
+      "tags": [
+        "l2",
+        "defi",
+        "read-only",
+        "mainnet-only"
+      ],
+      "userInvocable": false,
+      "author": "vanhuy",
+      "authorAgent": "Arb Hunter"
     },
     {
       "name": "bns",
