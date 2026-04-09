@@ -18,6 +18,8 @@ import {
   initializeStorage,
 } from "../src/lib/utils/storage.js";
 import { getApiBaseUrl, NETWORK } from "../src/lib/config/networks.js";
+import { getSponsorRelayUrl } from "../src/lib/config/sponsor.js";
+import { checkRelayHealth } from "../src/lib/services/relay-health.service.js";
 import { printJson, handleError } from "../src/lib/utils/cli.js";
 
 const require = createRequire(import.meta.url);
@@ -302,128 +304,30 @@ program
 program
   .command("check-relay-health")
   .description(
-    "Check the health of the x402 sponsor relay and the sponsor address nonce status on-chain"
+    "Check x402 relay health, pool state, and sponsor nonce diagnostics"
   )
   .option(
     "--relay-url <url>",
     "Base URL of the sponsor relay",
-    "https://sponsor.aibtc.dev"
+    getSponsorRelayUrl(NETWORK)
   )
   .option(
     "--sponsor-address <address>",
-    "STX address of the relay sponsor",
-    "SP1PMPPVCMVW96FSWFV30KJQ4MNBMZ8MRWR3JWQ7"
+    "Optional STX address of a specific sponsor wallet to inspect"
   )
   .action(
-    async (opts: { relayUrl: string; sponsorAddress: string }) => {
+    async (opts: { relayUrl: string; sponsorAddress?: string }) => {
       try {
-        const relayUrl = opts.relayUrl.replace(/\/+$/, "");
-        const sponsorAddress = opts.sponsorAddress;
-
-        // ---- 1. Hit relay /health endpoint ----
-        let relayHealth: Record<string, unknown> | null = null;
-        let relayReachable = false;
-        let relayError: string | undefined;
-
-        try {
-          const controller = new AbortController();
-          const timeout = setTimeout(() => controller.abort(), 10_000);
-          const res = await fetch(`${relayUrl}/health`, {
-            signal: controller.signal,
-          });
-          clearTimeout(timeout);
-
-          if (res.ok) {
-            relayHealth = (await res.json()) as Record<string, unknown>;
-            relayReachable = true;
-          } else {
-            relayError = `HTTP ${res.status} ${res.statusText}`;
-          }
-        } catch (err: unknown) {
-          relayError =
-            err instanceof Error ? err.message : "Unknown fetch error";
-        }
-
-        // ---- 2. Check sponsor nonce status via Hiro API ----
-        interface NonceResponse {
-          last_mempool_tx_nonce: number | null;
-          last_executed_tx_nonce: number | null;
-          possible_next_nonce: number;
-          detected_missing_nonces: number[];
-          detected_mempool_nonces: number[];
-        }
-
-        let nonceData: NonceResponse | null = null;
-        let nonceError: string | undefined;
-
-        try {
-          const controller = new AbortController();
-          const timeout = setTimeout(() => controller.abort(), 10_000);
-          const res = await fetch(
-            `https://api.hiro.so/extended/v1/address/${sponsorAddress}/nonces`,
-            { signal: controller.signal }
-          );
-          clearTimeout(timeout);
-
-          if (res.ok) {
-            nonceData = (await res.json()) as NonceResponse;
-          } else {
-            nonceError = `HTTP ${res.status} ${res.statusText}`;
-          }
-        } catch (err: unknown) {
-          nonceError =
-            err instanceof Error ? err.message : "Unknown fetch error";
-        }
-
-        // ---- 3. Build diagnostic output ----
-        const issues: string[] = [];
-
-        if (!relayReachable) {
-          issues.push(`Relay unreachable: ${relayError ?? "unknown error"}`);
-        }
-
-        if (nonceData) {
-          if (nonceData.detected_missing_nonces.length > 0) {
-            issues.push(
-              `Nonce gaps detected: [${nonceData.detected_missing_nonces.join(", ")}]. ` +
-                "Transactions may be stuck. The sponsor may need to fill missing nonces."
-            );
-          }
-          if (nonceData.detected_mempool_nonces.length > 5) {
-            issues.push(
-              `Mempool congestion: ${nonceData.detected_mempool_nonces.length} pending sponsor transactions. ` +
-                "New sponsored transactions may be slow to confirm."
-            );
-          }
-        } else {
-          issues.push(
-            `Unable to fetch sponsor nonce data: ${nonceError ?? "unknown error"}`
-          );
-        }
-
-        const healthy = relayReachable && issues.length === 0;
+        const status = await checkRelayHealth(NETWORK, {
+          relayUrl: opts.relayUrl,
+          sponsorAddress: opts.sponsorAddress,
+        });
 
         printJson({
-          healthy,
-          relay: {
-            url: relayUrl,
-            reachable: relayReachable,
-            ...(relayHealth ?? {}),
-            ...(relayError ? { error: relayError } : {}),
-          },
-          sponsor: {
-            address: sponsorAddress,
-            lastExecutedNonce: nonceData?.last_executed_tx_nonce ?? null,
-            possibleNextNonce: nonceData?.possible_next_nonce ?? null,
-            lastMempoolNonce: nonceData?.last_mempool_tx_nonce ?? null,
-            mempoolCount: nonceData?.detected_mempool_nonces?.length ?? null,
-            missingNonces: nonceData?.detected_missing_nonces ?? [],
-            ...(nonceError ? { error: nonceError } : {}),
-          },
-          issues,
-          hint: healthy
-            ? "Relay and sponsor are operating normally."
-            : "Issues detected â€” see the issues array for details.",
+          ...status,
+          hint: status.healthy
+            ? "Relay pool and sponsor diagnostics look healthy."
+            : "Issues detected — inspect pool, sponsor, and stuck transaction details.",
         });
       } catch (error) {
         handleError(error);
