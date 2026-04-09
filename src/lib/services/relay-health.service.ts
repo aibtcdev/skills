@@ -106,6 +106,7 @@ export interface RelayHealthStatus {
   pool?: RelayPoolSummary;
   stuckTransactions?: StuckTransaction[];
   issues: string[];
+  advisories: string[];
   formatted: string;
 }
 
@@ -430,6 +431,14 @@ function formatRelayHealthStatus(status: RelayHealthStatus): string {
     }
   }
 
+  if (status.advisories.length > 0) {
+    lines.push("");
+    lines.push("Advisories:");
+    for (const advisory of status.advisories) {
+      lines.push(`  - ${advisory}`);
+    }
+  }
+
   return lines.join("\n");
 }
 
@@ -440,6 +449,7 @@ export async function checkRelayHealth(
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const relayUrl = normalizeUrl(options.relayUrl ?? getSponsorRelayUrl(network));
   const issues: string[] = [];
+  const advisories: string[] = [];
 
   let healthData: RelayHealthResponse | null = null;
   let poolData: RelayPoolStateRaw | null = null;
@@ -469,6 +479,8 @@ export async function checkRelayHealth(
 
   const relay: RelayStatus = {
     url: relayUrl,
+    // Reachability means at least one relay endpoint responded. A degraded /health
+    // call should not hide the fact that /nonce/state is still live and actionable.
     reachable: !!healthData || !!poolData,
     status: healthData?.status,
     version: healthData?.version,
@@ -554,7 +566,7 @@ export async function checkRelayHealth(
       );
     }
     if (pool.recommendation) {
-      issues.push(`Relay recommendation: ${pool.recommendation}`);
+      advisories.push(`Relay recommendation: ${pool.recommendation}`);
     }
 
     const circuitBreakerWallets = poolWallets.filter(
@@ -656,6 +668,7 @@ export async function checkRelayHealth(
   }
 
   const dedupedIssues = [...new Set(issues)];
+  const dedupedAdvisories = [...new Set(advisories)];
   const status: RelayHealthStatus = {
     healthy: relay.reachable && dedupedIssues.length === 0,
     network: resolvedNetwork,
@@ -664,6 +677,7 @@ export async function checkRelayHealth(
     pool,
     stuckTransactions,
     issues: dedupedIssues,
+    advisories: dedupedAdvisories,
     formatted: "",
   };
 
