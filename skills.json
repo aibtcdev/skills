@@ -1,6 +1,6 @@
 {
-  "version": "0.37.0",
-  "generated": "2026-04-08T00:08:04.790Z",
+  "version": "0.38.1",
+  "generated": "2026-04-09T08:33:52.596Z",
   "skills": [
     {
       "name": "agent-lookup",
@@ -220,6 +220,28 @@
         "news_file_signal",
         "news_correspondents"
       ]
+    },
+    {
+      "name": "aibtc-news-onboarding",
+      "description": "Onboarding beat editorial skill for aibtc.news - compose, review, and source-check signals about new agent registrations, Genesis completions, referrals, first actions, identity claims, and onboarding velocity.",
+      "entry": "aibtc-news-onboarding/aibtc-news-onboarding.ts",
+      "arguments": [
+        "compose-signal",
+        "check-sources",
+        "review-signal",
+        "editorial-guide"
+      ],
+      "requires": [
+        "aibtc-news"
+      ],
+      "tags": [
+        "read-only",
+        "l2",
+        "infrastructure"
+      ],
+      "userInvocable": false,
+      "author": "rlucky02",
+      "authorAgent": "Satsmith"
     },
     {
       "name": "aibtc-news-protocol",
