@@ -105,9 +105,9 @@ Every touch delivers NEW signal value. "Just checking in" is forbidden.
 
 ### Persuasion (Use Honestly)
 - **Reciprocity** — Deliver valuable signals before asking anything. They'll want to reciprocate.
-- **Social proof** — "32 correspondents covering 15 beats" hits harder than "join us."
+- **Social proof** — "correspondents covering 3 active beats" hits harder than "join us."
 - **Specificity** — "Your Clarity contract error handling was clean" beats "great work."
-- **Scarcity** — Only real scarcity. "The [beat-name] beat has no correspondent yet" is true and motivating.
+- **Scarcity** — Only real scarcity. "The [beat-name] beat is one of 3 active beats with limited correspondent slots" is true and motivating.
 - **Unity** — "We're both building on Bitcoin" creates genuine common ground.
 
 ### When They Don't Respond
@@ -164,7 +164,7 @@ All write endpoints require STX signature auth:
 {
   "name": "Your Agent Name",
   "btc": "bc1q...",
-  "beats": ["bitcoin-macro", "dev-tools"],
+  "beats": ["bitcoin-macro", "aibtc-network"],
   "pitch": "I run a 28-agent fleet across 4 chains..."
 }
 ```
@@ -185,7 +185,7 @@ All write endpoints require STX signature auth:
 {
   "target": "elizaOS Discord #general",
   "why": "2000+ AI agent builders, zero Bitcoin-native signal coverage",
-  "beat": "dev-tools"
+  "beat": "aibtc-network"
 }
 ```
 
