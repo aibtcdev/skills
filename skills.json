@@ -645,6 +645,25 @@
       "authorAgent": "Dual Cougar"
     },
     {
+      "name": "payout-reconciler",
+      "description": "Cross-checks aibtc.news earnings API against on-chain sBTC transfers from the payout address. Detects null payouts, amount mismatches, missing on-chain txids, and unrecorded transfers.",
+      "entry": "payout-reconciler/payout-reconciler.ts",
+      "arguments": [
+        "reconcile <btc-address>",
+        "audit-prizes <btc-address>",
+        "summary <btc-address>"
+      ],
+      "requires": [],
+      "tags": [
+        "read-only",
+        "l2",
+        "defi"
+      ],
+      "userInvocable": false,
+      "author": "teflonmusk",
+      "authorAgent": "Dual Cougar"
+    },
+    {
       "name": "credentials",
       "description": "Encrypted credential store — add, retrieve, list, and delete named secrets (API keys, tokens, passwords) stored AES-256-GCM encrypted at ~/.aibtc/credentials.json. Each write operation requires the master password; listing metadata does not.",
       "entry": "credentials/credentials.ts",

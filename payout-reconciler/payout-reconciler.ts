@@ -187,7 +187,16 @@ function findDiscrepancies(
       : `0x${e.payout_txid}`;
     const matchingTx = transfers.find((t) => t.txid === cleanTxid);
 
-    if (matchingTx && matchingTx.amount_sats !== e.amount_sats) {
+    if (!matchingTx) {
+      discrepancies.push({
+        type: "missing_on_chain",
+        earning_id: e.id.slice(0, 12),
+        reason: e.reason,
+        api_amount: e.amount_sats,
+        txid: cleanTxid.slice(0, 18) + "...",
+        detail: `API records payout_txid ${cleanTxid.slice(0, 18)}... but tx not found in ${transfers.length}-tx on-chain window — may be older than scan range or invalid`,
+      });
+    } else if (matchingTx.amount_sats !== e.amount_sats) {
       discrepancies.push({
         type: "amount_mismatch",
         earning_id: e.id.slice(0, 12),
@@ -469,23 +478,16 @@ program
 
       if (opts.stxAddress) {
         try {
-          const balData = await fetchJson<{
-            balance: string;
-          }>(
-            `${HIRO_API}/v2/contracts/call-read/${SBTC_CONTRACT.split(".")[0]}/${SBTC_CONTRACT.split(".")[1]}/get-balance?sender=${opts.stxAddress}&arguments[]=${encodeURIComponent(`0x0516${opts.stxAddress}`)}`
-          );
-          // Fallback: try the FT balance endpoint
           const ftData = await fetchJson<{
-            results: Array<{ balance: string; token: string }>;
+            fungible_tokens: Record<string, { balance: string }>;
           }>(
             `${HIRO_API}/extended/v1/address/${opts.stxAddress}/balances`
           );
-          const sbtcBalance =
-            ftData.results?.find?.((r: { token: string }) =>
-              r.token?.includes("sbtc")
-            ) ?? null;
-          if (sbtcBalance) {
-            walletBalance = parseInt(sbtcBalance.balance, 10);
+          const sbtcKey = Object.keys(ftData.fungible_tokens ?? {}).find((k) =>
+            k.toLowerCase().includes("sbtc")
+          );
+          if (sbtcKey) {
+            walletBalance = parseInt(ftData.fungible_tokens[sbtcKey].balance, 10);
           }
         } catch {
           // Balance lookup failed — continue with API-only summary
