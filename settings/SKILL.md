@@ -192,7 +192,7 @@ bun run settings/settings.ts check-relay-health [--relay-url <url>] [--sponsor-a
 ```
 
 Options:
-- `--relay-url` (optional) — Base URL of the sponsor relay (default: `https://sponsor.aibtc.dev`)
+- `--relay-url` (optional) — Base URL of the sponsor relay (default: `https://x402-relay.aibtc.com`)
 - `--sponsor-address` (optional) — STX address of the relay sponsor (default: `SP1PMPPVCMVW96FSWFV30KJQ4MNBMZ8MRWR3JWQ7`)
 
 Output (healthy):
@@ -200,7 +200,7 @@ Output (healthy):
 {
   "healthy": true,
   "relay": {
-    "url": "https://sponsor.aibtc.dev",
+    "url": "https://x402-relay.aibtc.com",
     "reachable": true,
     "status": "ok",
     "version": "1.0.0"
@@ -222,7 +222,7 @@ Output (issues detected):
 ```json
 {
   "healthy": false,
-  "relay": { "url": "https://sponsor.aibtc.dev", "reachable": false, "error": "fetch failed" },
+  "relay": { "url": "https://x402-relay.aibtc.com", "reachable": false, "error": "fetch failed" },
   "sponsor": {
     "address": "SP1PMPPVCMVW96FSWFV30KJQ4MNBMZ8MRWR3JWQ7",
     "lastExecutedNonce": 732,

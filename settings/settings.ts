@@ -392,6 +392,12 @@ program
           if (nonce?.poolStatus && nonce.poolStatus !== "healthy") {
             issues.push(`Relay nonce pool status: ${String(nonce.poolStatus)}`);
           }
+          if (nonce?.effectiveCapacity !== undefined && typeof nonce.effectiveCapacity === "number" && nonce.effectiveCapacity < 3) {
+            issues.push(`Relay nonce pool capacity low: ${nonce.effectiveCapacity} wallets available`);
+          }
+          if (nonce?.conflictsDetected !== undefined && typeof nonce.conflictsDetected === "number" && nonce.conflictsDetected > 5) {
+            issues.push(`Relay nonce conflicts elevated: ${nonce.conflictsDetected} detected`);
+          }
         }
 
         if (nonceData) {
