@@ -17,6 +17,7 @@ import { Command } from "commander";
 const AIBTC_NEWS_API = "https://aibtc.news/api";
 const HIRO_API = "https://api.hiro.so";
 const SBTC_CONTRACT = "SM3VDXK3WZZSA84XXFKAFAF15NNZX32CTSG82JFQ4.sbtc-token";
+// Publisher's payout address — may change if publisher wallet rotates. Verify via Issue #410.
 const KNOWN_PAYOUT_ADDRESS = "SP1KGHF33817ZXW27CG50JXWC0Y6BNXAQ4E7YGAHM";
 const FETCH_TIMEOUT_MS = 20_000;
 

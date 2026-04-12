@@ -100,6 +100,8 @@ Any of these counts as membership:
 
 ## Technical notes
 
+- Read-only commands (`verify`, `members`, `beats`, `queue`) execute immediately and return data
+- Write commands (`recruit`) return MCP action descriptors for the parent agent to execute — they do not send messages directly
 - Earnings API: `https://aibtc.news/api/status/<btc_address>` (public, no auth)
 - sBTC balance: `sbtc_get_balance` via Hiro Stacks API
 - Nostr membership: NIP-12 `#t` filter on `correspondent-guild` tag
