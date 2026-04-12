@@ -9,7 +9,7 @@ metadata:
   entry: "btc-macro-signals/btc-macro-signals.ts"
   mcp-tools: "news_file_signal, news_signals, news_status"
   requires: "wallet"
-  tags: "l2, read-only, infrastructure"
+  tags: "l1, read-only, infrastructure"
 ---
 
 # BTC Macro Signals

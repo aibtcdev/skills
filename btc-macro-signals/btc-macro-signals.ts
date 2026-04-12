@@ -677,7 +677,7 @@ function generateSignalFromScan(
       return generateMarketSignal(scan, reason);
     case "ecosystem":
       return generateEcosystemSignal(scan);
-    case "regulatory":
+    case "regulatory": {
       // For regulatory: use news feed with regulatory keywords
       const regKeywords = ["sec", "regulation", "law", "congress", "senate", "ban", "approve", "etf", "policy"];
       const regItem = scan.news.find((n) =>
@@ -688,6 +688,7 @@ function generateSignalFromScan(
         if (sig) return { ...sig, signal_type: "regulatory", tags: ["regulatory", "policy", ...sig.tags] };
       }
       return generateMarketSignal(scan, "price_update");
+    }
     default:
       return generateMarketSignal(scan, "price_update");
   }
@@ -697,7 +698,7 @@ function validateSignal(signal: Signal): string[] {
   const errors: string[] = [];
   if (signal.headline.length > 118) errors.push("headline_too_long");
   if (!/\d/.test(signal.headline)) errors.push("headline_missing_number");
-  if (signal.body.length < 150) errors.push("body_too_short");
+  if (signal.body.length < 200) errors.push("body_too_short");
   if (signal.body.length > 1000) errors.push("body_too_long");
   if (signal.sources.length === 0) errors.push("missing_sources");
   if (!signal.disclosure) errors.push("missing_disclosure");
@@ -711,6 +712,54 @@ function similarity(a: string, b: string): number {
   const bWords = b.toLowerCase().split(/\s+/);
   const matches = bWords.filter((w) => aWords.has(w)).length;
   return matches / Math.max(aWords.size, bWords.length);
+}
+
+// ---------------------------------------------------------------------------
+// Shared scan
+// ---------------------------------------------------------------------------
+
+async function runScan(trackErrors = false): Promise<ScanResult> {
+  const timestamp = new Date().toISOString();
+  const errors: string[] = [];
+
+  const [fees, mempoolData, hashrate, difficulty, price, fng, news] =
+    await Promise.allSettled([
+      fetchFees(),
+      fetchMempool(),
+      fetchHashrate(),
+      fetchDifficulty(),
+      fetchPrice(),
+      fetchFng(),
+      fetchNewsFeeds(),
+    ]);
+
+  const getVal = <T>(
+    result: PromiseSettledResult<T | null>,
+    name?: string
+  ): T | null => {
+    if (result.status === "rejected") {
+      if (trackErrors && name) errors.push(`${name}_fetch_failed`);
+      return null;
+    }
+    if (result.value === null && trackErrors && name) {
+      errors.push(`${name}_unavailable`);
+    }
+    return result.value;
+  };
+
+  return {
+    timestamp,
+    onchain: {
+      fees: getVal(fees, "fees"),
+      mempool: getVal(mempoolData, "mempool"),
+      hashrate: getVal(hashrate, "hashrate"),
+      difficulty: getVal(difficulty, "difficulty"),
+    },
+    market: { price: getVal(price, "price") },
+    sentiment: { fng: getVal(fng, "fng") },
+    news: news.status === "fulfilled" ? news.value : [],
+    errors,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -732,52 +781,7 @@ program
   .description("Fetch live Bitcoin on-chain data and crypto news")
   .action(async () => {
     try {
-      const timestamp = new Date().toISOString();
-      const errors: string[] = [];
-
-      const [fees, mempoolData, hashrate, difficulty, price, fng, news] =
-        await Promise.allSettled([
-          fetchFees(),
-          fetchMempool(),
-          fetchHashrate(),
-          fetchDifficulty(),
-          fetchPrice(),
-          fetchFng(),
-          fetchNewsFeeds(),
-        ]);
-
-      const getVal = <T>(
-        result: PromiseSettledResult<T | null>,
-        name: string
-      ): T | null => {
-        if (result.status === "rejected") {
-          errors.push(`${name}_fetch_failed`);
-          return null;
-        }
-        if (result.value === null) {
-          errors.push(`${name}_unavailable`);
-        }
-        return result.value;
-      };
-
-      const result: ScanResult = {
-        timestamp,
-        onchain: {
-          fees: getVal(fees, "fees"),
-          mempool: getVal(mempoolData, "mempool"),
-          hashrate: getVal(hashrate, "hashrate"),
-          difficulty: getVal(difficulty, "difficulty"),
-        },
-        market: {
-          price: getVal(price, "price"),
-        },
-        sentiment: {
-          fng: getVal(fng, "fng"),
-        },
-        news: news.status === "fulfilled" ? news.value : [],
-        errors,
-      };
-
+      const result = await runScan(true);
       printJson(result);
     } catch (err) {
       handleError(err);
@@ -794,35 +798,7 @@ program
   )
   .action(async (opts: { type?: string }) => {
     try {
-      // Run a fresh scan
-      const timestamp = new Date().toISOString();
-      const [fees, mempoolData, hashrate, difficulty, price, fng, news] =
-        await Promise.allSettled([
-          fetchFees(),
-          fetchMempool(),
-          fetchHashrate(),
-          fetchDifficulty(),
-          fetchPrice(),
-          fetchFng(),
-          fetchNewsFeeds(),
-        ]);
-
-      const getVal = <T>(r: PromiseSettledResult<T | null>): T | null =>
-        r.status === "fulfilled" ? r.value : null;
-
-      const scan: ScanResult = {
-        timestamp,
-        onchain: {
-          fees: getVal(fees),
-          mempool: getVal(mempoolData),
-          hashrate: getVal(hashrate),
-          difficulty: getVal(difficulty),
-        },
-        market: { price: getVal(price) },
-        sentiment: { fng: getVal(fng) },
-        news: news.status === "fulfilled" ? news.value : [],
-        errors: [],
-      };
+      const scan = await runScan();
 
       const signal = generateSignalFromScan(scan, opts.type);
 
@@ -887,34 +863,7 @@ program
       }
 
       // Generate signal
-      const timestamp = new Date().toISOString();
-      const [fees, mempoolData, hashrate, difficulty, price, fng, news] =
-        await Promise.allSettled([
-          fetchFees(),
-          fetchMempool(),
-          fetchHashrate(),
-          fetchDifficulty(),
-          fetchPrice(),
-          fetchFng(),
-          fetchNewsFeeds(),
-        ]);
-
-      const getVal = <T>(r: PromiseSettledResult<T | null>): T | null =>
-        r.status === "fulfilled" ? r.value : null;
-
-      const scan: ScanResult = {
-        timestamp,
-        onchain: {
-          fees: getVal(fees),
-          mempool: getVal(mempoolData),
-          hashrate: getVal(hashrate),
-          difficulty: getVal(difficulty),
-        },
-        market: { price: getVal(price) },
-        sentiment: { fng: getVal(fng) },
-        news: news.status === "fulfilled" ? news.value : [],
-        errors: [],
-      };
+      const scan = await runScan();
 
       let signal = generateSignalFromScan(scan, opts.type);
 
