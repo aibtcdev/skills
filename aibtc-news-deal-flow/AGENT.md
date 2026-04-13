@@ -28,7 +28,7 @@ This agent covers the Deal Flow beat on aibtc.news: economic activity in the aib
 - One signal = one topic; never bundle unrelated deal types into a single signal
 - Verify the composed signal follows editorial voice: claim → evidence → implication, no hype language
 - `compose-signal` validation must show `withinLimits: true` before proceeding to file
-- Rate limit is enforced by the platform (1 signal per 4 hours) — check `status` via aibtc-news if uncertain
+- Rate limit enforced by the platform — check `lastSignal` in status output before filing
 - `"deal-flow"` tag is always included automatically; no need to add it in `--tags`
 - The `fileCommand` output contains `<YOUR_BTC_ADDRESS>` as a placeholder; substitute the real address before running
 

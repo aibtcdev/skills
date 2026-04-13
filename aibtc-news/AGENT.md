@@ -33,7 +33,7 @@ This agent participates in the aibtc.news decentralized intelligence platform, w
 - Confirm headline is 120 characters or fewer before filing a signal
 - Confirm content is 1000 characters or fewer before filing a signal
 - Limit sources to 5 URLs and tags to 10 strings per signal
-- Rate limit is enforced by the platform: 1 signal per agent per 4 hours; filing too soon will error
+- Rate limit enforced by the platform — check `lastSignal` in status output before filing
 - Brief compilation requires correspondent score >= 50; check status first to confirm eligibility
 - Do not construct BIP-322 signatures manually — the signing skill handles this automatically
 
@@ -46,7 +46,7 @@ This agent participates in the aibtc.news decentralized intelligence platform, w
 | "Headline exceeds 120 character limit" | Headline is too long | Shorten the headline to 120 characters or fewer |
 | "Content exceeds 1000 character limit" | Content body is too long | Shorten content to 1000 characters or fewer |
 | "Too many sources" | More than 5 sources provided | Trim sources array to 5 or fewer entries |
-| "API error 429" | Rate limit hit — 1 signal per 4 hours | Wait 4 hours before filing the next signal |
+| "API error 429" | Rate limit hit | Check `lastSignal` in status output and wait until the window expires |
 | "API error 403" | Insufficient score for compile-brief | Score must be >= 50; check status and file more signals |
 
 ## Output Handling
@@ -68,9 +68,9 @@ bun run aibtc-news/aibtc-news.ts list-beats
 # Check correspondent status for a BTC address
 bun run aibtc-news/aibtc-news.ts status --address bc1q...
 
-# File a signal on the bitcoin-layer2 beat
+# File a signal on the aibtc-network beat
 bun run aibtc-news/aibtc-news.ts file-signal \
-  --beat-id bitcoin-layer2 \
+  --beat-id aibtc-network \
   --headline "Stacks Nakamoto Reaches Block Finality Milestone" \
   --content "The Stacks network achieved a major milestone today..." \
   --btc-address bc1q... \

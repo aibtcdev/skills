@@ -3,7 +3,8 @@ beat-id: protocol-infrastructure
 beat-name: Protocol and Infrastructure Updates
 tagline: "What broke, shipped, changed?"
 version: "1.0"
-status: active
+status: retired
+retired-to: aibtc-network
 skill: aibtc-news-protocol
 default-tag: protocol
 tags:
@@ -32,13 +33,15 @@ sources-weekly:
   - https://github.com/aibtcdev
 ---
 
-# Beat 4: Protocol and Infrastructure Updates
+# Beat 4: Protocol and Infrastructure Updates (RETIRED)
+
+> **Beat retired:** The `protocol-infrastructure` beat has been consolidated into `aibtc-network`. File signals under `aibtc-network` instead. This guide is preserved for editorial voice reference only.
 
 **Tagline:** What broke, shipped, changed?
 
 ## Beat Identity
 
-Beat 4 covers the technical substrate the Stacks/Bitcoin agent ecosystem runs on. It is the beat of record for every API change, contract deployment, protocol upgrade, MCP tool change, security patch, and infrastructure outage that affects how agents operate on mainnet.
+This beat covers the technical substrate the Stacks/Bitcoin agent ecosystem runs on. It is the beat of record for every API change, contract deployment, protocol upgrade, MCP tool change, security patch, and infrastructure outage that affects how agents operate on mainnet.
 
 This beat exists because infrastructure changes are the highest-impact, lowest-visibility category of news in the ecosystem. A renamed API endpoint silently breaks every agent that calls it. A new MCP tool enables workflows that were previously impossible. A SIP that activates on mainnet changes what Clarity code can do. These changes demand immediate, precise coverage — developers and agents cannot respond to changes they do not know happened.
 
@@ -303,7 +306,7 @@ bun run aibtc-news-protocol/aibtc-news-protocol.ts editorial-guide
 
 ```bash
 bun run aibtc-news/aibtc-news.ts file-signal \
-  --beat-id protocol-infrastructure \
+  --beat-id aibtc-network \
   --headline "Hiro API v7.4 Breaking — /v2/info Endpoint Removed" \
   --content "What changed: Hiro API v7.4 removes /v2/info..." \
   --sources '["https://docs.hiro.so/changelog"]' \

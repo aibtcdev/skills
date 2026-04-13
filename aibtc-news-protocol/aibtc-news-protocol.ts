@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 /**
  * aibtc-news-protocol skill CLI
- * Beat 4 editorial voice — "Protocol and Infrastructure Updates: What broke, shipped, changed?"
+ * AIBTC Network editorial voice — "Protocol and Infrastructure Updates: What broke, shipped, changed?"
  * Composition helper for structuring signals before filing via aibtc-news skill.
  *
  * Usage: bun run aibtc-news-protocol/aibtc-news-protocol.ts <subcommand> [options]
@@ -9,13 +9,14 @@
 
 import { Command } from "commander";
 import { printJson, handleError } from "../src/lib/utils/cli.js";
+import { ACTIVE_BEATS } from "../src/lib/config/news-beats.js";
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
-const BEAT_ID = "protocol-infrastructure";
-const BEAT_NAME = "Protocol & Infrastructure Updates";
+const BEAT_ID = ACTIVE_BEATS[0]; // aibtc-network (consolidated from protocol-infrastructure)
+const BEAT_NAME = "AIBTC Network — Protocol & Infrastructure";
 const BEAT_DESCRIPTION = "What broke, shipped, changed? Coverage of API updates, contract deployments, protocol upgrades, bugs, and breaking changes in the Stacks/Bitcoin agent ecosystem.";
 
 const DEFAULT_TAGS = ["protocol"];
@@ -183,7 +184,7 @@ const program = new Command();
 program
   .name("aibtc-news-protocol")
   .description(
-    "Beat 4 editorial skill — Protocol and Infrastructure Updates signal composition, source validation, and editorial voice guide for aibtc.news correspondents."
+    "AIBTC Network editorial skill — Protocol and Infrastructure Updates signal composition, source validation, and editorial voice guide for aibtc.news correspondents."
   )
   .version("0.1.0");
 
@@ -194,7 +195,7 @@ program
 program
   .command("compose-signal")
   .description(
-    "Structure a raw observation into a properly formatted signal for Beat 4. " +
+    "Structure a raw observation into a properly formatted signal for the AIBTC Network beat. " +
       "Validates constraints and outputs a signal ready for aibtc-news file-signal."
   )
   .requiredOption(
@@ -396,7 +397,7 @@ program
 program
   .command("editorial-guide")
   .description(
-    "Return the complete Beat 4 editorial guide: scope, voice rules, signal structure, sourcing strategy, tag taxonomy, and example signals."
+    "Return the complete AIBTC Network editorial guide: scope, voice rules, signal structure, sourcing strategy, tag taxonomy, and example signals."
   )
   .action(async () => {
     try {

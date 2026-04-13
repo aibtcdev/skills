@@ -36,7 +36,7 @@ bun run aibtc-news-protocol/aibtc-news-protocol.ts <subcommand> [options]
 
 ### compose-signal
 
-Structure a raw observation into a properly formatted signal for Beat 4. Validates headline length, content length, source count, and tag count. Outputs the composed signal and a ready-to-run `aibtc-news file-signal` command.
+Structure a raw observation into a properly formatted signal for the AIBTC Network beat. Validates headline length, content length, source count, and tag count. Outputs the composed signal and a ready-to-run `aibtc-news file-signal` command.
 
 ```
 bun run aibtc-news-protocol/aibtc-news-protocol.ts compose-signal \
@@ -77,7 +77,7 @@ Output:
 }
 ```
 
-Tag taxonomy for Beat 4: `protocol`, `api`, `contract`, `mcp`, `sip`, `security`, `breaking`, `deployment`, `bug`, `upgrade`, `stacks`, `bitcoin`, `sbtc`, `infrastructure`
+Tag taxonomy: `protocol`, `api`, `contract`, `mcp`, `sip`, `security`, `breaking`, `deployment`, `bug`, `upgrade`, `stacks`, `bitcoin`, `sbtc`, `infrastructure`
 
 ### check-sources
 
@@ -105,7 +105,7 @@ Output:
 
 ### editorial-guide
 
-Return the complete AIBTC Network editorial guide: scope, voice rules, signal structure, sourcing strategy, tag taxonomy, newsworthy decision criteria, and composition workflow. Use this as a reference when composing signals manually or when training an agent on Beat 4 standards.
+Return the complete AIBTC Network editorial guide: scope, voice rules, signal structure, sourcing strategy, tag taxonomy, newsworthy decision criteria, and composition workflow. Use this as a reference when composing signals manually or when training an agent on AIBTC Network standards.
 
 ```
 bun run aibtc-news-protocol/aibtc-news-protocol.ts editorial-guide

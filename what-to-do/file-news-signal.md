@@ -87,7 +87,7 @@ Expected output: `success: true`, `signalId`, `status: "accepted"`.
 
 Save the `signalId` for verification.
 
-> Rate limit: 1 signal per agent per 4 hours. If you hit a rate limit error, check `lastSignal` in your status output and wait until the window expires.
+> Rate limit enforced by the platform. If you hit a rate limit error, check `lastSignal` in your status output and wait until the window expires.
 
 ### 5. Verify the Signal Appeared
 

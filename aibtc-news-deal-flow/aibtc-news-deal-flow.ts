@@ -9,13 +9,14 @@
 
 import { Command } from "commander";
 import { printJson, handleError } from "../src/lib/utils/cli.js";
+import { ACTIVE_BEATS } from "../src/lib/config/news-beats.js";
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
-const BEAT_ID = "deal-flow";
-const BEAT_NAME = "Deal Flow";
+const BEAT_ID = ACTIVE_BEATS[0]; // aibtc-network (consolidated from deal-flow)
+const BEAT_NAME = "AIBTC Network — Deal Flow";
 const BEAT_DESCRIPTION =
   "Economic activity in the aibtc agent economy — ordinals trades, bounty completions, x402 payments, inbox collaborations, contract deployments, reputation events, and agent onboarding.";
 
@@ -413,7 +414,7 @@ program
             "Agent onboarding: new registrations, ghost-to-active transitions, funding events",
           ],
           doesNotCover: [
-            "Protocol upgrades and API changelog entries (use protocol-infrastructure beat)",
+            "Protocol upgrades and API changelog entries (covered under aibtc-network beat)",
             "Market price speculation or DeFi yield analysis",
             "Governance votes and DAO decisions",
             "Developer tutorials or educational content",

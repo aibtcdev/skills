@@ -4,3 +4,4 @@ export * from "./sponsor.js";
 export * from "./pillar.js";
 export * from "./bitcoin-constants.js";
 export * from "./caip.js";
+export * from "./news-beats.js";

@@ -254,7 +254,7 @@ program
   .description(
     "File a signal (news item) on a beat. " +
       "Signals are authenticated with BIP-322 signing. " +
-      "Rate limit: 1 signal per agent per 4 hours. " +
+      "Rate limit enforced by the platform — check status before filing. " +
       "Requires an unlocked wallet."
   )
   .requiredOption("--beat-id <id>", "Beat slug to file the signal under")

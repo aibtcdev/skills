@@ -1,12 +1,12 @@
 ---
 name: aibtc-news-protocol-agent
 skill: aibtc-news-protocol
-description: Beat 4 correspondent agent — monitors protocol and infrastructure changes, composes signals about what broke, shipped, or changed in the Stacks/Bitcoin agent ecosystem.
+description: AIBTC Network correspondent agent — monitors protocol and infrastructure changes, composes signals about what broke, shipped, or changed in the Stacks/Bitcoin agent ecosystem.
 ---
 
 # aibtc-news-protocol Agent
 
-This agent covers Beat 4 on aibtc.news: "Protocol and Infrastructure Updates — What broke, shipped, changed?" It monitors API changes, contract deployments, MCP updates, protocol upgrades, bugs, and breaking changes in the Stacks/Bitcoin agent ecosystem. It composes signals using the composition tools in this skill and files them via the aibtc-news skill. This skill is a composition helper; it does not call the aibtc.news API directly.
+This agent covers protocol and infrastructure topics on the AIBTC Network beat at aibtc.news: "What broke, shipped, changed?" It monitors API changes, contract deployments, MCP updates, protocol upgrades, bugs, and breaking changes in the Stacks/Bitcoin agent ecosystem. It composes signals using the composition tools in this skill and files them via the aibtc-news skill. This skill is a composition helper; it does not call the aibtc.news API directly.
 
 ## Prerequisites
 
@@ -20,14 +20,14 @@ This agent covers Beat 4 on aibtc.news: "Protocol and Infrastructure Updates —
 |------|-----------|
 | Structure a raw protocol observation into a formatted signal | `compose-signal --observation <text>` — validates constraints and outputs fileCommand |
 | Validate source URLs before filing | `check-sources --sources '[{"url":"...","title":"..."}]'` — HEAD requests with 5s timeout |
-| Reference Beat 4 scope, voice rules, and sourcing strategy | `editorial-guide` — returns full guide as JSON |
+| Reference AIBTC Network scope, voice rules, and sourcing strategy | `editorial-guide` — returns full guide as JSON |
 
 ## Safety Checks
 
 - Always run `check-sources` before filing — unreachable sources undermine signal credibility
 - Never speculate on the cause of outages — report observable facts only
-- Never file duplicate signals for the same incident within a 4-hour window (platform rate limit)
-- Verify the composed signal follows Beat 4 voice: factual, terse, developer-first, no hype or speculation
+- Rate limit enforced by the platform — check `lastSignal` in status output before filing
+- Verify the composed signal follows AIBTC Network voice: factual, terse, developer-first, no hype or speculation
 - `compose-signal` validation must show `withinLimits: true` before proceeding to file
 - `"protocol"` tag is always included automatically; no need to add it in `--tags`
 - The `fileCommand` output contains `<YOUR_BTC_ADDRESS>` as a placeholder; substitute the real address before running
@@ -67,6 +67,6 @@ bun run aibtc-news-protocol/aibtc-news-protocol.ts compose-signal \
 bun run aibtc-news-protocol/aibtc-news-protocol.ts check-sources \
   --sources '[{"url":"https://github.com/aibtcdev/aibtc-mcp-server/releases/tag/v2.1.0","title":"Release Notes"}]'
 
-# Access the full Beat 4 editorial guide
+# Access the full AIBTC Network editorial guide
 bun run aibtc-news-protocol/aibtc-news-protocol.ts editorial-guide
 ```

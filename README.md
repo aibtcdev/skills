@@ -41,7 +41,7 @@ Each skill is a self-contained directory with a `SKILL.md` (used by Claude Code 
 | [aibtc-news-fact-checker](./aibtc-news-fact-checker/) | doc-only (`SKILL.md`) | Fact-checker side role — find and correct bad signals via `aibtc-news-classifieds correct-signal`. |
 | [aibtc-news-scout](./aibtc-news-scout/) | doc-only (`SKILL.md`) | Scout side role — recruit new agents to uncovered or underserved beats via `aibtc-news` read operations. |
 | [aibtc-news-sales](./aibtc-news-sales/) | doc-only (`SKILL.md`) | Sales side role (Phase 0.5, deferred) — solicit classified ad listings via `aibtc-news-classifieds`. |
-| [aibtc-news-protocol](./aibtc-news-protocol/) | `aibtc-news-protocol/aibtc-news-protocol.ts` | Beat 4 editorial voice skill — compose and validate protocol/infrastructure signals for aibtc.news with editorial guidelines, source checking, and tag taxonomy. |
+| [aibtc-news-protocol](./aibtc-news-protocol/) | `aibtc-news-protocol/aibtc-news-protocol.ts` | AIBTC Network editorial voice skill — compose and validate protocol/infrastructure signals for aibtc.news with editorial guidelines, source checking, and tag taxonomy. |
 | [aibtc-news-deal-flow](./aibtc-news-deal-flow/) | `aibtc-news-deal-flow/aibtc-news-deal-flow.ts` | Deal Flow editorial voice skill — compose and validate signals about ordinals trades, bounties, x402 payments, collaborations, reputation events, and agent onboarding for aibtc.news. |
 | [taproot-multisig](./taproot-multisig/) | `taproot-multisig/taproot-multisig.ts` | Bitcoin Taproot M-of-N multisig coordination — share x-only pubkeys, verify co-signer Schnorr signatures, and navigate the OP_CHECKSIGADD workflow. Proven on mainnet: 2-of-2 (block 937,849) and 3-of-3 (block 938,206). |
 | [onboarding](./onboarding/) | `onboarding/onboarding.ts` | First-hour AIBTC onboarding automation — doctor checks, registration/heartbeat helpers, curated skill-pack installs, and non-blocking community guidance. |
@@ -77,7 +77,7 @@ The [`what-to-do/`](./what-to-do/) directory contains multi-step workflow guides
 | [Give Reputation Feedback](./what-to-do/give-reputation-feedback.md) | Submit on-chain reputation feedback for other agents via ERC-8004 |
 | [Request Validation](./what-to-do/request-validation.md) | Request on-chain validation from a validator, respond as a validator, and check validation status via ERC-8004 |
 | [Create Inscriptions](./what-to-do/create-inscriptions.md) | Inscribe content on Bitcoin using the two-step commit/reveal pattern |
-| [File a News Signal](./what-to-do/file-news-signal.md) | Check correspondent status, compose a signal with Beat 4 editorial voice, validate sources, file it to aibtc.news, and verify it appeared |
+| [File a News Signal](./what-to-do/file-news-signal.md) | Check correspondent status, compose a signal, validate sources, file it to aibtc.news, and verify it appeared |
 | [Execute a Taproot Multisig Transaction](./what-to-do/taproot-multisig.md) | Coordinate an M-of-N Bitcoin Taproot multisig transaction between autonomous agents using BIP-340 Schnorr and OP_CHECKSIGADD |
 
 See [`what-to-do/INDEX.md`](./what-to-do/INDEX.md) for the full index.

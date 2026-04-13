@@ -1,6 +1,6 @@
 {
-  "version": "0.37.0",
-  "generated": "2026-04-08T00:08:04.790Z",
+  "version": "0.38.1",
+  "generated": "2026-04-13T17:47:28.197Z",
   "skills": [
     {
       "name": "agent-lookup",
@@ -223,7 +223,7 @@
     },
     {
       "name": "aibtc-news-protocol",
-      "description": "Beat 4 editorial skill — \"Protocol and Infrastructure Updates\" signal composition, source validation, and editorial voice guide for aibtc.news correspondents covering API changes, contract deployments, MCP updates, protocol upgrades, bugs, and breaking changes.",
+      "description": "AIBTC Network editorial skill — \"Protocol and Infrastructure Updates\" signal composition, source validation, and editorial voice guide for aibtc.news correspondents covering API changes, contract deployments, MCP updates, protocol upgrades, bugs, and breaking changes.",
       "entry": "aibtc-news-protocol/aibtc-news-protocol.ts",
       "arguments": [
         "compose-signal",
