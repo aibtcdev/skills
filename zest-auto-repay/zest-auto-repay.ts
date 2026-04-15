@@ -13,6 +13,7 @@ import { Command } from "commander";
 import { readFileSync, writeFileSync, existsSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
+import { Cl, cvToHex } from "@stacks/transactions";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // SAFETY CONSTANTS — Hard-coded, cannot be overridden by flags
@@ -130,53 +131,14 @@ function fail(action: string, error: { code: string; message: string; next: stri
 
 const ZEST_ASSETS = ["sBTC", "wSTX", "stSTX", "USDC", "USDH", "stSTXbtc"];
 
-// ─── Clarity principal encoding (fix: was using string-ascii 0x0d, must be 0x05) ───
-
-const C32_ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
-
-/** Decode c32check-encoded Stacks address body → raw bytes [checksum(4) | hash160(20)] */
-function c32decode(input: string): Buffer {
-  const s = input.toUpperCase();
-  let bits = 0, value = 0;
-  const output: number[] = [];
-  for (const char of s) {
-    const idx = C32_ALPHABET.indexOf(char);
-    if (idx < 0) continue;
-    value = (value << 5) | idx;
-    bits += 5;
-    if (bits >= 8) {
-      bits -= 8;
-      output.push((value >> bits) & 0xff);
-    }
-  }
-  const buf = Buffer.from(output);
-  if (buf.length < 24) {
-    throw new Error(`c32decode: expected 24 bytes (checksum+hash160), got ${buf.length} — address may be truncated or invalid`);
-  }
-  return buf;
-}
+// ─── Clarity principal encoding ───
 
 /**
  * Encode a Stacks address as a Clarity principal hex argument.
- * Clarity StandardPrincipal: 0x05 + version byte (1) + hash160 (20) = 22 bytes.
- *
- * Stacks address format: 'S' + c32_version_char + c32check(checksum[4] + hash160[20])
- * The c32 alphabet index of the version char IS the version byte value.
- * SP (mainnet) → 'P' = index 22 = 0x16. ST (testnet) → 'T' = index 26 = 0x1a.
+ * Uses @stacks/transactions (already a direct dependency) for correct encoding.
  */
 function encodePrincipal(address: string): string {
-  if (!address.startsWith("S") || address.length < 5) {
-    throw new Error(`Invalid Stacks address: ${address}`);
-  }
-  const versionByte = C32_ALPHABET.indexOf(address[1].toUpperCase());
-  const decoded = c32decode(address.slice(2)); // 24 bytes: checksum(4) + hash160(20)
-  const hash160 = decoded.slice(4, 24);
-
-  const buf = Buffer.alloc(22);
-  buf[0] = 0x05; // Clarity StandardPrincipal type tag
-  buf[1] = versionByte;
-  hash160.copy(buf, 2);
-  return "0x" + buf.toString("hex");
+  return cvToHex(Cl.standardPrincipal(address));
 }
 
 async function callReadOnly(

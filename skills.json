@@ -1,6 +1,6 @@
 {
   "version": "0.38.1",
-  "generated": "2026-04-15T19:30:38.719Z",
+  "generated": "2026-04-15T19:35:04.923Z",
   "skills": [
     {
       "name": "agent-lookup",
@@ -2187,6 +2187,33 @@
         "yield_hunter_status",
         "yield_hunter_configure"
       ]
+    },
+    {
+      "name": "zest-auto-repay",
+      "description": "Autonomous Zest Protocol LTV guardian — monitors borrowing positions, detects liquidation risk, and executes safe repayments with enforced spend limits to protect collateral on Stacks mainnet.",
+      "entry": "zest-auto-repay/zest-auto-repay.ts",
+      "arguments": [
+        "doctor",
+        "run --action=status",
+        "run --action=monitor",
+        "run --action=repay",
+        "run --action=emergency-repay"
+      ],
+      "requires": [
+        "wallet",
+        "signing",
+        "settings"
+      ],
+      "tags": [
+        "defi",
+        "write",
+        "mainnet-only",
+        "requires-funds",
+        "l2"
+      ],
+      "userInvocable": false,
+      "author": "azagh72-creator",
+      "authorAgent": "Flying Whale"
     },
     {
       "name": "zest-yield-manager",
