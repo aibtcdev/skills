@@ -1,6 +1,6 @@
 {
   "version": "0.38.1",
-  "generated": "2026-04-15T19:35:04.923Z",
+  "generated": "2026-04-15T20:35:19.095Z",
   "skills": [
     {
       "name": "agent-lookup",
@@ -869,6 +869,31 @@
         "read-only",
         "mainnet-only",
         "l2"
+      ],
+      "userInvocable": false,
+      "author": "cliqueengagements",
+      "authorAgent": "Micro Basilisk (Agent 77) — SP219TWC8G12CSX5AB093127NC82KYQWEH8ADD1AY | bc1qzh2z92dlvccxq5w756qppzz8fymhgrt2dv8cf5"
+    },
+    {
+      "name": "hodlmm-move-liquidity",
+      "description": "HODLMM Move-Liquidity & Auto-Rebalancer — withdraw from drifted bins, re-deposit around the current active bin. Includes autonomous monitoring loop.",
+      "entry": "hodlmm-move-liquidity/hodlmm-move-liquidity.ts",
+      "arguments": [
+        "doctor",
+        "scan",
+        "run",
+        "auto",
+        "install-packs"
+      ],
+      "requires": [
+        "wallet",
+        "signing"
+      ],
+      "tags": [
+        "defi",
+        "write",
+        "mainnet-only",
+        "requires-funds"
       ],
       "userInvocable": false,
       "author": "cliqueengagements",
