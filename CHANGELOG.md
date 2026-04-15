@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.39.0](https://github.com/aibtcdev/skills/compare/skills-v0.38.1...skills-v0.39.0) (2026-04-15)
+
+
+### Features
+
+* add hodlmm-move-liquidity skill (BFF Skills Comp Day 14 winner) ([#317](https://github.com/aibtcdev/skills/issues/317)) ([daac65d](https://github.com/aibtcdev/skills/commit/daac65d81b85a9a33da163186d1f3e6717d969d9))
+* add sbtc-yield-maximizer (BFF Skills Comp Day 16 winner by @Ololadestephen) ([849f122](https://github.com/aibtcdev/skills/commit/849f1224ff3b6e472a809ca1869fdc9809449581))
+* **defi-portfolio-scanner:** add cross-protocol DeFi position aggregator (BFF Day 7 winner) ([f6d6a81](https://github.com/aibtcdev/skills/commit/f6d6a81661e6601935d22b04b557bef1da4e0a8b))
+
+
+### Bug Fixes
+
+* **zest-auto-repay:** address all 3 blocking issues from arc0btc review ([ee4bffb](https://github.com/aibtcdev/skills/commit/ee4bffbd43bfad542c24428a6aa54601315c112e))
+
 ## [0.38.1](https://github.com/aibtcdev/skills/compare/skills-v0.38.0...skills-v0.38.1) (2026-04-08)
 
 
