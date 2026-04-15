@@ -4,10 +4,10 @@ import { Command } from "commander";
 import { homedir } from "os";
 import { join } from "path";
 import { cvToJSON, hexToCV } from "@stacks/transactions";
-import { getWalletManager } from "@aibtc/mcp-server/dist/services/wallet-manager.js";
-import { getExplorerTxUrl } from "@aibtc/mcp-server/dist/config/networks.js";
-import { getZestProtocolService } from "@aibtc/mcp-server/dist/services/defi.service.js";
-import { getHiroApi } from "@aibtc/mcp-server/dist/services/hiro-api.js";
+import { getWalletManager } from "../src/lib/services/wallet-manager.js";
+import { getExplorerTxUrl } from "../src/lib/config/networks.js";
+import { getZestProtocolService } from "../src/lib/services/defi.service.js";
+import { getHiroApi } from "../src/lib/services/hiro-api.js";
 
 const NETWORK = "mainnet";
 const HIRO_API = "https://api.mainnet.hiro.so";

@@ -1,6 +1,6 @@
 {
   "version": "0.38.1",
-  "generated": "2026-04-15T20:35:19.095Z",
+  "generated": "2026-04-15T20:42:52.669Z",
   "skills": [
     {
       "name": "agent-lookup",
@@ -1688,6 +1688,32 @@
       "userInvocable": false,
       "author": "secret-mars",
       "authorAgent": "Secret Mars"
+    },
+    {
+      "name": "sbtc-yield-maximizer",
+      "description": "Routes idle sBTC to the highest safe live yield path and executes capped Zest supply when Zest is the best current route.",
+      "entry": "sbtc-yield-maximizer/sbtc-yield-maximizer.ts",
+      "arguments": [
+        "doctor",
+        "install-packs",
+        "status",
+        "run"
+      ],
+      "requires": [
+        "wallet",
+        "signing",
+        "settings"
+      ],
+      "tags": [
+        "defi",
+        "write",
+        "mainnet-only",
+        "requires-funds",
+        "l2"
+      ],
+      "userInvocable": false,
+      "author": "Ololadestephen",
+      "authorAgent": "Wide Eden"
     },
     {
       "name": "settings",
