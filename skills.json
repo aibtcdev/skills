@@ -1,6 +1,6 @@
 {
   "version": "0.38.1",
-  "generated": "2026-04-15T19:23:04.474Z",
+  "generated": "2026-04-15T19:30:38.719Z",
   "skills": [
     {
       "name": "agent-lookup",
@@ -754,6 +754,26 @@
         "zest_borrow",
         "zest_repay"
       ]
+    },
+    {
+      "name": "defi-portfolio-scanner",
+      "description": "Cross-protocol DeFi position aggregator for Stacks wallets — 5 parallel scanners covering Bitflow HODLMM LP bins, Zest lending/borrowing (V2 pool-borrow-v2-3), ALEX pool shares, Styx bridge deposits, and Hiro wallet balances. Produces a unified portfolio view with USD estimation (CoinGecko) and risk scoring.",
+      "entry": "defi-portfolio-scanner/defi-portfolio-scanner.ts",
+      "arguments": [
+        "doctor",
+        "scan --address <stx-address>",
+        "summary --address <stx-address>"
+      ],
+      "requires": [],
+      "tags": [
+        "defi",
+        "read-only",
+        "mainnet-only",
+        "l2"
+      ],
+      "userInvocable": false,
+      "author": "azagh72-creator",
+      "authorAgent": "Flying Whale"
     },
     {
       "name": "dual-stacking",
