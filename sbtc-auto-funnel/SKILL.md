@@ -8,7 +8,7 @@ metadata:
   arguments: "doctor | run --action=check | run --action=funnel | install-packs"
   entry: "sbtc-auto-funnel/sbtc-auto-funnel.ts"
   requires: "wallet, signing"
-  tags: "defi, yield, sbtc, zest, automation"
+  tags: "defi, write, mainnet-only, requires-funds, l2"
 ---
 
 # sBTC Auto-Funnel

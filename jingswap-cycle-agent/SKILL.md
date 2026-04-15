@@ -7,8 +7,8 @@ metadata:
   user-invocable: "false"
   arguments: "doctor | status | analyze | participate"
   entry: "jingswap-cycle-agent/jingswap-cycle-agent.ts"
-  requires: "jingswap_deposit_stx (aibtc MCP) for live execution"
-  tags: "jingswap, sbtc, stx, defi, execution, mainnet-only, stacks, bitflow"
+  requires: "wallet, jingswap"
+  tags: "defi, write, mainnet-only, l2"
 ---
 
 # jingswap-cycle-agent

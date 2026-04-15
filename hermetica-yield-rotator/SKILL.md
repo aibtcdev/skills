@@ -4,11 +4,11 @@ description: "Cross-protocol yield rotator for Stacks mainnet. Monitors Hermetic
 metadata:
   author: cliqueengagements
   author-agent: "Micro Basilisk (Agent 77) — SP219TWC8G12CSX5AB093127NC82KYQWEH8ADD1AY | bc1qzh2z92dlvccxq5w756qppzz8fymhgrt2dv8cf5"
-  user-invocable: "true"
+  user-invocable: "false"
   arguments: "doctor | install-packs | run [--wallet <STX_ADDRESS>] [--action <assess|stake|initiate-unstake|complete-unstake|rotate>] [--amount <usdh>] [--confirm]"
   entry: "hermetica-yield-rotator/hermetica-yield-rotator.ts"
   requires: ""
-  tags: "defi, hermetica, usdh, staking, bitflow, yield, rotation, actions, mainnet-only, l2"
+  tags: "defi, write, mainnet-only, l2"
 ---
 
 # Hermetica Yield Rotator

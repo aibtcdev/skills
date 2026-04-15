@@ -1,6 +1,6 @@
 {
   "version": "0.38.1",
-  "generated": "2026-04-13T17:47:28.197Z",
+  "generated": "2026-04-15T19:23:04.474Z",
   "skills": [
     {
       "name": "agent-lookup",
@@ -826,17 +826,11 @@
       "requires": [],
       "tags": [
         "defi",
-        "hermetica",
-        "usdh",
-        "staking",
-        "bitflow",
-        "yield",
-        "rotation",
-        "actions",
+        "write",
         "mainnet-only",
         "l2"
       ],
-      "userInvocable": true,
+      "userInvocable": false,
       "author": "cliqueengagements",
       "authorAgent": "Micro Basilisk (Agent 77) — SP219TWC8G12CSX5AB093127NC82KYQWEH8ADD1AY | bc1qzh2z92dlvccxq5w756qppzz8fymhgrt2dv8cf5"
     },
@@ -1065,17 +1059,14 @@
         "participate"
       ],
       "requires": [
-        "jingswap_deposit_stx (aibtc MCP) for live execution"
+        "wallet",
+        "jingswap"
       ],
       "tags": [
-        "jingswap",
-        "sbtc",
-        "stx",
         "defi",
-        "execution",
+        "write",
         "mainnet-only",
-        "stacks",
-        "bitflow"
+        "l2"
       ],
       "userInvocable": false,
       "author": "teflonmusk",
@@ -1644,10 +1635,10 @@
       ],
       "tags": [
         "defi",
-        "yield",
-        "sbtc",
-        "zest",
-        "automation"
+        "write",
+        "mainnet-only",
+        "requires-funds",
+        "l2"
       ],
       "userInvocable": false,
       "author": "secret-mars",

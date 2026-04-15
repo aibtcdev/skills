@@ -1,5 +1,6 @@
 # Quest planning (local only)
 .planning/
+.quests/
 
 # skills-ref Python venv (local only)
 .venv-skills-ref/
