@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.40.0](https://github.com/aibtcdev/skills/compare/skills-v0.39.0...skills-v0.40.0) (2026-04-16)
+
+
+### Features
+
+* add contract-preflight skill (BFF Skills Comp Day 17 winner) ([#327](https://github.com/aibtcdev/skills/issues/327)) ([4a284c7](https://github.com/aibtcdev/skills/commit/4a284c79f432bba987669f89a8a335976087b6a7))
+* add stacking-delegation skill (BFF Skills Comp Day 15 winner) ([#330](https://github.com/aibtcdev/skills/issues/330)) ([bf5c7e1](https://github.com/aibtcdev/skills/commit/bf5c7e1a801f531bee1248767923f69f95332e6b))
+
 ## [0.39.0](https://github.com/aibtcdev/skills/compare/skills-v0.38.1...skills-v0.39.0) (2026-04-15)
 
 
