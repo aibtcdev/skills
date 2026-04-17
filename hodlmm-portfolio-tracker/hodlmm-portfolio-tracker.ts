@@ -41,7 +41,11 @@ interface PositionData {
   netPnlUsd: number;
   netPnlPct: number;
   holdDays: number;
+  source: "on-chain" | "estimate";
 }
+
+const DATA_QUALITY_WARNING =
+  "Position analytics use heuristic estimates — binRange, activeBin, liquidity, fees, IL and holdDays are placeholder values pending a Clarity tuple decoder for get-position responses. Only nftId, pool and poolContract are real on-chain data. Do not use these numbers for financial decisions.";
 
 interface PoolInfo {
   contract: string;
@@ -129,18 +133,6 @@ async function getStxPriceUsd(): Promise<number> {
       `${COINGECKO_API}/simple/price?ids=blockstack&vs_currencies=usd`
     );
     return data?.blockstack?.usd ?? 0;
-  } catch {
-    return 0;
-  }
-}
-
-/** Get sBTC price in USD (approx BTC price) */
-async function getSbtcPriceUsd(): Promise<number> {
-  try {
-    const data = await fetchJson<any>(
-      `${COINGECKO_API}/simple/price?ids=bitcoin&vs_currencies=usd`
-    );
-    return data?.bitcoin?.usd ?? 0;
   } catch {
     return 0;
   }
@@ -383,7 +375,6 @@ function calculateHealthScore(positions: PositionData[]): {
 /** Build position data from NFT holdings + pool state */
 async function buildPositions(address: string): Promise<PositionData[]> {
   const stxPrice = await getStxPriceUsd();
-  const btcPrice = await getSbtcPriceUsd();
 
   if (stxPrice === 0) {
     throw new Error("Could not fetch STX price — CoinGecko may be rate-limiting");
@@ -405,7 +396,7 @@ async function buildPositions(address: string): Promise<PositionData[]> {
   const positionsToProcess = nftIds.slice(0, 50);
 
   for (const nftId of positionsToProcess) {
-    // Extract pool info from discovery phase
+    // Real on-chain data: NFT id and pool contract (from discovery)
     const poolContract = poolContracts.get(nftId) ?? "unknown";
     const poolName = poolContract.split(".").pop()
       ?.replace(/^dlmm-pool-/, "")
@@ -413,36 +404,24 @@ async function buildPositions(address: string): Promise<PositionData[]> {
       .replace(/-/g, "/")
       .toUpperCase() ?? "UNKNOWN";
 
-    // Extract bin step from pool contract name (e.g., "bps-15" = 15 basis points)
-    const bpsMatch = poolContract.match(/bps-(\d+)/);
-    const binStep = bpsMatch ? parseInt(bpsMatch[1], 10) : BIN_STEP;
-
-    // Try to get on-chain position data (may fail — we still build the position)
-    let onChainData: any = null;
-    try {
-      onChainData = await callReadOnly(DLMM_CORE, "get-position", [cvUint(nftId)]);
-    } catch {
-      // Contract call failed — use heuristic estimates
-    }
-
-    // Heuristic estimation based on available data
-    const binRange = 11; // typical concentrated range
-    const activeBin = 50; // placeholder
+    // Everything below is a placeholder. The Clarity tuple decoder needed to
+    // read bin range / reserves / open-block from `get-position` is not yet
+    // implemented. These fields are flagged with source: "estimate" so
+    // downstream consumers know they are not real.
+    const binRange = 11;
+    const activeBin = 50;
     const lowerBin = activeBin - Math.floor(binRange / 2);
     const upperBin = activeBin + Math.floor(binRange / 2);
-    const inRange = true; // default assumption
+    const inRange = true;
 
-    // Estimate liquidity — conservative per-position estimate
     const estimatedLiquidityStx = 100;
     const liquidityUsd = estimatedLiquidityStx * stxPrice;
 
-    // Estimate fees (volume-weighted)
-    const feeRate = 0.003; // 0.3% base fee
+    const feeRate = 0.003;
     const dailyFeeUsd = liquidityUsd * feeRate * 0.1;
     const holdDays = 14;
     const feesEarnedUsd = dailyFeeUsd * holdDays;
 
-    // IL estimate
     const priceMoveGuess = 5;
     const ilPct = calculateIl(binRange, priceMoveGuess);
     const ilUsd = liquidityUsd * ilPct;
@@ -465,6 +444,7 @@ async function buildPositions(address: string): Promise<PositionData[]> {
       netPnlUsd,
       netPnlPct,
       holdDays,
+      source: "estimate",
     });
   }
 
@@ -564,6 +544,8 @@ program
         inRangeCount: positions.filter((p) => p.inRange).length,
         outOfRangeCount: positions.filter((p) => !p.inRange).length,
         pools,
+        source: "estimate",
+        warning: DATA_QUALITY_WARNING,
         timestamp: new Date().toISOString(),
       });
     } catch (err) {
@@ -617,8 +599,10 @@ program
           netPnlUsd: Math.round(p.netPnlUsd * 100) / 100,
           netPnlPct: Math.round(p.netPnlPct * 100) / 100,
           holdDays: p.holdDays,
+          source: p.source,
         })),
         sortedBy: sortField,
+        warning: DATA_QUALITY_WARNING,
         timestamp: new Date().toISOString(),
       });
     } catch (err) {
@@ -640,6 +624,8 @@ program
         address: opts.address,
         positionCount: positions.length,
         ...health,
+        source: "estimate",
+        warning: DATA_QUALITY_WARNING,
         timestamp: new Date().toISOString(),
       });
     } catch (err) {
