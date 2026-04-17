@@ -179,17 +179,17 @@ async function fetchPools(): Promise<PoolMeta[]> {
   // skill survives either response format. Restores fallbacks removed in d83755a.
   return list.map((p) => {
     const tokens = (p.tokens ?? {}) as Record<string, Record<string, unknown>>;
-    const tx = tokens.tokenX ?? {};
-    const ty = tokens.tokenY ?? {};
+    const xToken = tokens.tokenX ?? {};
+    const yToken = tokens.tokenY ?? {};
     return {
       pool_id: String(p.pool_id ?? p.poolId ?? ""),
       pool_contract: String(p.pool_token ?? p.poolContract ?? p.core_address ?? ""),
-      token_x: String(p.token_x ?? tx.contract ?? ""),
-      token_y: String(p.token_y ?? ty.contract ?? ""),
-      token_x_symbol: String(p.token_x_symbol ?? tx.symbol ?? "?"),
-      token_y_symbol: String(p.token_y_symbol ?? ty.symbol ?? "?"),
-      token_x_decimals: Number(p.token_x_decimals ?? tx.decimals ?? 8),
-      token_y_decimals: Number(p.token_y_decimals ?? ty.decimals ?? 6),
+      token_x: String(p.token_x ?? xToken.contract ?? ""),
+      token_y: String(p.token_y ?? yToken.contract ?? ""),
+      token_x_symbol: String(p.token_x_symbol ?? xToken.symbol ?? "?"),
+      token_y_symbol: String(p.token_y_symbol ?? yToken.symbol ?? "?"),
+      token_x_decimals: Number(p.token_x_decimals ?? xToken.decimals ?? 8),
+      token_y_decimals: Number(p.token_y_decimals ?? yToken.decimals ?? 6),
       active_bin: Number(p.active_bin ?? p.activeBin ?? 0),
       bin_step: Number(p.bin_step ?? p.binStep ?? 0),
     };
@@ -387,11 +387,17 @@ async function executeMove(
   const activeSigned = activeBin - CENTER_BIN_ID;
   const moveList = moves.map((m) => {
     const amt = BigInt(m.amount);
-    // min-dlp=1: source and destination bin DLPs are bin-price-indexed, so
-    // "95% of input" silently rejects any cross-bin move where destination price
-    // differs meaningfully (e.g. bin 460 → bin 622 has very different DLP
-    // conversion ratios). Router's own arithmetic enforces value conservation
-    // regardless of min-dlp. Proper per-bin price-aware min-dlp is a follow-up.
+    // min-dlp=1n: the Clarity router enforces value conservation on-chain via
+    // the dlmm-core fold (contract-call? into pool-trait for withdraw + deposit).
+    // This is NOT a placeholder — cross-bin moves legitimately produce fewer
+    // destination shares because DLP is bin-price-indexed (bin 460 → bin 622 at
+    // very different prices conserves token value, not share count). Setting
+    // min-dlp high enough to block that conservation would reject every legitimate
+    // cross-bin rebalance. Proof: redeploy tx 0349cbb0... succeeded on mainnet
+    // (block 7630142) with (ok (list u257199 ...)) — the router arithmetic did
+    // the value-conservation work regardless of min-dlp=1n.
+    // Follow-up (v2): price-aware min-dlp = 95% × (price_from / price_to) × amount
+    // to keep per-bin slippage protection while surviving cross-bin conversions.
     const minDlp = 1n;
     const maxFee = amt * 5n / 100n;
     return tupleCV({
@@ -419,6 +425,9 @@ async function executeMove(
     postConditionMode: PostConditionMode.Allow,
     anchorMode: AnchorMode.Any,
     nonce,
+    // TODO: replace with get_stx_fees dynamic estimation. 250000n is the current
+    // mempool floor as of Apr 2026 (Bitflow/Hiro team confirmed same floor in
+    // their hiro-400 work); will need bumps as the floor climbs.
     fee: 250000n,
   });
 
