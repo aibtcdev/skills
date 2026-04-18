@@ -27,7 +27,7 @@
  *   bun run stacks-alpha-engine/stacks-alpha-engine.ts deploy --wallet <SP...> --protocol hermetica --token usdh --amount 1000000
  *   bun run stacks-alpha-engine/stacks-alpha-engine.ts withdraw --wallet <SP...> --protocol zest --token sbtc
  *   bun run stacks-alpha-engine/stacks-alpha-engine.ts rebalance --wallet <SP...> --pool-id dlmm_1
- *   bun run stacks-alpha-engine/stacks-alpha-engine.ts migrate --wallet <SP...> --from zest --to hermetica
+ *   bun run stacks-alpha-engine/stacks-alpha-engine.ts migrate --wallet <SP...> --from zest --to hermetica --amount 1000000
  *   bun run stacks-alpha-engine/stacks-alpha-engine.ts emergency --wallet <SP...>
  */
 
@@ -1327,7 +1327,10 @@ function buildWithdrawInstructions(protocol: Protocol, scout: ScoutResult): Exec
       // Granite follows ERC-4626: redeem(shares) burns share count, withdraw(assets) takes asset amount.
       // We have the share count, so use redeem().
       const sharesNum = BigInt(shares);
-      const expectedAeusdc = String(sharesNum + sharesNum / 10n); // shares + 10% interest buffer for post-condition
+      // Upper cap on pool outflow. shares*2 admits long-held positions whose accumulated
+      // interest exceeded the prior 10% buffer, while still failing if a buggy pool tries
+      // to drain absurdly more than shares. The gte:"1" floor below catches zero-return bugs.
+      const expectedAeusdc = String(sharesNum * 2n);
       return [{
         tool: "call_contract",
         params: {
@@ -1420,6 +1423,13 @@ async function _runPipeline(wallet: string, command: string, opts: Record<string
   if (command === "migrate") {
     if (!opts.from || !opts.to || opts.from === opts.to) {
       return { status: "error", command, error: "Specify --from and --to (different protocols)" };
+    }
+    // --amount is required. Earlier versions defaulted to the wallet sBTC balance, which
+    // silently produced zero-amount deploys when migrating from stablecoin protocols
+    // (hermetica/granite) on wallets without sBTC. Force the caller to be explicit.
+    const parsedAmt = parseInt(opts.amount ?? "", 10);
+    if (isNaN(parsedAmt) || parsedAmt <= 0) {
+      return { status: "error", command, error: "migrate requires --amount (positive integer, smallest unit of target token). Run 'scan' to inspect current positions." };
     }
   }
 
@@ -1554,13 +1564,12 @@ async function _runPipeline(wallet: string, command: string, opts: Record<string
     }
 
     case "migrate": {
-      // Input already validated in Step 0 above
+      // Input (including --amount > 0) already validated in Step 0 above
       const from = opts.from as Protocol;
       const to = opts.to as Protocol;
       instructions.push(...buildWithdrawInstructions(from, scout));
       const token = opts.token ?? inferToken(to);
-      const parsedAmt = opts.amount ? parseInt(opts.amount, 10) : NaN;
-      const amount = isNaN(parsedAmt) ? Math.floor(scout.balances.sbtc.amount * 1e8) : parsedAmt;
+      const amount = parseInt(opts.amount!, 10);
       instructions.push(...buildDeployInstructions(to, amount, token, scout));
       description = `Migrate from ${from} to ${to}`;
       break;
