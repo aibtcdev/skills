@@ -407,6 +407,7 @@ async function getZestSignal(senderAddress: string): Promise<ZestSignal> {
     readUint("get-total-assets"),
     readUint("get-total-supply"),
   ]);
+  // Verified against the live v0-vault-sbtc source, which defines BPS u10000.
   const inferredApyBps = Number(rawInterestRate);
   return {
     rawInterestRate,
@@ -484,6 +485,9 @@ async function fetchHodlmmCandidates(options: RunOptions, walletAddress: string)
   const candidatePools = matchedPools.filter(
     ({ app }) => app.volumeUsd1d >= options.minHodlmmVolumeUsd && app.tvlUsd >= options.minHodlmmTvlUsd
   );
+  // If no pool clears the configured liquidity floors, still surface a bounded
+  // fallback set for status visibility. These fallback candidates may remain
+  // unsafe and must still pass the downstream `safe` gate before execution.
   const poolsToEvaluate = candidatePools.length > 0
     ? candidatePools
     : matchedPools
@@ -561,7 +565,7 @@ function decideRoute(
 ): RouteDecision {
   const idleSats = sbtcSats > options.reserveSats ? sbtcSats - options.reserveSats : 0n;
   const deploySats = idleSats > options.maxDeploySats ? options.maxDeploySats : idleSats;
-  const topHodlmm = hodlmmCandidates.find((candidate) => candidate.safe) || null;
+  const topHodlmm = hodlmmCandidates[0] || null;
   const rationale: string[] = [];
 
   if (!cooldown.ok) {
@@ -580,6 +584,9 @@ function decideRoute(
     rationale.push("No idle sBTC remains above reserve");
     return { route: "hold", deploySats, rationale, zest, topHodlmm, executable: false, winnerApyBps: 0, apyDiffBps: 0 };
   }
+  // ageSeconds is most useful once these reads are cached or reused across
+  // cycles; today it mainly captures fetch duration and leaves the stale-data
+  // gate ready for future cached reads.
   if (zest.ageSeconds > options.maxDataAgeSeconds) {
     rationale.push(`Zest rate age ${zest.ageSeconds}s exceeds max data age ${options.maxDataAgeSeconds}s`);
     return { route: "hold", deploySats, rationale, zest, topHodlmm, executable: false, winnerApyBps: 0, apyDiffBps: 0 };
@@ -594,6 +601,10 @@ function decideRoute(
   const apyDiffBps = Math.abs(hodlmmBps - zestBps);
 
   if (topHodlmm && hodlmmBps > zestBps) {
+    if (!topHodlmm.safe) {
+      rationale.push(`Top HODLMM pool failed safety gates: ${topHodlmm.reasons.join("; ")}`);
+      return { route: "hold", deploySats, rationale, zest, topHodlmm, executable: false, winnerApyBps: hodlmmBps, apyDiffBps };
+    }
     if (apyDiffBps < options.minApyDiffBps) {
       rationale.push(`HODLMM only leads Zest by ${apyDiffBps} bps, below the ${options.minApyDiffBps} bps minimum edge`);
       return { route: "hold", deploySats, rationale, zest, topHodlmm, executable: false, winnerApyBps: hodlmmBps, apyDiffBps };
