@@ -124,3 +124,4 @@ All outputs are JSON to stdout.
 - Zest sBTC yield is derived from live on-chain Zest vault reads and interpreted as a basis-points-style supply signal. This was verified against the live `v0-vault-sbtc` source, which defines `BPS u10000` and applies rate math in basis points.
 - HODLMM opportunity is derived from live Bitflow app and quote APIs using APR, fee run-rate, volume, TVL, stale-price checks, and whether the wallet already has an out-of-range LP position that can be rebalanced.
 - Requires enough sBTC to exceed reserve and enough STX to preserve gas reserve.
+- Wallet-scoped state now lives under `~/.aibtc/`. This intentionally starts fresh on upgrade rather than migrating the previous shared `~/.sbtc-yield-maximizer-state.json` cooldown file.
