@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   classifyBrief,
   parseInscriptionId,
+  parseNotify,
   recentDates,
   runWatcher,
   type BriefDocument,
@@ -101,7 +102,7 @@ describe("classifyBrief decision tree", () => {
     expect(result.ageHours!).toBeGreaterThan(24);
   });
 
-  test("compiled within grace window reports as not_compiled (info)", () => {
+  test("compiled within grace window reports as pending_inscription (info)", () => {
     const brief: BriefDocument = {
       date: "2026-04-19",
       compiledAt: "2026-04-19T10:00:00.000Z",
@@ -112,8 +113,9 @@ describe("classifyBrief decision tree", () => {
       onChain: null,
       now: NOW,
     });
-    expect(result.state).toBe("not_compiled");
+    expect(result.state).toBe("pending_inscription");
     expect(result.severity).toBe("info");
+    expect(result.compiledAt).toBe("2026-04-19T10:00:00.000Z");
   });
 
   test("inscription_unconfirmed — inscriptionId present, tx not on-chain", () => {
@@ -199,6 +201,35 @@ describe("classifyBrief decision tree", () => {
     });
     expect(result.state).toBe("healthy");
     expect(result.compiledAt).toBe("2026-04-11T04:20:58.289Z");
+  });
+});
+
+describe("parseNotify", () => {
+  test("returns empty arrays when unset", () => {
+    expect(parseNotify(undefined)).toEqual({ valid: [], rejected: [] });
+    expect(parseNotify("")).toEqual({ valid: [], rejected: [] });
+  });
+
+  test("accepts valid bech32 bc1 addresses", () => {
+    const result = parseNotify(
+      "bc1qzh2z92dlvccxq5w756qppzz8fymhgrt2dv8cf5,bc1pxyz0123456789abcdefghjklmnpqrstuvwxyz0123456"
+    );
+    expect(result.valid).toHaveLength(2);
+    expect(result.rejected).toEqual([]);
+  });
+
+  test("filters invalid entries and reports them", () => {
+    const result = parseNotify(
+      "bc1qzh2z92dlvccxq5w756qppzz8fymhgrt2dv8cf5,not-an-address,garbage"
+    );
+    expect(result.valid).toEqual(["bc1qzh2z92dlvccxq5w756qppzz8fymhgrt2dv8cf5"]);
+    expect(result.rejected).toEqual(["not-an-address", "garbage"]);
+  });
+
+  test("skips whitespace-only entries silently", () => {
+    const result = parseNotify("bc1qzh2z92dlvccxq5w756qppzz8fymhgrt2dv8cf5, , ");
+    expect(result.valid).toEqual(["bc1qzh2z92dlvccxq5w756qppzz8fymhgrt2dv8cf5"]);
+    expect(result.rejected).toEqual([]);
   });
 });
 

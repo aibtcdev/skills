@@ -10,9 +10,11 @@ export const MEMPOOL_API_BASE = "https://mempool.space/api";
 export const MEMPOOL_EXPLORER = "https://mempool.space";
 
 /**
- * Shape of a brief document returned by aibtc.news. Dual camel/snake keys are
- * documented in memory feedback_bitflow_api_schema_migration.md — always read
- * both when one is expected to exist.
+ * Shape of a brief document returned by aibtc.news.
+ *
+ * The API currently ships both camelCase and snake_case variants of the
+ * compile timestamp (`compiledAt` and `compiled_at`). Always read both so the
+ * skill keeps working if the schema drifts to one form or the other.
  */
 export interface BriefDocument {
   date: string;
@@ -31,6 +33,7 @@ export interface BriefArchiveRoot extends BriefDocument {
 export type ClassificationState =
   | "not_compiled"
   | "stale_not_compiled"
+  | "pending_inscription"
   | "compiled_no_inscription"
   | "inscription_unconfirmed"
   | "healthy";
@@ -63,6 +66,7 @@ export interface OnChainResult {
 const SEVERITY_BY_STATE: Record<ClassificationState, ClassificationSeverity> = {
   not_compiled: "info",
   stale_not_compiled: "warn",
+  pending_inscription: "info",
   compiled_no_inscription: "red",
   inscription_unconfirmed: "warn",
   healthy: "ok",
@@ -91,13 +95,45 @@ export function todayUtcDate(now: Date = new Date()): string {
 }
 
 /**
+ * Bech32 mainnet BTC address shape check. Loose enough to cover p2wpkh (bc1q),
+ * p2wsh (bc1q), and p2tr (bc1p) without pinning exact lengths. Gate for the
+ * `--notify` CLI flag so garbage addresses don't silently stage into alerts.
+ */
+const BECH32_BTC_ADDRESS = /^bc1[a-z0-9]{25,90}$/i;
+
+/**
+ * Split a comma-separated list of BTC addresses into valid bech32 bc1 entries
+ * and rejected strings. Whitespace-only entries are dropped silently; anything
+ * that fails the bech32 shape check is surfaced in `rejected` so the CLI can
+ * warn about misconfigured --notify inputs.
+ */
+export function parseNotify(raw: string | undefined): {
+  valid: string[];
+  rejected: string[];
+} {
+  if (!raw) return { valid: [], rejected: [] };
+  const valid: string[] = [];
+  const rejected: string[] = [];
+  for (const candidate of raw.split(",").map((s) => s.trim())) {
+    if (candidate.length === 0) continue;
+    if (BECH32_BTC_ADDRESS.test(candidate)) {
+      valid.push(candidate);
+    } else {
+      rejected.push(candidate);
+    }
+  }
+  return { valid, rejected };
+}
+
+/**
  * Classify a single brief document against a compile-to-inscribe age threshold.
  *
  * Precedence:
  * 1. compiledAt == null  →  `not_compiled` (future/today) or `stale_not_compiled` (past)
- * 2. compiledAt set, inscription missing or empty  →  `compiled_no_inscription` once stale
- * 3. compiledAt set, inscriptionId present, on-chain unconfirmed  →  `inscription_unconfirmed`
- * 4. compiledAt set, inscriptionId present, on-chain confirmed  →  `healthy`
+ * 2. compiledAt set, inscription missing, within grace  →  `pending_inscription`
+ * 3. compiledAt set, inscription missing, past threshold  →  `compiled_no_inscription`
+ * 4. compiledAt set, inscriptionId present, on-chain unconfirmed  →  `inscription_unconfirmed`
+ * 5. compiledAt set, inscriptionId present, on-chain confirmed  →  `healthy`
  */
 export function classifyBrief(
   brief: BriefDocument,
@@ -161,8 +197,8 @@ export function classifyBrief(
     }
     return {
       date: brief.date,
-      state: "not_compiled",
-      severity: SEVERITY_BY_STATE.not_compiled,
+      state: "pending_inscription",
+      severity: SEVERITY_BY_STATE.pending_inscription,
       compiledAt,
       inscriptionId: null,
       inscribedTxid: null,
@@ -342,39 +378,44 @@ export async function runWatcher(
   const fetchImpl = options.fetchImpl ?? fetch;
   const now = options.now ?? new Date();
   const dates = recentDates(options.days, now);
-  const classifications: Classification[] = [];
 
-  for (const date of dates) {
-    try {
+  // Parallelize across the date window. Each date is independent — the brief
+  // fetch + optional mempool check commute across dates, so fanning out cuts
+  // large windows (e.g. --days 60) from minutes to seconds. Error handling
+  // stays per-date via Promise.allSettled.
+  const results = await Promise.allSettled(
+    dates.map(async (date) => {
       const brief = await fetchBrief(date, fetchImpl);
       let onChain: OnChainResult | null = null;
       const inscriptionId = brief.inscription?.inscriptionId ?? null;
       if (inscriptionId) {
         onChain = await checkInscriptionOnChain(inscriptionId, fetchImpl);
       }
-      classifications.push(
-        classifyBrief(brief, {
-          thresholdHours: options.thresholdHours,
-          onChain,
-          now,
-        })
-      );
-    } catch (error) {
-      classifications.push({
-        date,
-        state: "stale_not_compiled",
-        severity: "warn",
-        compiledAt: null,
-        inscriptionId: null,
-        inscribedTxid: null,
-        onChain: null,
-        ageHours: null,
-        reason: `Fetch failed: ${error instanceof Error ? error.message : String(error)}`,
-        briefUrl: `https://aibtc.news/api/brief/${date}`,
-        inscriptionUrl: null,
+      return classifyBrief(brief, {
+        thresholdHours: options.thresholdHours,
+        onChain,
+        now,
       });
-    }
-  }
+    })
+  );
+
+  const classifications: Classification[] = dates.map((date, i) => {
+    const r = results[i];
+    if (r.status === "fulfilled") return r.value;
+    return {
+      date,
+      state: "stale_not_compiled",
+      severity: "warn",
+      compiledAt: null,
+      inscriptionId: null,
+      inscribedTxid: null,
+      onChain: null,
+      ageHours: null,
+      reason: `Fetch failed: ${r.reason instanceof Error ? r.reason.message : String(r.reason)}`,
+      briefUrl: `${NEWS_API_BASE}/brief/${date}`,
+      inscriptionUrl: null,
+    };
+  });
 
   const totals: Record<ClassificationSeverity, number> = {
     ok: 0,

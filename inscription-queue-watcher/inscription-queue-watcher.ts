@@ -14,6 +14,7 @@ import {
   NEWS_API_BASE,
   MEMPOOL_API_BASE,
   fetchArchiveRoot,
+  parseNotify,
   runWatcher,
 } from "./lib.js";
 
@@ -63,14 +64,6 @@ program
 // run
 // ---------------------------------------------------------------------------
 
-function parseNotify(raw: string | undefined): string[] {
-  if (!raw) return [];
-  return raw
-    .split(",")
-    .map((s) => s.trim())
-    .filter((s) => s.length > 0);
-}
-
 program
   .command("run")
   .description(
@@ -96,7 +89,12 @@ program
       if (!Number.isFinite(thresholdHours) || thresholdHours <= 0) {
         throw new Error("--threshold-hours must be a positive number");
       }
-      const notifyRecipients = parseNotify(opts.notify);
+      const { valid: notifyRecipients, rejected } = parseNotify(opts.notify);
+      if (rejected.length > 0) {
+        console.error(
+          `[watcher] notifications: ignoring ${rejected.length} invalid address(es): ${rejected.join(", ")} (expected bech32 bc1... format)`
+        );
+      }
       if (notifyRecipients.length > 0) {
         console.error(
           `[watcher] notifications: STAGED \u2192 ${notifyRecipients.length} recipient(s): ${notifyRecipients.join(", ")} (v1 records intent; v2 will dispatch via aibtc.news inbox at 100 sats/alert)`

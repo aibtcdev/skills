@@ -99,13 +99,14 @@ Options:
 
 ## State taxonomy
 
-| State                     | Trigger                                                                                | Severity |
-|---------------------------|----------------------------------------------------------------------------------------|----------|
-| `not_compiled`            | `compiledAt == null` AND date >= today (or compiled within threshold grace)            | info     |
-| `stale_not_compiled`      | `compiledAt == null` AND date < today                                                  | warn     |
-| `compiled_no_inscription` | `compiledAt` set AND `inscription == null` AND age > `thresholdHours`                  | red      |
-| `inscription_unconfirmed` | `inscriptionId` set AND on-chain reveal tx not confirmed                               | warn     |
-| `healthy`                 | `inscriptionId` set AND on-chain reveal tx confirmed in a block                        | ok       |
+| State                     | Trigger                                                                    | Severity |
+|---------------------------|----------------------------------------------------------------------------|----------|
+| `not_compiled`            | `compiledAt == null` AND date >= today                                     | info     |
+| `stale_not_compiled`      | `compiledAt == null` AND date < today                                      | warn     |
+| `pending_inscription`     | `compiledAt` set AND `inscription == null` AND age <= `thresholdHours`     | info     |
+| `compiled_no_inscription` | `compiledAt` set AND `inscription == null` AND age > `thresholdHours`      | red      |
+| `inscription_unconfirmed` | `inscriptionId` set AND on-chain reveal tx not confirmed                   | warn     |
+| `healthy`                 | `inscriptionId` set AND on-chain reveal tx confirmed in a block            | ok       |
 
 On-chain verification uses the reveal txid parsed from the inscription ID itself (`<txid>i<index>`) — confirmed April 2026 via `c6892918...i0` on block 944,581. The brief API's `inscribedTxid` field is unreliable (often `null` even when the inscription is confirmed), so the skill ignores it and queries mempool.space directly.
 
