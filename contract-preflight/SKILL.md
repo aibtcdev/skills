@@ -40,7 +40,7 @@ Simulate a single contract call. Returns decoded Clarity result and broadcast re
 ```bash
 bun run contract-preflight/contract-preflight.ts run \
   --action=simulate \
-  --sender SP4DXVEC16FS6QR7RBKGWZYJKTXPC81W49W0ATJE \
+  --sender <YOUR_STACKS_ADDRESS> \
   --contract SP2VCQJGH7PHP2DJK7Z0V48AGBHQAW3R3ZW1QF4N.zsbtc-v2-0 \
   --expression '(contract-call? .zsbtc-v2-0 get-balance tx-sender)'
 ```
@@ -51,7 +51,7 @@ Simulate a sequence of contract calls in a single session. State carries across 
 ```bash
 bun run contract-preflight/contract-preflight.ts run \
   --action=batch \
-  --sender SP4DXVEC16FS6QR7RBKGWZYJKTXPC81W49W0ATJE \
+  --sender <YOUR_STACKS_ADDRESS> \
   --steps '[
     {"contract":"SP2VCQJGH7PHP2DJK7Z0V48AGBHQAW3R3ZW1QF4N.zsbtc-v2-0","expression":"(contract-call? .zsbtc-v2-0 get-balance tx-sender)"},
     {"contract":"SM3VDXK3WZZSA84XXFKAFAF15NNZX32CTSG82JFQ4.sbtc-token","expression":"(contract-call? .sbtc-token get-balance tx-sender)"}
