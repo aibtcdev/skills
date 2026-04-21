@@ -1966,6 +1966,7 @@ program
   .action(async (opts: Record<string, string>) => {
     const result = await runPipeline(opts.wallet, "emergency", opts);
     console.log(JSON.stringify(result, null, 2));
+    if (result.status !== "ok") process.exit(1);
   });
 
 program
