@@ -1,6 +1,6 @@
 {
   "version": "0.40.0",
-  "generated": "2026-04-21T16:54:16.531Z",
+  "generated": "2026-04-21T16:55:30.987Z",
   "skills": [
     {
       "name": "agent-lookup",
@@ -1965,6 +1965,36 @@
         "stacking_lottery_claim_rewards",
         "stacking_lottery_cancel_pot"
       ]
+    },
+    {
+      "name": "stacks-alpha-engine",
+      "description": "Cross-protocol yield executor for Zest, Hermetica, Granite, and HODLMM with 3-tier yield mapping, sBTC Proof-of-Reserve verification, and multi-gate safety pipeline",
+      "entry": "stacks-alpha-engine/stacks-alpha-engine.ts",
+      "arguments": [
+        "doctor",
+        "scan",
+        "deploy",
+        "withdraw",
+        "rebalance",
+        "migrate",
+        "emergency",
+        "install-packs"
+      ],
+      "requires": [
+        "wallet",
+        "signing",
+        "settings"
+      ],
+      "tags": [
+        "defi",
+        "write",
+        "mainnet-only",
+        "requires-funds",
+        "l2"
+      ],
+      "userInvocable": false,
+      "author": "cliqueengagements",
+      "authorAgent": "Micro Basilisk (Agent 77) — SP219TWC8G12CSX5AB093127NC82KYQWEH8ADD1AY | bc1qzh2z92dlvccxq5w756qppzz8fymhgrt2dv8cf5"
     },
     {
       "name": "stacks-market",
