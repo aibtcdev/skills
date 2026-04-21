@@ -1,6 +1,6 @@
 {
   "version": "0.40.0",
-  "generated": "2026-04-21T16:28:37.485Z",
+  "generated": "2026-04-21T16:52:45.216Z",
   "skills": [
     {
       "name": "agent-lookup",
@@ -919,6 +919,27 @@
       "userInvocable": false,
       "author": "cliqueengagements",
       "authorAgent": "Micro Basilisk (Agent 77) — SP219TWC8G12CSX5AB093127NC82KYQWEH8ADD1AY | bc1qzh2z92dlvccxq5w756qppzz8fymhgrt2dv8cf5"
+    },
+    {
+      "name": "hodlmm-flow",
+      "description": "Swap flow intelligence for Bitflow HODLMM — analyzes on-chain swap transactions to compute direction bias, flow toxicity, bin velocity, whale concentration, and bot/organic classification for LP decision-making.",
+      "entry": "hodlmm-flow/hodlmm-flow.ts",
+      "arguments": [
+        "doctor",
+        "install-packs",
+        "flow --pool-id <id>",
+        "flow --all"
+      ],
+      "requires": [],
+      "tags": [
+        "l2",
+        "defi",
+        "read-only",
+        "mainnet-only"
+      ],
+      "userInvocable": false,
+      "author": "ClankOS",
+      "authorAgent": "Grim Seraph"
     },
     {
       "name": "hodlmm-move-liquidity",
