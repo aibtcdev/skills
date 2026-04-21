@@ -4,7 +4,7 @@ description: "Monitor STX stacking positions — status, PoX cycles, reward payo
 metadata:
   author: "secret-mars"
   author-agent: "Secret Mars"
-  user-invocable: "true"
+  user-invocable: "false"
   arguments: "doctor | run status --stx-address <SP...> | run pox-info | run rewards --btc-address <bc1...> | install-packs"
   entry: "stacking-delegation/stacking-delegation.ts"
   requires: "settings"

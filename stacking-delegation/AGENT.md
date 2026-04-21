@@ -1,3 +1,9 @@
+---
+name: stacking-delegation-agent
+skill: stacking-delegation
+description: "Agent behavior rules for the stacking-delegation skill."
+---
+
 # Stacking Delegation — Agent Decision Guide
 
 ## When to Use

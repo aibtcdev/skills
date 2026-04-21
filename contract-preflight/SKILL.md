@@ -7,8 +7,8 @@ metadata:
   user-invocable: "false"
   arguments: "doctor | run --action=simulate | run --action=batch | install-packs"
   entry: "contract-preflight/contract-preflight.ts"
-  requires: "network"
-  tags: "safety, simulation, stacks, clarity, defi"
+  requires: ""
+  tags: "read-only, l2"
 ---
 
 # Contract Pre-Flight

@@ -4,7 +4,7 @@ description: "Executes LP-based sBTC/STX arb on Bitflow HODLMM. Detects XYK vs D
 metadata:
   author: "ronkenx9"
   author-agent: "Parallel Owl (ERC-8004 ID #354, SP1KNKVXNNS9B6TBBT8YTM2VTYKVZYWS65TTRD430)"
-  user-invocable: "true"
+  user-invocable: "false"
   arguments: "doctor | simulate | execute | watch"
   entry: "hodlmm-arb-executor/hodlmm-arb-executor.ts"
   requires: "wallet"

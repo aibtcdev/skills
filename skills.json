@@ -1,6 +1,6 @@
 {
-  "version": "0.38.1",
-  "generated": "2026-04-15T20:42:52.669Z",
+  "version": "0.40.0",
+  "generated": "2026-04-21T16:28:37.485Z",
   "skills": [
     {
       "name": "agent-lookup",
@@ -665,6 +665,25 @@
       ]
     },
     {
+      "name": "contract-preflight",
+      "description": "Dry-run Stacks contract calls against mainnet state before broadcasting — catches errors, prevents wasted gas",
+      "entry": "contract-preflight/contract-preflight.ts",
+      "arguments": [
+        "doctor",
+        "run --action=simulate",
+        "run --action=batch",
+        "install-packs"
+      ],
+      "requires": [],
+      "tags": [
+        "read-only",
+        "l2"
+      ],
+      "userInvocable": false,
+      "author": "secret-mars",
+      "authorAgent": "Secret Mars"
+    },
+    {
       "name": "credentials",
       "description": "Encrypted credential store — add, retrieve, list, and delete named secrets (API keys, tokens, passwords) stored AES-256-GCM encrypted at ~/.aibtc/credentials.json. Each write operation requires the master password; listing metadata does not.",
       "entry": "credentials/credentials.ts",
@@ -853,6 +872,33 @@
       "userInvocable": false,
       "author": "cliqueengagements",
       "authorAgent": "Micro Basilisk (Agent 77) — SP219TWC8G12CSX5AB093127NC82KYQWEH8ADD1AY | bc1qzh2z92dlvccxq5w756qppzz8fymhgrt2dv8cf5"
+    },
+    {
+      "name": "hodlmm-arb-executor",
+      "description": "Executes LP-based sBTC/STX arb on Bitflow HODLMM. Detects XYK vs DLMM price spread, enters via swap + add-liquidity-simple, exits on spread reversal or 2h timeout. Write-capable; requires --confirm. Emits MCP command objects.",
+      "entry": "hodlmm-arb-executor/hodlmm-arb-executor.ts",
+      "arguments": [
+        "doctor",
+        "simulate",
+        "execute",
+        "watch"
+      ],
+      "requires": [
+        "wallet"
+      ],
+      "tags": [
+        "defi",
+        "write",
+        "mainnet-only",
+        "requires-funds",
+        "l2"
+      ],
+      "userInvocable": false,
+      "author": "ronkenx9",
+      "authorAgent": [
+        "Parallel Owl (ERC-8004 ID #354",
+        "SP1KNKVXNNS9B6TBBT8YTM2VTYKVZYWS65TTRD430)"
+      ]
     },
     {
       "name": "hodlmm-bin-guardian",
@@ -1815,6 +1861,28 @@
         "stack_stx",
         "extend_stacking"
       ]
+    },
+    {
+      "name": "stacking-delegation",
+      "description": "Monitor STX stacking positions — status, PoX cycles, reward payouts, and delegation eligibility for autonomous agents.",
+      "entry": "stacking-delegation/stacking-delegation.ts",
+      "arguments": [
+        "doctor",
+        "run status --stx-address <SP...>",
+        "run pox-info",
+        "run rewards --btc-address <bc1...>",
+        "install-packs"
+      ],
+      "requires": [
+        "settings"
+      ],
+      "tags": [
+        "l2",
+        "read-only"
+      ],
+      "userInvocable": false,
+      "author": "secret-mars",
+      "authorAgent": "Secret Mars"
     },
     {
       "name": "stacking-lottery",
