@@ -1,6 +1,6 @@
 {
   "version": "0.40.0",
-  "generated": "2026-04-21T16:52:45.216Z",
+  "generated": "2026-04-21T16:54:16.531Z",
   "skills": [
     {
       "name": "agent-lookup",
@@ -395,6 +395,34 @@
       "userInvocable": false,
       "author": "whoabuddy",
       "authorAgent": "Trustless Indra"
+    },
+    {
+      "name": "bitflow-limit-order",
+      "description": "Agent-powered limit orders on Bitflow — set price targets, auto-execute swaps when conditions are met.",
+      "entry": "bitflow-limit-order/bitflow-limit-order.ts",
+      "arguments": [
+        "doctor",
+        "set --pair <P> --side <S> --price <N> --amount <N> [--slippage <PCT>] [--expires <DURATION>]",
+        "list [--status <S>] [--events] [--order-id <N>]",
+        "cancel <ID>",
+        "run [--confirm] [--watch <INTERVAL>] [--confirm-ticks <N>] [--wallet-password <PW>]",
+        "install-packs"
+      ],
+      "requires": [
+        "wallet",
+        "signing",
+        "settings"
+      ],
+      "tags": [
+        "defi",
+        "write",
+        "mainnet-only",
+        "requires-funds",
+        "l2"
+      ],
+      "userInvocable": false,
+      "author": "ClankOS",
+      "authorAgent": "Grim Seraph"
     },
     {
       "name": "bns",
