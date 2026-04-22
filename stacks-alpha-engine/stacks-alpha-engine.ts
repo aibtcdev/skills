@@ -1130,11 +1130,13 @@ function inferTargetPoolId(command: string, opts: Record<string, string>): strin
   if (command === "deploy") {
     if (protocol === "hermetica" && token && token !== "usdh") return "dlmm_8";  // USDh/USDCx swap pool
     if (protocol === "granite" && token && token !== "aeusdc") return "dlmm_7";  // aeUSDC/USDCx swap pool
+    if (protocol === "hodlmm") return opts["pool-id"] ?? "dlmm_1";  // honor --pool-id for HODLMM direct deploy
     return "dlmm_1";
   }
   if (command === "migrate") {
     if (opts.to === "hermetica") return "dlmm_8";
     if (opts.to === "granite") return "dlmm_7";
+    if (opts.to === "hodlmm") return opts["pool-id"] ?? "dlmm_1";
     return "dlmm_1";
   }
   return "dlmm_1";
@@ -1239,7 +1241,7 @@ function buildDlmmSwapInstruction(
   };
 }
 
-function buildDeployInstructions(protocol: Protocol, amount: number, token: string, scout: ScoutResult): ExecuteInstruction[] {
+function buildDeployInstructions(protocol: Protocol, amount: number, token: string, scout: ScoutResult, poolId: string = "dlmm_1"): ExecuteInstruction[] {
   const instructions: ExecuteInstruction[] = [];
   const wallet = scout.wallet;
 
@@ -1377,52 +1379,77 @@ function buildDeployInstructions(protocol: Protocol, amount: number, token: stri
       break;
 
     case "hodlmm": {
-      // The HODLMM deploy path targets the canonical sBTC/USDCx 10bps pool (dlmm_1) only.
-      // Refuse explicitly for unsupported tokens so the caller does not get a silent no-op
-      // (empty bins emitted to dlmm_1) when their wallet can't fund this pool's pair.
-      if (token !== "sbtc" && token !== "usdcx") {
+      // Parametric on --pool-id (mirrors the rebalance path pattern). Resolves the
+      // pool definition from HODLMM_POOLS and generalises bin construction to use
+      // the chosen pool's tokenX/tokenY instead of the prior sbtc/usdcx hardcode.
+      // Refuses if the caller's --token does not match either of the pool's tokens
+      // (safety floor — prevents silent no-op deposits when the token is unrelated
+      // to the pool).
+      const pool = HODLMM_POOLS.find(p => `dlmm_${p.id}` === poolId);
+      if (!pool) {
         instructions.push({
           tool: "info",
           params: {},
-          description: `HODLMM deploy supports sBTC or USDCx only (dlmm_1 sBTC/USDCx pool). For ${token}, use protocol=zest|hermetica|granite or acquire sBTC/USDCx first.`,
+          description: `Unknown HODLMM pool ${poolId}. Known pools: ${HODLMM_POOLS.map(p => `dlmm_${p.id}`).join(", ")}.`,
+        });
+        break;
+      }
+      if (token !== pool.tokenX && token !== pool.tokenY) {
+        instructions.push({
+          tool: "info",
+          params: {},
+          description: `HODLMM pool ${poolId} (${pool.name}) accepts ${pool.tokenX.toUpperCase()} or ${pool.tokenY.toUpperCase()} only (got ${token}). Acquire ${pool.tokenX}/${pool.tokenY} first or choose a different --pool-id.`,
         });
         break;
       }
 
-      const hasSbtc = scout.balances.sbtc.amount > 0;
-      const hasUsdcx = scout.balances.usdcx.amount > 0;
+      // Read atomic balances of the pool's two tokens from scout. `scout.balances`
+      // is typed with fixed keys, so we cast through Record<string, …> to index by
+      // the pool's token-symbol strings.
+      const balances = scout.balances as unknown as Record<string, { amount: number; usd: number }>;
+      const xMeta = TOKENS[pool.tokenX];
+      const yMeta = TOKENS[pool.tokenY];
+      const xBalAtomic = Math.floor((balances[pool.tokenX]?.amount ?? 0) * Math.pow(10, xMeta?.decimals ?? 6));
+      const yBalAtomic = Math.floor((balances[pool.tokenY]?.amount ?? 0) * Math.pow(10, yMeta?.decimals ?? 6));
+      const hasX = xBalAtomic > 0;
+      const hasY = yBalAtomic > 0;
 
-      if (!hasSbtc && !hasUsdcx) {
+      if (!hasX && !hasY) {
         instructions.push({
           tool: "info",
           params: {},
-          description: "HODLMM deploy requires sBTC and/or USDCx in wallet — neither present.",
+          description: `HODLMM deploy to ${poolId} (${pool.name}) requires ${pool.tokenX.toUpperCase()} and/or ${pool.tokenY.toUpperCase()} in wallet — neither present.`,
         });
         break;
       }
 
       const bins: Array<{ activeBinOffset: number; xAmount: string; yAmount: string }> = [];
 
-      if (hasSbtc && hasUsdcx) {
+      if (hasX && hasY) {
         // Both tokens at active bin: dlmm-core allows both nonzero at bin-id == active-bin-id.
-        bins.push({ activeBinOffset: 0, xAmount: String(amount), yAmount: String(Math.floor(scout.balances.usdcx.amount * 1e6)) });
-      } else if (hasSbtc) {
+        // `amount` is interpreted as the chosen --token's atomic amount; the counter-token
+        // pairs the full available balance.
+        const xAmt = token === pool.tokenX ? amount : xBalAtomic;
+        const yAmt = token === pool.tokenY ? amount : yBalAtomic;
+        bins.push({ activeBinOffset: 0, xAmount: String(xAmt), yAmount: String(yAmt) });
+      } else if (hasX) {
         // X-only deposit. Per dlmm-core-v-1-1 invariant (lines 1672-1674):
         //   (asserts! (or (>= bin-id active-bin-id) (is-eq x-amount u0)) ERR_INVALID_X_AMOUNT)
-        // X amounts are only allowed at bin-id ≥ active-bin-id, i.e. above (or at) active.
-        for (let i = 1; i <= 5; i++) bins.push({ activeBinOffset: i, xAmount: String(Math.floor(amount / 5)), yAmount: "0" });
-      } else if (hasUsdcx) {
+        // X amounts are only allowed at bin-id ≥ active-bin-id — above (or at) active.
+        const xAmt = token === pool.tokenX ? amount : xBalAtomic;
+        for (let i = 1; i <= 5; i++) bins.push({ activeBinOffset: i, xAmount: String(Math.floor(xAmt / 5)), yAmount: "0" });
+      } else {
         // Y-only deposit. Per dlmm-core-v-1-1 invariant (lines 1672-1674):
         //   (asserts! (or (<= bin-id active-bin-id) (is-eq y-amount u0)) ERR_INVALID_Y_AMOUNT)
-        // Y amounts are only allowed at bin-id ≤ active-bin-id, i.e. below (or at) active.
-        const usdcxMicro = Math.floor(scout.balances.usdcx.amount * 1e6);
-        for (let i = -5; i <= -1; i++) bins.push({ activeBinOffset: i, xAmount: "0", yAmount: String(Math.floor(usdcxMicro / 5)) });
+        // Y amounts are only allowed at bin-id ≤ active-bin-id — below (or at) active.
+        const yAmt = token === pool.tokenY ? amount : yBalAtomic;
+        for (let i = -5; i <= -1; i++) bins.push({ activeBinOffset: i, xAmount: "0", yAmount: String(Math.floor(yAmt / 5)) });
       }
 
       instructions.push({
         tool: "bitflow:add-liquidity-simple",
-        params: { poolId: "dlmm_1", bins: JSON.stringify(bins) },
-        description: `Add liquidity to HODLMM sBTC-USDCx-10bps pool (${bins.length} bins)`,
+        params: { poolId, bins: JSON.stringify(bins) },
+        description: `Add liquidity to HODLMM ${pool.name} (${bins.length} bins)`,
       });
       break;
     }
@@ -1677,8 +1704,8 @@ async function _runPipeline(wallet: string, command: string, opts: Record<string
         }
       }
 
-      instructions = buildDeployInstructions(protocol, amount, token, scout);
-      description = `Deploy ${amount} ${token} to ${protocol}`;
+      instructions = buildDeployInstructions(protocol, amount, token, scout, opts["pool-id"] ?? "dlmm_1");
+      description = `Deploy ${amount} ${token} to ${protocol}${protocol === "hodlmm" ? ` (${opts["pool-id"] ?? "dlmm_1"})` : ""}`;
       break;
     }
 
@@ -1721,7 +1748,7 @@ async function _runPipeline(wallet: string, command: string, opts: Record<string
       instructions.push(...buildWithdrawInstructions(from, scout));
       const token = opts.token ?? inferToken(to);
       const amount = parseInt(opts.amount!, 10);
-      instructions.push(...buildDeployInstructions(to, amount, token, scout));
+      instructions.push(...buildDeployInstructions(to, amount, token, scout, opts["pool-id"] ?? "dlmm_1"));
       description = `Migrate from ${from} to ${to}`;
       break;
     }
@@ -2062,6 +2089,7 @@ program
   .requiredOption("--protocol <name>", "Target protocol: zest, hermetica, granite, hodlmm")
   .requiredOption("--amount <value>", "Amount in smallest unit (sats for sBTC, micro for stablecoins)")
   .option("--token <symbol>", "Token to deploy (default: inferred from protocol)")
+  .option("--pool-id <id>", "HODLMM pool ID for protocol=hodlmm (default: dlmm_1). Ignored for other protocols.", "dlmm_1")
   .option("--force", "Override 0% APY refusal")
   .option("--confirm", "Execute the transaction (without this flag, outputs a dry-run preview)")
   .action(async (opts: Record<string, string>) => {
@@ -2102,6 +2130,7 @@ program
   .requiredOption("--to <protocol>", "Target protocol: zest, hermetica, granite, hodlmm")
   .option("--token <symbol>", "Token to deploy into target (default: inferred)")
   .option("--amount <value>", "Amount in smallest unit (default: all)")
+  .option("--pool-id <id>", "HODLMM pool ID when --to=hodlmm (default: dlmm_1). Ignored otherwise.", "dlmm_1")
   .option("--confirm", "Execute the transaction (without this flag, outputs a dry-run preview)")
   .action(async (opts: Record<string, string>) => {
     const result = await runPipeline(opts.wallet, "migrate", opts);
