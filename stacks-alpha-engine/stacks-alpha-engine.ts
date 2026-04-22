@@ -1165,13 +1165,22 @@ function expectedSwapOutput(
 // Build a call_contract instruction for a Bitflow DLMM swap.
 // Uses swap-simple-multi with a single swap in the list.
 //
-// Safety pattern (matches author's mainnet refs 0x958719b5… and 0x9f3731fc…):
-//   - postConditionMode: "deny" (NOT "allow" — every emitted swap signs with fund-safety ON)
-//   - 2-entry post-conditions: caller's max input + pool's min output
+// Safety pattern (matches sibling skill bff-skills#494 commit 02d10989 + knowledge-base.md
+// line 438 "allow + sender-pin on routable fee flows, deny where unambiguous"):
+//   - postConditionMode: "allow" with a dual-pin envelope
+//   - 2-entry post-conditions: caller's max input (willSendLte) + pool's min output (willSendGte)
 //   - min-received computed in OUTPUT-token atomic units (caller passes `expectedOut`)
-//   - max-steps u230 (per macbotmini-eng's #339 audit (d) — comfortably above any single-hop
-//     bin-traversal need; eliminates partial-fill risk on legitimately large swaps without
-//     extra gas cost when fewer steps suffice)
+//   - max-steps u230 (per macbotmini-eng's #339 audit (d))
+//
+// Rationale for Allow-not-Deny: @macbotmini-eng's #494 audit established that DLMM swap
+// fees accrue inside dlmm-core's unclaimed-protocol-fees map and bin balances — they do
+// NOT emit FT transfer events on the swap tx (verified on-chain against 0x134df5e1 /
+// 0x5195822e / #494 proof tx 0xf4f49328). Under that verified fee flow, the pool-side
+// willSendGte pin IS the receive-side fund-safety protection; Deny mode adds no further
+// guarantee AND empirically over-constrains on stable-stable pools (tx 0x5986066a on
+// dlmm_7 aborted with abort_by_post_condition under Deny+2PC while the same envelope
+// shape works on dlmm_1 / dlmm_6 / dlmm_3 under Allow). KB line 438 explicitly scopes
+// Deny to "unambiguous" cases like Granite redeem.
 function buildDlmmSwapInstruction(
   route: DlmmSwapRoute,
   caller: string,
@@ -1232,7 +1241,7 @@ function buildDlmmSwapInstruction(
           },
         }],
       }],
-      postConditionMode: "deny",
+      postConditionMode: "allow",
       postConditions,
       requires_residual_check: true,
       _note: "Agent runtime: read consumed-in from tx receipt before chained deploy step. If consumed-in < amount, surface residual to caller (max-steps may have capped fold).",
