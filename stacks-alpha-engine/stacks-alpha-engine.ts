@@ -16,10 +16,10 @@
  * Safety: every write runs Scout -> Reserve -> Guardian -> Executor. No bypasses.
  *
  * Protocols & tokens:
- *   Zest      — supply sBTC, wSTX, stSTX, USDC, USDh  (MCP native zest_supply/withdraw)
- *   Hermetica — stake USDh -> sUSDh                     (call_contract staking-v1-1)
- *   Granite   — deposit aeUSDC to LP                    (call_contract liquidity-provider-v1)
- *   HODLMM    — LP in sBTC/STX/USDCx/USDh/aeUSDC pools (Bitflow skill)
+ *   Zest      — supply/withdraw sBTC; borrow/repay USDh  (MCP native zest_supply/withdraw/borrow/repay)
+ *   Hermetica — stake USDh -> sUSDh                       (call_contract staking-v1-1)
+ *   Granite   — deposit aeUSDC to LP                      (call_contract liquidity-provider-v1)
+ *   HODLMM    — LP in sBTC/STX/USDCx/USDh/aeUSDC pools   (Bitflow skill)
  *
  * Usage:
  *   bun run stacks-alpha-engine/stacks-alpha-engine.ts doctor
@@ -1624,6 +1624,27 @@ async function _runPipeline(wallet: string, command: string, opts: Record<string
       return { status: "error", command, error: "Invalid protocol. Use: zest, hermetica, granite, hodlmm" };
     }
   }
+  if (command === "borrow" || command === "repay") {
+    // Zest v0 market is the only protocol exposing borrow/repay the skill wraps.
+    // Other protocols (Hermetica stake-yield, Granite LP supply, HODLMM LP) have
+    // no matching MCP surface for debt operations — intentionally excluded.
+    const protocol = opts.protocol;
+    if (!protocol || protocol !== "zest") {
+      return { status: "error", command, error: "Invalid protocol. Only zest supports borrow/repay." };
+    }
+    const amount = parseInt(opts.amount ?? "0", 10);
+    if (isNaN(amount) || amount <= 0) return { status: "error", command, error: "Amount must be a positive number" };
+    const token = (opts.token ?? "usdh").toLowerCase();
+    // USDh is the only asset for which zest_borrow via MCP succeeds on v0-4-market.borrow.
+    // Empirical probes (2026-04-22) on the same wallet + collateral returned
+    // abort_by_response (err none) for USDCx, wSTX, stSTX — likely an upstream MCP
+    // routing gap around borrow-helper-v2-1-7 (Pyth oracle fee wrapper). Refusing
+    // non-USDh saves gas rather than broadcasting a known-failing tx.
+    const validTokens_borrowRepay: Record<string, string[]> = { zest: ["usdh"] };
+    if (!validTokens_borrowRepay[protocol].includes(token)) {
+      return { status: "error", command, error: `${protocol} ${command} does not accept ${token}. Valid: ${validTokens_borrowRepay[protocol].join(", ")}` };
+    }
+  }
   if (command === "migrate") {
     if (!opts.from || !opts.to || opts.from === opts.to) {
       return { status: "error", command, error: "Specify --from and --to (different protocols)" };
@@ -1778,6 +1799,35 @@ async function _runPipeline(wallet: string, command: string, opts: Record<string
       const amount = parseInt(opts.amount!, 10);
       instructions.push(...buildDeployInstructions(to, amount, token, scout, ((opts as Record<string, string>).poolId ?? "dlmm_1")));
       description = `Migrate from ${from} to ${to}`;
+      break;
+    }
+
+    case "borrow": {
+      // Input already validated in Step 0 (zest-only, USDh-only, positive amount).
+      // Borrow is the debt-issuance leg of the leveraged-yield pattern. No YTG gate
+      // applies — the earn leg (Hermetica stake of the borrowed USDh) is where YTG
+      // is evaluated on its own `deploy` call.
+      const token = (opts.token ?? "usdh").toUpperCase();
+      const amount = parseInt(opts.amount!, 10);
+      instructions.push({
+        tool: "zest_borrow",
+        params: { asset: token, amount: String(amount) },
+        description: `Borrow ${amount} ${token} from Zest v2 against existing collateral`,
+      });
+      description = `Borrow ${amount} ${token} from Zest`;
+      break;
+    }
+
+    case "repay": {
+      // Input already validated in Step 0.
+      const token = (opts.token ?? "usdh").toUpperCase();
+      const amount = parseInt(opts.amount!, 10);
+      instructions.push({
+        tool: "zest_repay",
+        params: { asset: token, amount: String(amount) },
+        description: `Repay ${amount} ${token} debt to Zest v2`,
+      });
+      description = `Repay ${amount} ${token} to Zest`;
       break;
     }
   }
@@ -2146,6 +2196,34 @@ program
   .option("--confirm", "Execute the transaction (without this flag, outputs a dry-run preview)")
   .action(async (opts: Record<string, string>) => {
     const result = await runPipeline(opts.wallet, "rebalance", opts);
+    console.log(JSON.stringify(result, null, 2));
+    if (result.status !== "ok") process.exit(1);
+  });
+
+program
+  .command("borrow")
+  .description("Borrow a debt asset against existing Zest collateral (leveraged-yield leg)")
+  .requiredOption("--wallet <address>", "Stacks wallet address (SP...)")
+  .requiredOption("--protocol <name>", "Protocol: zest")
+  .requiredOption("--token <symbol>", "Borrow asset (Zest: usdh)")
+  .requiredOption("--amount <value>", "Amount in smallest unit (µUSDh for usdh; USDh has 8 decimals)")
+  .option("--confirm", "Execute the transaction (without this flag, outputs a dry-run preview)")
+  .action(async (opts: Record<string, string>) => {
+    const result = await runPipeline(opts.wallet, "borrow", opts);
+    console.log(JSON.stringify(result, null, 2));
+    if (result.status !== "ok") process.exit(1);
+  });
+
+program
+  .command("repay")
+  .description("Repay a borrowed Zest debt asset")
+  .requiredOption("--wallet <address>", "Stacks wallet address (SP...)")
+  .requiredOption("--protocol <name>", "Protocol: zest")
+  .requiredOption("--token <symbol>", "Repay asset (Zest: usdh)")
+  .requiredOption("--amount <value>", "Amount in smallest unit (µUSDh for usdh)")
+  .option("--confirm", "Execute the transaction (without this flag, outputs a dry-run preview)")
+  .action(async (opts: Record<string, string>) => {
+    const result = await runPipeline(opts.wallet, "repay", opts);
     console.log(JSON.stringify(result, null, 2));
     if (result.status !== "ok") process.exit(1);
   });
