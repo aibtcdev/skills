@@ -53,10 +53,12 @@ description: "Autonomous yield executor that scans 6 tokens across 4 Stacks DeFi
 ## Protocol-Specific Rules
 
 ### Zest v2
-- Supply via `zest_supply` (MCP native) — accepts sBTC, wSTX, stSTX, USDC, USDh
-- Withdraw via `zest_withdraw` (MCP native)
+- Supply sBTC via `zest_supply` (MCP native; routes to `v0-4-market.supply-collateral-add`)
+- Withdraw sBTC via `zest_withdraw` (MCP native; routes to `v0-4-market.collateral-remove-redeem`)
+- Borrow USDh via `zest_borrow` (MCP native; routes to `v0-4-market.borrow`) — **USDh only** by `validTokens_borrowRepay` gate. USDCx/wSTX/stSTX return `abort_by_response (err none)` on MCP probe, likely an upstream `borrow-helper-v2-1-7` routing gap; refused to save gas.
+- Repay USDh via `zest_repay` (MCP native; routes to `v0-4-market.repay`)
 - APY read live from vault utilization + interest rate
-- Currently low utilization — APY may be 0%. Skip in recommendations unless user forces.
+- Currently low supply APY — `deploy --protocol zest` is YTG-gated and typically refuses without `--force`. Borrow path is the interesting leg — see "Leveraged-yield pattern" in SKILL.md.
 
 ### Hermetica
 - Stake USDh via `call_contract` -> `staking-v1-1.stake(amount: uint, affiliate: none)`
@@ -91,7 +93,7 @@ When PoR signal is RED or user runs `emergency`:
 ## What This Agent Does NOT Do
 
 - Does not hold private keys or sign transactions directly
-- Does not borrow or leverage (yield optimization only)
+- Does not borrow any non-USDh Zest asset (refused pre-broadcast; see Zest v2 rules above)
 - Does not mint USDh via Hermetica minting-v1 (blocked by trait_reference)
 - Does not add sBTC collateral to Granite borrower-v1 (blocked by trait_reference)
 - Does not make investment recommendations (data-driven options, not financial advice)
