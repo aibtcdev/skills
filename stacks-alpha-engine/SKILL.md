@@ -49,18 +49,19 @@ No other skill covers all 4 Stacks DeFi protocols with working read AND write pa
 
 Stacks Alpha Engine uses a **defense-in-depth** approach. Stacks post-conditions are the standard safety mechanism, but DeFi operations that mint or burn tokens (LP shares, sUSDh) cannot be expressed as sender-side post-conditions. The engine compensates with layered gates that must all pass before any write executes.
 
-### Why `postConditionMode: "allow"`
+### Post-condition modes per operation
 
-Deposit, stake, unstake, and swap paths use `postConditionMode: "allow"` because:
+The engine uses `postConditionMode: "deny"` with explicit post-conditions wherever the on-chain
+flow is sender-expressible, and `"allow"` only where the operation mints/burns tokens whose
+movement cannot be captured as a sender-side post-condition.
 
-| Operation | Why `deny` mode is impossible |
-|-----------|-------------------------------|
-| Hermetica stake | Mints sUSDh back to caller — mint is not a sender-side transfer |
-| Hermetica unstake | Burns sUSDh and creates a claim — burn is not expressible as sender post-condition |
-| Granite deposit | Mints LP tokens back to caller — same mint issue |
-| DLMM swap | Router may touch intermediate pools — sender can't predict exact hops |
-
-Where `deny` mode IS possible, the engine uses it. Granite `redeem` has explicit post-conditions: `lte` cap on pool outflow + `gte: "1"` floor on wallet receive.
+| Operation | Mode | Rationale |
+|-----------|------|-----------|
+| DLMM swap (`swap-simple-multi`) | **deny** | 2-entry envelope: caller `lte amount` of input asset + pool `gte minReceived` of output asset. Matches the author's mainnet pattern in tx [`0x958719b5…`](https://explorer.hiro.so/txid/0x958719b5df3ac504bd60aec337494d5effe123e9d41e06ae684a4ced26520d36) and [`0x9f3731fc…`](https://explorer.hiro.so/txid/0x9f3731fc8fdec872270255a79739eb2c01b353b303c9be78ae8ef9c42cf1a0d8). |
+| Granite `redeem` | **deny** | `lte` cap on pool outflow + `gte: "1"` floor on wallet receive. |
+| Hermetica `stake` | allow | Mints sUSDh back to caller — mint is not a sender-side transfer. Outgoing USDh `lte` PC asserted as belt-and-suspenders. |
+| Hermetica `unstake` | allow | Burns sUSDh and creates a claim — burn is not expressible as sender PC. Outgoing sUSDh `lte` PC asserted. |
+| Granite `deposit` | allow | Mints LP tokens back to caller — same mint issue. Outgoing aeUSDC `lte` PC asserted. |
 
 ### What provides safety instead
 
