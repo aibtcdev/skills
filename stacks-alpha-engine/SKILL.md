@@ -51,14 +51,15 @@ Stacks Alpha Engine uses a **defense-in-depth** approach. Stacks post-conditions
 
 ### Post-condition modes per operation
 
-The engine uses `postConditionMode: "deny"` with explicit post-conditions wherever the on-chain
-flow is sender-expressible, and `"allow"` only where the operation mints/burns tokens whose
-movement cannot be captured as a sender-side post-condition.
+The engine uses `postConditionMode: "deny"` only where the on-chain flow is unambiguous
+(fixed, sender-expressible FT movements). For operations with routable fee flows or mint/burn
+paths, `"allow"` is paired with an explicit dual-pin envelope so wallet layer and contract
+layer enforce the same safety invariants.
 
 | Operation | Mode | Rationale |
 |-----------|------|-----------|
-| DLMM swap (`swap-simple-multi`) | **deny** | 2-entry envelope: caller `lte amount` of input asset + pool `gte minReceived` of output asset. Matches the author's mainnet pattern in tx [`0x958719b5…`](https://explorer.hiro.so/txid/0x958719b5df3ac504bd60aec337494d5effe123e9d41e06ae684a4ced26520d36) and [`0x9f3731fc…`](https://explorer.hiro.so/txid/0x9f3731fc8fdec872270255a79739eb2c01b353b303c9be78ae8ef9c42cf1a0d8). |
-| Granite `redeem` | **deny** | `lte` cap on pool outflow + `gte: "1"` floor on wallet receive. |
+| DLMM swap (`swap-simple-multi`) | **allow** + dual-pin | Envelope: `Pc.principal(sender).willSendLte(amount_in)` on input + `Pc.principal(pool).willSendGte(min_out)` on output. Matches the sibling skill's pattern validated in [`bff-skills#494`](https://github.com/BitflowFinance/bff-skills/pull/494) (commit [`02d10989`](https://github.com/cliqueengagements/bff-skills/commit/02d10989), on-chain proof tx [`0xf4f49328…`](https://explorer.hiro.so/txid/0xf4f4932800a80234845a8d199556ad9c0ff4aa99874a95c819c13779b164cbc8?chain=mainnet)) and `bff-skills/docs/knowledge-base.md` line 438 (`"allow + sender-pin on routable fee flows"`). Allow mode preserved because protocol/provider fees accrue inside `dlmm-core`'s `unclaimed-protocol-fees` map and bin balances without emitting FT transfer events on the swap tx; the pool-side `willSendGte` pin IS the receive-side fund-safety protection. Empirically Deny + 2 PCs under-specifies stable-stable pools (tx [`0x5986066a…`](https://explorer.hiro.so/txid/0x5986066a93b3c8e6466d4f3f2da33a4fbe3e703fe81ca2dc23b0fe0d5f945531?chain=mainnet) aborted on dlmm_7). |
+| Granite `redeem` | **deny** | `lte` cap on pool outflow (`shares * 2n` per @arc0btc's review) + `gte: "1"` floor on wallet receive. Unambiguous flow — one FT source (pool) to one FT destination (wallet) — so Deny is safe and tightest. |
 | Hermetica `stake` | allow | Mints sUSDh back to caller — mint is not a sender-side transfer. Outgoing USDh `lte` PC asserted as belt-and-suspenders. |
 | Hermetica `unstake` | allow | Burns sUSDh and creates a claim — burn is not expressible as sender PC. Outgoing sUSDh `lte` PC asserted. |
 | Granite `deposit` | allow | Mints LP tokens back to caller — same mint issue. Outgoing aeUSDC `lte` PC asserted. |
