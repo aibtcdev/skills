@@ -1167,7 +1167,9 @@ function expectedSwapOutput(
 //   - postConditionMode: "deny" (NOT "allow" — every emitted swap signs with fund-safety ON)
 //   - 2-entry post-conditions: caller's max input + pool's min output
 //   - min-received computed in OUTPUT-token atomic units (caller passes `expectedOut`)
-//   - max-steps "u7" (matches successful single-hop reference txs)
+//   - max-steps u230 (per macbotmini-eng's #339 audit (d) — comfortably above any single-hop
+//     bin-traversal need; eliminates partial-fill risk on legitimately large swaps without
+//     extra gas cost when fewer steps suffice)
 function buildDlmmSwapInstruction(
   route: DlmmSwapRoute,
   caller: string,
@@ -1219,7 +1221,7 @@ function buildDlmmSwapInstruction(
         type: "list", value: [{
           type: "tuple", value: {
             amount: { type: "uint", value: String(amount) },
-            "max-steps": { type: "uint", value: "7" },
+            "max-steps": { type: "uint", value: "230" },
             "min-received": { type: "uint", value: String(minReceived) },
             "pool-trait": { type: "principal", value: route.pool },
             "x-for-y": { type: "bool", value: route.xForY },
