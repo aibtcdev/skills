@@ -1130,13 +1130,13 @@ function inferTargetPoolId(command: string, opts: Record<string, string>): strin
   if (command === "deploy") {
     if (protocol === "hermetica" && token && token !== "usdh") return "dlmm_8";  // USDh/USDCx swap pool
     if (protocol === "granite" && token && token !== "aeusdc") return "dlmm_7";  // aeUSDC/USDCx swap pool
-    if (protocol === "hodlmm") return ((opts as any).poolId ?? opts["pool-id"] ?? "dlmm_1");  // honor --pool-id for HODLMM direct deploy
+    if (protocol === "hodlmm") return ((opts as Record<string, string>).poolId ?? "dlmm_1");  // honor --pool-id for HODLMM direct deploy
     return "dlmm_1";
   }
   if (command === "migrate") {
     if (opts.to === "hermetica") return "dlmm_8";
     if (opts.to === "granite") return "dlmm_7";
-    if (opts.to === "hodlmm") return ((opts as any).poolId ?? opts["pool-id"] ?? "dlmm_1");
+    if (opts.to === "hodlmm") return ((opts as Record<string, string>).poolId ?? "dlmm_1");
     return "dlmm_1";
   }
   return "dlmm_1";
@@ -1704,8 +1704,8 @@ async function _runPipeline(wallet: string, command: string, opts: Record<string
         }
       }
 
-      instructions = buildDeployInstructions(protocol, amount, token, scout, ((opts as any).poolId ?? opts["pool-id"] ?? "dlmm_1"));
-      description = `Deploy ${amount} ${token} to ${protocol}${protocol === "hodlmm" ? ` (${((opts as any).poolId ?? opts["pool-id"] ?? "dlmm_1")})` : ""}`;
+      instructions = buildDeployInstructions(protocol, amount, token, scout, ((opts as Record<string, string>).poolId ?? "dlmm_1"));
+      description = `Deploy ${amount} ${token} to ${protocol}${protocol === "hodlmm" ? ` (${((opts as Record<string, string>).poolId ?? "dlmm_1")})` : ""}`;
       break;
     }
 
@@ -1718,7 +1718,7 @@ async function _runPipeline(wallet: string, command: string, opts: Record<string
     }
 
     case "rebalance": {
-      const poolId = ((opts as any).poolId ?? opts["pool-id"] ?? "dlmm_1");
+      const poolId = ((opts as Record<string, string>).poolId ?? "dlmm_1");
       const poolNum = parseInt(poolId.replace("dlmm_", ""), 10);
       const pool = scout.positions.hodlmm.pools.find(p => p.pool_id === poolNum);
       if (!pool) return { status: "error", command, error: `No position found in pool ${poolId}` };
@@ -1748,7 +1748,7 @@ async function _runPipeline(wallet: string, command: string, opts: Record<string
       instructions.push(...buildWithdrawInstructions(from, scout));
       const token = opts.token ?? inferToken(to);
       const amount = parseInt(opts.amount!, 10);
-      instructions.push(...buildDeployInstructions(to, amount, token, scout, ((opts as any).poolId ?? opts["pool-id"] ?? "dlmm_1")));
+      instructions.push(...buildDeployInstructions(to, amount, token, scout, ((opts as Record<string, string>).poolId ?? "dlmm_1")));
       description = `Migrate from ${from} to ${to}`;
       break;
     }
