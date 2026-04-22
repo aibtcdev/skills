@@ -262,6 +262,13 @@ export interface HodlmmRelativeWithdrawalInput {
   minYAmount: string;
 }
 
+export interface HodlmmWithdrawalInput {
+  binId: number;
+  amount: string;
+  minXAmount: string;
+  minYAmount: string;
+}
+
 interface PreparedRelativeLiquidityBin extends HodlmmRelativeLiquidityBinInput {
   binId: number;
   isActiveBin: boolean;
@@ -1053,11 +1060,11 @@ export class BitflowService {
 
     const activeBinToleranceCv = params.activeBinTolerance
       ? someCV(
-          tupleCV({
-            "max-deviation": uintCV(BigInt(params.activeBinTolerance.maxDeviation)),
-            "expected-bin-id": intCV(this.getSignedBinId(params.activeBinTolerance.expectedBinId)),
-          })
-        )
+        tupleCV({
+          "max-deviation": uintCV(BigInt(params.activeBinTolerance.maxDeviation)),
+          "expected-bin-id": intCV(this.getSignedBinId(params.activeBinTolerance.expectedBinId)),
+        })
+      )
       : noneCV();
 
     const network = this.network === "mainnet" ? STACKS_MAINNET : STACKS_TESTNET;
@@ -1169,6 +1176,76 @@ export class BitflowService {
     };
   }
 
+  async withdrawHodlmmLiquidity(params: {
+    account: Account;
+    poolId: string;
+    positions: HodlmmWithdrawalInput[];
+    fee?: bigint;
+    allowFallback?: boolean;
+    poolContract?: string;
+    xTokenContract?: string;
+    yTokenContract?: string;
+  }): Promise<TransferResult> {
+    this.ensureMainnet();
+
+    const pool = await this.getHodlmmPool(params.poolId, params.allowFallback ?? true);
+    const poolContractId = params.poolContract || pool.pool_token || pool.core_address;
+    const xTokenContractId = params.xTokenContract || pool.token_x;
+    const yTokenContractId = params.yTokenContract || pool.token_y;
+
+    if (!poolContractId) {
+      throw new Error("Pool contract not found in HODLMM pool metadata. Pass --pool-contract explicitly.");
+    }
+
+    const { address: routerAddress, name: routerName } = this.parseContractId(HODLMM_LIQUIDITY_ROUTER);
+    const { address: poolAddress, name: poolName } = this.parseContractId(poolContractId);
+    const { address: xTokenAddress, name: xTokenName } = this.parseContractId(xTokenContractId);
+    const { address: yTokenAddress, name: yTokenName } = this.parseContractId(yTokenContractId);
+    const network = this.network === "mainnet" ? STACKS_MAINNET : STACKS_TESTNET;
+
+    const withdrawPositions = params.positions.map((position) =>
+      tupleCV({
+        "bin-id": intCV(this.getSignedBinId(position.binId)),
+        amount: uintCV(BigInt(position.amount)),
+        "min-x-amount": uintCV(BigInt(position.minXAmount)),
+        "min-y-amount": uintCV(BigInt(position.minYAmount)),
+        "pool-trait": contractPrincipalCV(poolAddress, poolName),
+      })
+    );
+
+    const totalMinX = params.positions.reduce((sum, position) => sum + BigInt(position.minXAmount), 0n);
+    const totalMinY = params.positions.reduce((sum, position) => sum + BigInt(position.minYAmount), 0n);
+
+    const transaction = await makeContractCall({
+      contractAddress: routerAddress,
+      contractName: routerName,
+      functionName: "withdraw-liquidity-same-multi",
+      functionArgs: [
+        listCV(withdrawPositions),
+        contractPrincipalCV(xTokenAddress, xTokenName),
+        contractPrincipalCV(yTokenAddress, yTokenName),
+        uintCV(totalMinX),
+        uintCV(totalMinY),
+      ],
+      senderKey: params.account.privateKey,
+      network,
+      postConditions: [],
+      postConditionMode: PostConditionMode.Allow,
+      ...(params.fee !== undefined && { fee: params.fee }),
+    });
+
+    const broadcastResult = await broadcastTransaction({ transaction, network });
+
+    if ("error" in broadcastResult) {
+      throw new Error(`Broadcast failed: ${broadcastResult.error} - ${broadcastResult.reason}`);
+    }
+
+    return {
+      txid: broadcastResult.txid,
+      rawTx: transaction.serialize(),
+    };
+  }
+
   private async executeHodlmmSwap(
     account: Account,
     route: UnifiedBitflowRouteQuote,
@@ -1270,11 +1347,11 @@ export class BitflowService {
           poolIds: [pool.pool_id],
           poolContracts: [pool.pool_token || pool.core_address || pool.pool_id],
           dexPath: ["HODLMM_DLMM"],
-        amountOutAtomic: "0",
-        amountOutHuman: "0",
-        tokenOutDecimals: tokenY.tokenDecimals,
-        executable: false,
-      }));
+          amountOutAtomic: "0",
+          amountOutHuman: "0",
+          tokenOutDecimals: tokenY.tokenDecimals,
+          executable: false,
+        }));
     } catch {
       hodlmmRoutes = [];
     }

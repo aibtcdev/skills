@@ -58,7 +58,7 @@ function normalizeRelativeLiquidityBins(rawBins: unknown): HodlmmRelativeLiquidi
   });
 }
 
-function normalizeRelativeWithdrawalPositions(rawPositions: unknown): HodlmmRelativeWithdrawalInput[] {
+function normalizeWithdrawalPositions(rawPositions: unknown): HodlmmRelativeWithdrawalInput[] {
   if (!Array.isArray(rawPositions) || rawPositions.length === 0) {
     throw new Error("--positions must be a non-empty JSON array");
   }
@@ -70,12 +70,13 @@ function normalizeRelativeWithdrawalPositions(rawPositions: unknown): HodlmmRela
 
     const value = position as Record<string, unknown>;
     const activeBinOffset = value.activeBinOffset ?? value.active_bin_offset;
+    const binId = value.binId ?? value.bin_id;
     const amount = value.amount;
     const minXAmount = value.minXAmount ?? value.min_x_amount ?? 0;
     const minYAmount = value.minYAmount ?? value.min_y_amount ?? 0;
 
-    if (typeof activeBinOffset !== "number") {
-      throw new Error(`positions[${index}].activeBinOffset must be a number`);
+    if (activeBinOffset === undefined && binId === undefined) {
+      throw new Error(`positions[${index}].activeBinOffset or binId is required`);
     }
 
     if (amount === undefined || amount === null) {
@@ -83,7 +84,8 @@ function normalizeRelativeWithdrawalPositions(rawPositions: unknown): HodlmmRela
     }
 
     return {
-      activeBinOffset,
+      activeBinOffset: activeBinOffset as number,
+      binId: binId as number,
       amount: String(amount),
       minXAmount: String(minXAmount),
       minYAmount: String(minYAmount),
@@ -314,7 +316,7 @@ program
   .name("bitflow")
   .description(
     "Bitflow DEX: token swaps, market data, routing, and Keeper automation on Stacks. Mainnet-only. " +
-      "No API key required — uses public endpoints (500 req/min)."
+    "No API key required — uses public endpoints (500 req/min)."
   )
   .version("0.1.0");
 
@@ -326,7 +328,7 @@ program
   .command("get-ticker")
   .description(
     "Get market ticker data from Bitflow DEX. Returns price, volume, and liquidity data for all trading pairs. " +
-      "No API key required. Mainnet-only."
+    "No API key required. Mainnet-only."
   )
   .option(
     "--base-currency <contractId>",
@@ -405,7 +407,7 @@ program
   .command("get-tokens")
   .description(
     "Get all available tokens for swapping on Bitflow. " +
-      "No API key required — uses public endpoints (500 req/min). Mainnet-only."
+    "No API key required — uses public endpoints (500 req/min). Mainnet-only."
   )
   .action(async () => {
     try {
@@ -593,7 +595,7 @@ program
   .command("get-swap-targets")
   .description(
     "Get possible swap target tokens for a given input token on Bitflow. " +
-      "Returns all tokens that can be received when swapping from the specified token. Mainnet-only."
+    "Returns all tokens that can be received when swapping from the specified token. Mainnet-only."
   )
   .requiredOption(
     "--token-id <contractId>",
@@ -688,7 +690,7 @@ program
   .command("get-routes")
   .description(
     "Get all possible swap routes between two tokens on Bitflow. " +
-      "Includes multi-hop routes through intermediate tokens. Mainnet-only."
+    "Includes multi-hop routes through intermediate tokens. Mainnet-only."
   )
   .requiredOption(
     "--token-x <tokenId>",
@@ -739,7 +741,7 @@ program
   .command("swap")
   .description(
     "Execute a token swap on Bitflow DEX. Automatically finds the best route across all Bitflow pools. " +
-      "Requires an unlocked wallet with sufficient token balance. Mainnet-only."
+    "Requires an unlocked wallet with sufficient token balance. Mainnet-only."
   )
   .requiredOption(
     "--token-x <tokenId>",
@@ -916,8 +918,8 @@ program
         );
         const activeBinTolerance = opts.activeBinTolerance
           ? normalizeActiveBinTolerance(
-              parseJsonOption<unknown>(opts.activeBinTolerance, "--active-bin-tolerance")
-            )
+            parseJsonOption<unknown>(opts.activeBinTolerance, "--active-bin-tolerance")
+          )
           : undefined;
         const resolvedFee = await resolveFee(opts.fee, NETWORK, "contract_call");
         const result = await bitflowService.addHodlmmLiquiditySimple({
@@ -1001,7 +1003,7 @@ program
 
         const bitflowService = getBitflowService(NETWORK);
         const account = await getWriteAccount(opts.walletPassword);
-        const positions = normalizeRelativeWithdrawalPositions(
+        const positions = normalizeWithdrawalPositions(
           parseJsonOption<unknown>(opts.positions, "--positions")
         );
         const resolvedFee = await resolveFee(opts.fee, NETWORK, "contract_call");
@@ -1031,6 +1033,89 @@ program
   );
 
 // ---------------------------------------------------------------------------
+// withdraw-liquidity
+// ---------------------------------------------------------------------------
+
+program
+  .command("withdraw-liquidity")
+  .description(
+    "Withdraw HODLMM liquidity using absolute bin IDs. Requires an unlocked wallet. Mainnet-only."
+  )
+  .requiredOption("--pool-id <poolId>", "HODLMM pool ID (e.g. dlmm_6)")
+  .requiredOption(
+    "--positions <json>",
+    "JSON array of positions to withdraw, e.g. '[{\"binId\":258,\"amount\":\"392854\",\"minXAmount\":\"0\",\"minYAmount\":\"0\"}]'"
+  )
+  .option(
+    "--pool-contract <contractId>",
+    "Override pool contract identifier if needed"
+  )
+  .option(
+    "--x-token-contract <contractId>",
+    "Override token X contract identifier if needed"
+  )
+  .option(
+    "--y-token-contract <contractId>",
+    "Override token Y contract identifier if needed"
+  )
+  .option("--allow-fallback", "Enable on-chain fallback when reading pool/bin metadata")
+  .option(
+    "--fee <value>",
+    "Optional STX fee: 'low' | 'medium' | 'high' preset or micro-STX amount"
+  )
+  .option(
+    "--wallet-password <password>",
+    "Optional wallet password to unlock the active managed wallet for this command"
+  )
+  .action(
+    async (opts: {
+      poolId: string;
+      positions: string;
+      poolContract?: string;
+      xTokenContract?: string;
+      yTokenContract?: string;
+      allowFallback?: boolean;
+      fee?: string;
+      walletPassword?: string;
+    }) => {
+      try {
+        if (NETWORK !== "mainnet") {
+          printJson({ error: "Bitflow is only available on mainnet", network: NETWORK });
+          return;
+        }
+
+        const bitflowService = getBitflowService(NETWORK);
+        const account = await getWriteAccount(opts.walletPassword);
+        const positions = normalizeWithdrawalPositions(
+          parseJsonOption<unknown>(opts.positions, "--positions")
+        );
+        const resolvedFee = await resolveFee(opts.fee, NETWORK, "contract_call");
+        const result = await bitflowService.withdrawHodlmmLiquidity({
+          account,
+          poolId: opts.poolId,
+          positions: positions as any,
+          allowFallback: opts.allowFallback,
+          fee: resolvedFee,
+          poolContract: opts.poolContract,
+          xTokenContract: opts.xTokenContract,
+          yTokenContract: opts.yTokenContract,
+        });
+
+        printJson({
+          success: true,
+          network: NETWORK,
+          txid: result.txid,
+          poolId: result.poolId,
+          preparedPositions: result.preparedPositions,
+          explorerUrl: getExplorerTxUrl(result.txid, NETWORK),
+        });
+      } catch (error) {
+        handleError(error);
+      }
+    }
+  );
+
+// ---------------------------------------------------------------------------
 // get-keeper-contract
 // ---------------------------------------------------------------------------
 
@@ -1038,7 +1123,7 @@ program
   .command("get-keeper-contract")
   .description(
     "Get or create a Bitflow Keeper contract for automated swaps. " +
-      "Keeper contracts enable scheduled/automated token swaps. Mainnet-only."
+    "Keeper contracts enable scheduled/automated token swaps. Mainnet-only."
   )
   .option(
     "--address <stacksAddress>",
@@ -1136,9 +1221,9 @@ program
           actionAmount: opts.actionAmount,
           minReceived: opts.minReceivedAmount
             ? {
-                amount: opts.minReceivedAmount,
-                autoAdjust: opts.autoAdjust ?? true,
-              }
+              amount: opts.minReceivedAmount,
+              autoAdjust: opts.autoAdjust ?? true,
+            }
             : undefined,
         });
 
