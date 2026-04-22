@@ -1509,31 +1509,50 @@ function buildWithdrawInstructions(protocol: Protocol, scout: ScoutResult): Exec
       const granitePos = scout.positions.granite;
       const shares = granitePos.lp_shares ?? "0";
       if (shares === "0") return [{ tool: "info", params: {}, description: "No Granite LP position to withdraw" }];
-      // Granite follows ERC-4626: redeem(shares) burns share count, withdraw(assets) takes asset amount.
-      // We have the share count, so use redeem().
+      // Granite follows ERC-4626: redeem(shares) burns share count, returns aeUSDC.
       const sharesNum = BigInt(shares);
-      // Upper cap on pool outflow. shares*2 admits long-held positions whose accumulated
-      // interest exceeded the prior 10% buffer, while still failing if a buggy pool tries
-      // to drain absurdly more than shares. The gte:"1" floor below catches zero-return bugs.
-      const expectedAeusdc = String(sharesNum * 2n);
+      // Upper cap shares*2 retained from prior KB bug #35 fix — catches a buggy pool
+      // over-paying/draining while admitting long-held positions whose interest exceeded
+      // the earlier +10% buffer.
+      const expectedAeusdcCap = String(sharesNum * 2n);
       return [{
         tool: "call_contract",
         params: {
           contractAddress: "SP26NGV9AFZBX7XBDBS2C7EC7FCPSAV9PKREQNMVS",
           contractName: "liquidity-provider-v1", functionName: "redeem",
           functionArgs: [{ type: "uint", value: shares }, { type: "principal", value: wallet }],
+          postConditionMode: "deny",
+          // Post-condition anchoring per reference tx 0xd0bb0059b72e5f5d75a4dd1bedb12e44e32790567bc282184ca5309641a8f44f
+          // and live proof tx 0xd4aa0c4ed51b0951e91bb6680e44bc01da36722525fa7b28c39d98219e3eeba9 (2026-04-22).
+          // Stacks FT PCs track OUTFLOWS from the named principal. aeUSDC on Granite flows
+          // OUT OF state-v1 (not liquidity-provider-v1; the latter is a controller wrapper),
+          // and the asset_name on the token contract is "aeUSDC" (not "bridged-usdc"); the
+          // wallet BURNS lp-token (asset defined on state-v1), receives aeUSDC. The prior
+          // shape (lte on lp-v1, gte:1 on wallet for aeUSDC) aborted on-chain in both deny
+          // (tx 0x5780062068…) and allow (tx 0x60e2f84b83…) modes because all three PC fields
+          // bound to principals/assets that don't match the real FT flow.
           postConditions: [
-            // Cap outflow from pool (upper bound)
+            // Receive-side floor: state-v1 sends aeUSDC ≥ shares (a healthy pool pays ≥
+            // shares worth of aeUSDC; anything less signals a buggy pool or oracle drift).
             {
-              type: "ft", principal: "SP26NGV9AFZBX7XBDBS2C7EC7FCPSAV9PKREQNMVS.liquidity-provider-v1",
-              asset: AEUSDC_TOKEN, assetName: "bridged-usdc",
-              conditionCode: "lte", amount: expectedAeusdc,
+              type: "ft", principal: GRANITE_STATE,
+              asset: AEUSDC_TOKEN, assetName: "aeUSDC",
+              conditionCode: "gte", amount: shares,
             },
-            // Guarantee wallet receives non-zero aeUSDC — catches bugged pool returning 0
+            // Receive-side cap: state-v1 sends aeUSDC ≤ shares*2 — defensive against a
+            // buggy pool overpaying/draining. KB bug #35 intent preserved, re-anchored.
+            {
+              type: "ft", principal: GRANITE_STATE,
+              asset: AEUSDC_TOKEN, assetName: "aeUSDC",
+              conditionCode: "lte", amount: expectedAeusdcCap,
+            },
+            // Burn floor: wallet sends ≥ shares of lp-token (the redeem burn). Binds the
+            // caller-side outflow to the actual share count, so a buggy call path that tried
+            // to burn more shares than requested would abort.
             {
               type: "ft", principal: wallet,
-              asset: AEUSDC_TOKEN, assetName: "bridged-usdc",
-              conditionCode: "gte", amount: "1",
+              asset: GRANITE_STATE, assetName: "lp-token",
+              conditionCode: "gte", amount: shares,
             },
           ],
         },
