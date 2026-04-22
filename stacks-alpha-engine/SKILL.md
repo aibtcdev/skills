@@ -47,7 +47,7 @@ No other skill covers all 4 Stacks DeFi protocols with working read AND write pa
 - **Zest USDh repay**: [`0xd3b46ae7…`](https://explorer.hiro.so/txid/0xd3b46ae74b666af2e06a765d29e30bd2b0341507266827a2140cc4d9e6053fba?chain=mainnet) — full 50M µUSDh debt cleared via `v0-4-market.repay`
 - **Hermetica staking**: USDh stake via `staking-v1-1.stake` — [`e8b2213d...`](https://explorer.hiro.so/txid/e8b2213d39faf2e9ccfe52bc3cbe33885303aa01c63f93badd3e8a41900a2ecf?chain=mainnet) (block 7,512,730)
 - **Hermetica unstake**: sUSDh → 7-day silo claim via `staking-v1-1.unstake` — [`0x7834cd32…`](https://explorer.hiro.so/txid/0x7834cd325b986f2db2275b3fe867ca094c3c375d67a77d7f5fb3858d0f94eaad?chain=mainnet) — 408,500,348 sUSDh burned → 5.007 USDh in silo claim 2157 (ratio 1.2257, block 7,703,650)
-- **Granite aeUSDC deposit**: `liquidity-provider-v1.deposit` — [`205bf3f1...`](https://explorer.hiro.so/txid/205bf3f135c5f1cddd8323c1a1a054f3a63ac81904c4244a763b0ce4b26c3352?chain=mainnet) (block 7,512,722)
+- **Granite aeUSDC deposit** (write-path proof for `lp-v1.deposit`): [`0x205bf3f1`](https://explorer.hiro.so/txid/0x205bf3f135c5f1cddd8323c1a1a054f3a63ac81904c4244a763b0ce4b26c3352?chain=mainnet) — 4,997,500 µaeUSDC supplied → 4,936,276 lp-token minted on `state-v1` (block 7,512,722)
 - **Granite redeem** (with corrected 3-PC shape): [`0xd4aa0c4e…`](https://explorer.hiro.so/txid/0xd4aa0c4ed51b0951e91bb6680e44bc01da36722525fa7b28c39d98219e3eeba9?chain=mainnet) — 4,936,276 lp-token burned → 4,999,538 aeUSDC (ratio 1.0128)
 - **HODLMM add-liquidity**: [`f2ffb41e...`](https://explorer.hiro.so/txid/f2ffb41e1f29a5c5ee5fa0df628a700e21bf14a4aabbd334b5f49b98bab9e315?chain=mainnet) — dlmm-liquidity-router (block 7,423,687)
 

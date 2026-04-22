@@ -1246,7 +1246,7 @@ function buildDlmmSwapInstruction(
       requires_residual_check: true,
       _note: "Agent runtime: read consumed-in from tx receipt before chained deploy step. If consumed-in < amount, surface residual to caller (max-steps may have capped fold).",
     },
-    description: `Swap ${amount} ${inSym} → min ${minReceived} ${outSym} via Bitflow DLMM (deny mode, ${slippagePct}% slip)`,
+    description: `Swap ${amount} ${inSym} → min ${minReceived} ${outSym} via Bitflow DLMM (allow + dual-pin, ${slippagePct}% slip)`,
   };
 }
 
