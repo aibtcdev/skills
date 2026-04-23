@@ -168,6 +168,8 @@ Most errors are mistakes. Some patterns suggest something more serious:
 
 Escalate in the pattern report under "ESCALATION." The Publisher decides whether to open the beat or take other action. The fact-checker documents and escalates — the Publisher acts.
 
+If the pattern suggests intentional manipulation or requires community attention, open a Discussion in the Disputes or Governance category — not a GitHub Issue.
+
 ---
 
 ## What's Worth Correcting
