@@ -50,7 +50,7 @@ const PRIMARY_POOLS = ["dlmm_1", "dlmm_2", "dlmm_3", "dlmm_4", "dlmm_5", "dlmm_6
 
 // Swap function names on the dlmm-swap-router-v-1-1 contract (verified via Hiro API).
 // "liquidate-with-swap" does NOT exist on any DLMM contract and has been removed.
-const SWAP_FUNCTIONS = [
+export const SWAP_FUNCTIONS = [
   "swap-multi",
   "swap-simple-multi",
   "swap-x-for-y-same-multi",
@@ -143,7 +143,10 @@ interface FlowAnalysis {
   pair: string;
   swapsAnalyzed: number;
   timeSpanHours: number;
-  /** Fraction of fetched transactions that matched SWAP_FUNCTIONS (0–1), or null if no txs fetched */
+  /**
+   * Fraction of fetched transactions that matched SWAP_FUNCTIONS (0–1), or null if no txs fetched.
+   * Note: the denominator is all contract_call txs on this pool, not just swap-eligible txs.
+   */
   coverage_rate: number | null;
   /** True when coverage_rate < 1.0, indicating some transactions were not recognized as swaps */
   coverage_warning: boolean;
@@ -882,7 +885,7 @@ function parseDuration(input: string): number {
 // Main analysis
 // ---------------------------------------------------------------------------
 
-async function analyzePool(
+export async function analyzePool(
   poolId: string,
   swapCount: number,
   windowSeconds?: number,
@@ -901,7 +904,7 @@ async function analyzePool(
   const poolInfo = await getPoolInfo(poolId);
 
   // Fetch swap transactions — catch 429 and return partial results instead of crashing
-  let fetchResult: FetchSwapResult;
+  let fetchResult: FetchSwapResult = { txs: [], totalFetched: 0 };
   let isPartial = false;
   let partialReason: string | undefined;
   try {
@@ -918,7 +921,7 @@ async function analyzePool(
     }
   }
 
-  const { txs, totalFetched } = fetchResult!;
+  const { txs, totalFetched } = fetchResult;
 
   if (txs.length === 0 && !isPartial) {
     throw new Error(`No swap transactions found for ${poolId}${windowSeconds ? ` in the specified window` : ""}`);
@@ -1231,4 +1234,6 @@ program
     });
   });
 
-program.parse();
+if (import.meta.main) {
+  program.parse();
+}
