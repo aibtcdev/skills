@@ -48,12 +48,17 @@ const POOL_CONTRACTS: Record<string, string> = {
 // All HODLMM pools (used for --all protocol-wide summary)
 const PRIMARY_POOLS = ["dlmm_1", "dlmm_2", "dlmm_3", "dlmm_4", "dlmm_5", "dlmm_6", "dlmm_7", "dlmm_8"];
 
-// Swap function names on the router contracts
+// Swap function names on the dlmm-swap-router-v-1-1 contract (verified via Hiro API).
+// "liquidate-with-swap" does NOT exist on any DLMM contract and has been removed.
 const SWAP_FUNCTIONS = [
-  "swap-x-for-y-simple-multi",
-  "swap-y-for-x-simple-multi",
+  "swap-multi",
   "swap-simple-multi",
-  "liquidate-with-swap",
+  "swap-x-for-y-same-multi",
+  "swap-x-for-y-simple-multi",
+  "swap-x-for-y-simple-range-multi",
+  "swap-y-for-x-same-multi",
+  "swap-y-for-x-simple-multi",
+  "swap-y-for-x-simple-range-multi",
 ];
 
 // ---------------------------------------------------------------------------
@@ -138,6 +143,12 @@ interface FlowAnalysis {
   pair: string;
   swapsAnalyzed: number;
   timeSpanHours: number;
+  /** Fraction of fetched transactions that matched SWAP_FUNCTIONS (0–1), or null if no txs fetched */
+  coverage_rate: number | null;
+  /** True when coverage_rate < 1.0, indicating some transactions were not recognized as swaps */
+  coverage_warning: boolean;
+  partial?: true;
+  partial_reason?: string;
   metrics: FlowMetrics;
   verdict: FlowVerdict;
   topActors: Array<{
@@ -274,13 +285,19 @@ function parseSwapEvent(repr: string): SwapBinHop | null {
 // Data collection
 // ---------------------------------------------------------------------------
 
+interface FetchSwapResult {
+  txs: HiroTx[];
+  totalFetched: number;
+}
+
 async function fetchSwapTransactions(
   poolContract: string,
   targetSwapCount: number,
   windowSeconds?: number
-): Promise<HiroTx[]> {
+): Promise<FetchSwapResult> {
   const swapTxs: HiroTx[] = [];
   let offset = 0;
+  let totalFetched = 0;
   const maxPages = 20; // safety limit
   const now = Math.floor(Date.now() / 1000);
 
@@ -293,16 +310,18 @@ async function fetchSwapTransactions(
       if (tx.tx_type !== "contract_call") continue;
       if (!tx.contract_call) continue;
 
+      totalFetched++;
+
       const fn = tx.contract_call.function_name;
       if (!SWAP_FUNCTIONS.includes(fn)) continue;
 
       // Window filter
       if (windowSeconds && (now - tx.block_time) > windowSeconds) {
-        return swapTxs; // Past the window — we're done
+        return { txs: swapTxs, totalFetched }; // Past the window — we're done
       }
 
       swapTxs.push(tx);
-      if (swapTxs.length >= targetSwapCount) return swapTxs;
+      if (swapTxs.length >= targetSwapCount) return { txs: swapTxs, totalFetched };
     }
 
     // No more results
@@ -310,7 +329,7 @@ async function fetchSwapTransactions(
     offset += TX_PAGE_SIZE;
   }
 
-  return swapTxs;
+  return { txs: swapTxs, totalFetched };
 }
 
 async function fetchTxEvents(txId: string): Promise<SwapBinHop[]> {
@@ -371,7 +390,8 @@ async function enrichSwaps(txs: HiroTx[]): Promise<SwapRecord[]> {
           blockTime: tx.block_time,
           blockHeight: tx.block_height,
           direction,
-          isLiquidation: fn === "liquidate-with-swap",
+          // No liquidation function exists on dlmm-swap-router-v-1-1; metric reserved for future contracts
+          isLiquidation: false,
           functionName: fn,
           hops: [],
           totalDx: 0n,
@@ -399,7 +419,8 @@ async function enrichSwaps(txs: HiroTx[]): Promise<SwapRecord[]> {
         blockTime: tx.block_time,
         blockHeight: tx.block_height,
         direction,
-        isLiquidation: tx.contract_call!.function_name === "liquidate-with-swap",
+        // No liquidation function exists on dlmm-swap-router-v-1-1; metric reserved for future contracts
+        isLiquidation: false,
         functionName: tx.contract_call!.function_name,
         hops,
         totalDx,
@@ -879,16 +900,94 @@ async function analyzePool(
 
   const poolInfo = await getPoolInfo(poolId);
 
-  // Fetch swap transactions
-  const txs = await fetchSwapTransactions(contract, swapCount, windowSeconds);
-  if (txs.length === 0) {
+  // Fetch swap transactions — catch 429 and return partial results instead of crashing
+  let fetchResult: FetchSwapResult;
+  let isPartial = false;
+  let partialReason: string | undefined;
+  try {
+    fetchResult = await fetchSwapTransactions(contract, swapCount, windowSeconds);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (msg.includes("Rate limited")) {
+      // Return partial result with whatever we may have already fetched (empty here)
+      fetchResult = { txs: [], totalFetched: 0 };
+      isPartial = true;
+      partialReason = "hiro_rate_limited";
+    } else {
+      throw e;
+    }
+  }
+
+  const { txs, totalFetched } = fetchResult!;
+
+  if (txs.length === 0 && !isPartial) {
     throw new Error(`No swap transactions found for ${poolId}${windowSeconds ? ` in the specified window` : ""}`);
   }
 
-  // Enrich with event data
-  const swaps = await enrichSwaps(txs);
-  if (swaps.length === 0) {
+  // Coverage rate: what fraction of fetched contract_call txs matched SWAP_FUNCTIONS
+  const coverage_rate = totalFetched > 0 ? Math.round((txs.length / totalFetched) * 10000) / 10000 : null;
+  const coverage_warning = coverage_rate !== null && coverage_rate < 1.0;
+
+  // Enrich with event data — catch 429 mid-enrich and return partial results
+  let swaps: SwapRecord[];
+  try {
+    swaps = await enrichSwaps(txs);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (msg.includes("Rate limited") && txs.length > 0) {
+      // enrichSwaps uses Promise.allSettled so individual failures are handled;
+      // if the outer call throws it means the rate limit hit during fetchTxEvents
+      // outside of the batch — treat as partial
+      isPartial = true;
+      partialReason = "hiro_rate_limited";
+      swaps = [];
+    } else {
+      throw e;
+    }
+  }
+
+  if (swaps.length === 0 && !isPartial) {
     throw new Error(`Failed to parse any swap data for ${poolId}`);
+  }
+
+  if (swaps.length === 0 && isPartial) {
+    // Return a minimal partial result with no metrics
+    const partialResult: FlowAnalysis = {
+      status: "success",
+      network: "mainnet",
+      timestamp: new Date().toISOString(),
+      poolId,
+      pair: poolInfo.pair,
+      swapsAnalyzed: 0,
+      timeSpanHours: 0,
+      coverage_rate,
+      coverage_warning,
+      partial: true,
+      partial_reason: partialReason,
+      metrics: {
+        directionBias: 0,
+        directionBiasLabel: "Partial data — rate limited",
+        flowToxicity: 0,
+        flowToxicityLabel: "Partial data — rate limited",
+        binVelocity: 0,
+        binVelocityLabel: "Partial data — rate limited",
+        whaleConcentration: 0,
+        whaleConcentrationLabel: "Partial data — rate limited",
+        liquidationPressure: 0,
+        liquidationPressureLabel: "Partial data — rate limited",
+        botFlowRatio: 0,
+        botFlowRatioLabel: "Partial data — rate limited",
+      },
+      verdict: {
+        lpSafety: "caution",
+        score: 0,
+        reasoning: "Incomplete data due to Hiro API rate limiting.",
+        recommendation: "Retry with --hiro-api-key or wait for rate limit reset.",
+        rangeLifespanHours: null,
+      },
+      topActors: [],
+    };
+    return partialResult;
   }
 
   // Classify actors
@@ -944,6 +1043,9 @@ async function analyzePool(
     pair: poolInfo.pair,
     swapsAnalyzed: swaps.length,
     timeSpanHours,
+    coverage_rate,
+    coverage_warning,
+    ...(isPartial ? { partial: true as const, partial_reason: partialReason } : {}),
     metrics,
     verdict,
     topActors,
