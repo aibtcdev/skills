@@ -1,0 +1,25 @@
+name: Ultrareview
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  ultrareview:
+    name: Claude Ultrareview
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Run Ultrareview
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: claude ultrareview --output-format json
