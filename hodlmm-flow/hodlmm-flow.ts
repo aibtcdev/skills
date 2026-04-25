@@ -229,9 +229,11 @@ async function fetchJson<T>(url: string, headers?: Record<string, string>): Prom
     headers: { Accept: "application/json", ...headers },
   });
   if (res.status === 429) {
-    throw new Error(
+    const rateLimitErr = new Error(
       `Rate limited by ${new URL(url).hostname}. Use --hiro-api-key for elevated limits.`
     );
+    (rateLimitErr as Error & { statusCode: number }).statusCode = 429;
+    throw rateLimitErr;
   }
   if (!res.ok) throw new Error(`API ${res.status} ${res.statusText}: ${url}`);
   return res.json() as Promise<T>;
@@ -911,8 +913,8 @@ export async function analyzePool(
     fetchResult = await fetchSwapTransactions(contract, swapCount, windowSeconds);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    if (msg.includes("Rate limited")) {
-      // Return partial result with whatever we may have already fetched (empty here)
+    if ((e as { statusCode?: number }).statusCode === 429 || msg.includes("Rate limited")) {
+      // statusCode === 429 is set by fetchJson; string fallback handles wrapped errors
       fetchResult = { txs: [], totalFetched: 0 };
       isPartial = true;
       partialReason = "hiro_rate_limited";
@@ -937,7 +939,7 @@ export async function analyzePool(
     swaps = await enrichSwaps(txs);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    if (msg.includes("Rate limited") && txs.length > 0) {
+    if (((e as { statusCode?: number }).statusCode === 429 || msg.includes("Rate limited")) && txs.length > 0) {
       // enrichSwaps uses Promise.allSettled so individual failures are handled;
       // if the outer call throws it means the rate limit hit during fetchTxEvents
       // outside of the batch — treat as partial
