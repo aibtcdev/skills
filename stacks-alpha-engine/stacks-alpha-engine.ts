@@ -104,10 +104,10 @@ interface TokenMeta { symbol: string; contract: string; decimals: number; ftSuff
 const TOKENS: Record<string, TokenMeta> = {
   sbtc:   { symbol: "sBTC",   contract: SBTC_TOKEN,   decimals: 8, ftSuffix: "::sbtc-token" },
   stx:    { symbol: "STX",    contract: "stx",        decimals: 6, ftSuffix: "" },
-  usdcx:  { symbol: "USDCx",  contract: USDCX_TOKEN,  decimals: 6, ftSuffix: "::usdcx" },
-  usdh:   { symbol: "USDh",   contract: USDH_TOKEN,   decimals: 8, ftSuffix: "::usdh-token" },
-  susdh:  { symbol: "sUSDh",  contract: SUSDH_TOKEN,  decimals: 8, ftSuffix: "::susdh-token" },
-  aeusdc: { symbol: "aeUSDC", contract: AEUSDC_TOKEN, decimals: 6, ftSuffix: "::bridged-usdc" },
+  usdcx:  { symbol: "USDCx",  contract: USDCX_TOKEN,  decimals: 6, ftSuffix: "::usdcx-token" },
+  usdh:   { symbol: "USDh",   contract: USDH_TOKEN,   decimals: 8, ftSuffix: "::usdh" },
+  susdh:  { symbol: "sUSDh",  contract: SUSDH_TOKEN,  decimals: 8, ftSuffix: "::susdh" },
+  aeusdc: { symbol: "aeUSDC", contract: AEUSDC_TOKEN, decimals: 6, ftSuffix: "::aeUSDC" },
 };
 
 // Reverse lookup: token contract principal → TokenMeta. Used to derive asset_name + decimals
@@ -1280,7 +1280,7 @@ function buildDeployInstructions(protocol: Protocol, amount: number, token: stri
             // allow mode required: staking mints sUSDh back to caller (not expressible as sender-side PC).
             // Belt-and-suspenders: outgoing USDh transfer is still asserted.
             postConditions: [
-              { type: "ft", principal: wallet, asset: USDH_TOKEN, assetName: "usdh-token", conditionCode: "lte", amount },
+              { type: "ft", principal: wallet, asset: USDH_TOKEN, assetName: "usdh", conditionCode: "lte", amount },
             ],
           },
           description: `Stake ${amount} USDh into Hermetica sUSDh (earning yield)`,
@@ -1312,7 +1312,7 @@ function buildDeployInstructions(protocol: Protocol, amount: number, token: stri
             // allow mode required: staking mints sUSDh (not expressible as sender-side PC).
             // Belt-and-suspenders: outgoing USDh transfer is still asserted.
             postConditions: [
-              { type: "ft", principal: wallet, asset: USDH_TOKEN, assetName: "usdh-token", conditionCode: "lte", amount: hermeticaEstimate },
+              { type: "ft", principal: wallet, asset: USDH_TOKEN, assetName: "usdh", conditionCode: "lte", amount: hermeticaEstimate },
             ],
             requires_substitution: true,
             _note: "SEQUENTIAL: execute after Step 1 confirms. Replace amount with actual swap output from tx receipt.",
@@ -1342,7 +1342,7 @@ function buildDeployInstructions(protocol: Protocol, amount: number, token: stri
             // allow mode required: deposit mints LP tokens back to caller (not expressible as sender-side PC).
             // Belt-and-suspenders: outgoing aeUSDC transfer is still asserted.
             postConditions: [
-              { type: "ft", principal: wallet, asset: AEUSDC_TOKEN, assetName: "bridged-usdc", conditionCode: "lte", amount },
+              { type: "ft", principal: wallet, asset: AEUSDC_TOKEN, assetName: "aeUSDC", conditionCode: "lte", amount },
             ],
           },
           description: `Deposit ${amount} aeUSDC to Granite lending pool`,
@@ -1377,7 +1377,7 @@ function buildDeployInstructions(protocol: Protocol, amount: number, token: stri
             // allow mode required: deposit mints LP tokens (not expressible as sender-side PC).
             // Belt-and-suspenders: outgoing aeUSDC transfer is still asserted.
             postConditions: [
-              { type: "ft", principal: wallet, asset: AEUSDC_TOKEN, assetName: "bridged-usdc", conditionCode: "lte", amount: graniteEstimate },
+              { type: "ft", principal: wallet, asset: AEUSDC_TOKEN, assetName: "aeUSDC", conditionCode: "lte", amount: graniteEstimate },
             ],
             requires_substitution: true,
             _note: "SEQUENTIAL: execute after Step 1 confirms. Replace amount with actual swap output from tx receipt.",
@@ -1491,7 +1491,7 @@ function buildWithdrawInstructions(protocol: Protocol, scout: ScoutResult): Exec
             // allow mode required: unstake burns sUSDh and creates a claim (not expressible as sender-side PC).
             // Belt-and-suspenders: outgoing sUSDh transfer is still asserted.
             postConditions: [
-              { type: "ft", principal: wallet, asset: SUSDH_TOKEN, assetName: "susdh-token", conditionCode: "lte", amount: String(susdhSats) },
+              { type: "ft", principal: wallet, asset: SUSDH_TOKEN, assetName: "susdh", conditionCode: "lte", amount: String(susdhSats) },
             ],
           },
           description: `Unstake ${susdhSats} sUSDh (creates claim in staking-silo)`,
