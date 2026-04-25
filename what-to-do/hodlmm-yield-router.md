@@ -8,7 +8,7 @@ order: 22
 
 # HODLMM Yield Router
 
-This guide orchestrates three merged skills — `hodlmm-move-liquidity`, `sbtc-yield-maximizer`, and `zest-yield-manager` — into a complete no-idle-capital loop for sBTC. It reads bin state and live APY from both venues, decides where capital earns more, rebalances the HODLMM position if needed, and routes capital to the winning venue. All write legs go through each primitive's own `--confirm` gate; this guide does not bypass them.
+This guide orchestrates five skills — `wallet`, `hodlmm-move-liquidity`, `hodlmm-flow`, `sbtc-yield-maximizer`, and `zest-yield-manager` — into a complete no-idle-capital loop for sBTC. It reads bin state and live APY from both venues, decides where capital earns more, rebalances the HODLMM position if needed, and routes capital to the winning venue. All write legs go through each primitive's own `--confirm` gate; this guide does not bypass them.
 
 All operations are mainnet-only. Write operations require an unlocked wallet.
 
@@ -122,14 +122,18 @@ Review the dry-run output: confirm `"atomic": true`, check the new bin range and
 
 ```bash
 # Execute the atomic rebalance (one tx via move-relative-liquidity-multi)
+# Set password via env var — avoids exposure in ps aux and shell history
+export WALLET_PASSWORD="<your-wallet-password>"
+
 NETWORK=mainnet bun run hodlmm-move-liquidity/hodlmm-move-liquidity.ts run \
   --wallet <your-stacks-address> \
   --pool <pool-id> \
-  --confirm \
-  --password <your-wallet-password>
+  --confirm
 ```
 
-Expected output: `"decision": "EXECUTED"` with a `transaction.txid`. If the response is `"decision": "IN_RANGE"`, no move was needed — continue.
+Expected output: `"decision": "EXECUTED"` with a `transaction.txid`. If the response is `"decision": "IN_RANGE"`, bins are already centered — skip the confirmation tx and continue to Step 5.
+
+> **Note on `run` in this step vs. Step 5 Path B:** Here, `run --confirm` rebalances bins via `move-relative-liquidity-multi` — capital stays in HODLMM, only the bin range shifts. In Step 5 Path B, the same `run` command triggers capital consolidation and withdrawal from the HODLMM pool entirely. The two operations are distinct: this step preserves position, Path B liquidates it.
 
 > Note: This is the `move-relative-liquidity-multi` atomic path. Withdraw and deposit happen in one on-chain call — either both succeed or neither does. No nonce sequencing is required for this single leg.
 
@@ -153,9 +157,25 @@ NETWORK=mainnet bun run zest-yield-manager/zest-yield-manager.ts run \
 
 Wait for the withdrawal transaction to confirm (check `status: "success"` in output). Do not proceed to Leg 2 until Leg 1 is settled. Verify sBTC has returned to your wallet.
 
-**Leg 2 — Deposit into HODLMM (if bins are in range after Step 4):**
+**Leg 2 — Deposit into HODLMM:**
 
-With bins rebalanced in Step 4 and sBTC returned from Leg 1, your capital is now positioned in HODLMM. If the HODLMM skill requires an explicit deposit trigger for idle sBTC, run `hodlmm-move-liquidity run --confirm` with the `--force` flag to recenter around the active bin with the newly available balance.
+With bins rebalanced in Step 4 and sBTC returned from Leg 1, your sBTC is sitting idle in the wallet — it must be explicitly deposited. Verify the withdrawal landed by confirming your sBTC balance increased, then run the deposit to supply the newly available capital:
+
+```bash
+NETWORK=mainnet bun run hodlmm-move-liquidity/hodlmm-move-liquidity.ts scan \
+  --wallet <your-stacks-address>
+```
+
+Confirm `supplied_sats` is zero (capital has left Zest) and sBTC wallet balance reflects the withdrawal. Then supply to HODLMM:
+
+```bash
+NETWORK=mainnet bun run hodlmm-move-liquidity/hodlmm-move-liquidity.ts run \
+  --wallet <your-stacks-address> \
+  --pool <pool-id> \
+  --confirm
+```
+
+Expected output: `"decision": "EXECUTED"` with a deposit `txid`.
 
 #### Path B: Rotate HODLMM → Zest
 
@@ -163,12 +183,16 @@ Capital is currently in HODLMM LP and should move to Zest lending.
 
 **Leg 1 — Consolidate/withdraw from HODLMM:**
 
+> **Note:** This `run --confirm` call triggers capital consolidation (withdrawal mode), not bin rebalancing. Since Zest is the target and Step 4 was skipped, bins may or may not be in range — that is irrelevant here. The skill will consolidate liquidity and return sBTC to your wallet regardless of bin position. Expected output: `"decision": "WITHDRAWN"`. A response of `"decision": "IN_RANGE"` here means no capital was deployed in HODLMM — verify your position before proceeding.
+
 ```bash
+# Set password via env var — avoids exposure in ps aux and shell history
+export WALLET_PASSWORD="<your-wallet-password>"
+
 NETWORK=mainnet bun run hodlmm-move-liquidity/hodlmm-move-liquidity.ts run \
   --wallet <your-stacks-address> \
   --pool <pool-id> \
-  --confirm \
-  --password <your-wallet-password>
+  --confirm
 ```
 
 Wait for the HODLMM transaction to confirm before proceeding. Verify sBTC balance has increased in your wallet.
