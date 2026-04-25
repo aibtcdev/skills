@@ -1012,7 +1012,13 @@ async function checkGuardian(
         }
       }
     }
-  } catch { /* slippage check unavailable — allow */ }
+  } catch (e) {
+    // Fail-CLOSED: a thrown slippage check used to silently leave slippageOk=true
+    // (the initial value), letting writes proceed against unmeasured price drift.
+    // Refuse instead and record the reason so the operator sees why.
+    slippageOk = false;
+    refusals.push(`Slippage check unavailable (${(e as Error).message ?? "error"}) — refusing as safety default`);
+  }
 
   // 3. Volume gate — measured against targetPoolId, not always dlmm_1
   let volumeUsd = 0;
@@ -1022,7 +1028,12 @@ async function checkGuardian(
     volumeUsd = targetPool?.volumeUsd1d ?? 0;
     volumeOk = volumeUsd >= MIN_24H_VOLUME_USD;
     if (!volumeOk) refusals.push(`24h volume $${Math.round(volumeUsd)} on ${targetPoolId} < $${MIN_24H_VOLUME_USD} minimum`);
-  } catch { /* unavailable */ }
+  } catch (e) {
+    // Fail-CLOSED on volume API failure — refusing is safer than allowing a
+    // write into a pool whose liquidity we couldn't measure.
+    volumeOk = false;
+    refusals.push(`Volume check unavailable (${(e as Error).message ?? "error"}) — refusing as safety default`);
+  }
 
   // 4. Gas gate
   let gasStx = 0;
@@ -1032,7 +1043,12 @@ async function checkGuardian(
     gasStx = round((fees.transfer_fee_estimate ?? 6) * 3600 / 1e6, 2);
     gasOk = gasStx <= MAX_GAS_STX;
     if (!gasOk) refusals.push(`Estimated gas ${gasStx} STX > ${MAX_GAS_STX} STX cap`);
-  } catch { /* allow */ }
+  } catch (e) {
+    // Fail-CLOSED on Hiro fees endpoint failure — without a gas estimate we
+    // could pay 10-100x normal cost, so refuse rather than guess.
+    gasOk = false;
+    refusals.push(`Gas estimate unavailable (${(e as Error).message ?? "error"}) — refusing as safety default`);
+  }
 
   // 5. Cooldown
   const state = readState();
@@ -1165,7 +1181,7 @@ function expectedSwapOutput(
 // Build a call_contract instruction for a Bitflow DLMM swap.
 // Uses swap-simple-multi with a single swap in the list.
 //
-// Safety pattern (matches sibling skill bff-skills#494 commit 02d10989 + knowledge-base.md
+// Safety pattern (matches sibling skill bff-skills#494 commit 02d1098c + knowledge-base.md
 // line 438 "allow + sender-pin on routable fee flows, deny where unambiguous"):
 //   - postConditionMode: "allow" with a dual-pin envelope
 //   - 2-entry post-conditions: caller's max input (willSendLte) + pool's min output (willSendGte)
