@@ -886,7 +886,12 @@ async function runDoctor(options: RunOptions): Promise<void> {
     } catch (error) {
       checks.hodlmm_executor = { ok: false, detail: error instanceof Error ? error.message : String(error) };
     }
-    checks.password_env = { ok: Boolean(process.env.AIBTC_WALLET_PASSWORD), detail: process.env.AIBTC_WALLET_PASSWORD ? "AIBTC_WALLET_PASSWORD is set" : "AIBTC_WALLET_PASSWORD not set (required only for run)" };
+    checks.password_env = {
+      ok: true,
+      detail: process.env.AIBTC_WALLET_PASSWORD
+        ? "AIBTC_WALLET_PASSWORD is set"
+        : "AIBTC_WALLET_PASSWORD not set (required only for run)",
+    };
     checks.state_file = { ok: true, detail: context.stateFile };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
