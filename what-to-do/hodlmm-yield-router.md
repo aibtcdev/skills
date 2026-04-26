@@ -85,6 +85,8 @@ zest_apy    = Zest sBTC lending APY (from sbtc-yield-maximizer status)
 diff_bps    = (hodlmm_apy - zest_apy) * 10000
 ```
 
+Positive `diff_bps` means HODLMM wins; negative means Zest wins.
+
 Decision table:
 
 | Condition | Target | Action |
