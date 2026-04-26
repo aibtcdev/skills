@@ -1181,8 +1181,8 @@ function expectedSwapOutput(
 // Build a call_contract instruction for a Bitflow DLMM swap.
 // Uses swap-simple-multi with a single swap in the list.
 //
-// Safety pattern (matches sibling skill bff-skills#494 commit 02d1098c + knowledge-base.md
-// line 438 "allow + sender-pin on routable fee flows, deny where unambiguous"):
+// Safety pattern (matches sibling skill bff-skills#494 commit 02d1098c, on-chain
+// proof tx 0xf4f4932800a80234845a8d199556ad9c0ff4aa99874a95c819c13779b164cbc8):
 //   - postConditionMode: "allow" with a dual-pin envelope
 //   - 2-entry post-conditions: caller's max input (willSendLte) + pool's min output (willSendGte)
 //   - min-received computed in OUTPUT-token atomic units (caller passes `expectedOut`)
@@ -1195,8 +1195,9 @@ function expectedSwapOutput(
 // willSendGte pin IS the receive-side fund-safety protection; Deny mode adds no further
 // guarantee AND empirically over-constrains on stable-stable pools (tx 0x5986066a on
 // dlmm_7 aborted with abort_by_post_condition under Deny+2PC while the same envelope
-// shape works on dlmm_1 / dlmm_6 / dlmm_3 under Allow). KB line 438 explicitly scopes
-// Deny to "unambiguous" cases like Granite redeem.
+// shape works on dlmm_1 / dlmm_6 / dlmm_3 under Allow). Deny mode is reserved here
+// for unambiguous flows where the FT movement is fully sender-expressible — the
+// Granite redeem path below is the example.
 function buildDlmmSwapInstruction(
   route: DlmmSwapRoute,
   caller: string,
@@ -1527,9 +1528,9 @@ function buildWithdrawInstructions(protocol: Protocol, scout: ScoutResult): Exec
       if (shares === "0") return [{ tool: "info", params: {}, description: "No Granite LP position to withdraw" }];
       // Granite follows ERC-4626: redeem(shares) burns share count, returns aeUSDC.
       const sharesNum = BigInt(shares);
-      // Upper cap shares*2 retained from prior KB bug #35 fix — catches a buggy pool
-      // over-paying/draining while admitting long-held positions whose interest exceeded
-      // the earlier +10% buffer.
+      // Upper cap shares*2 — defensive against a buggy pool over-paying/draining
+      // while admitting long-held positions whose accrued interest can exceed a
+      // narrower +10% buffer. Empirically wide enough for healthy redeems.
       const expectedAeusdcCap = String(sharesNum * 2n);
       return [{
         tool: "call_contract",
@@ -1556,7 +1557,7 @@ function buildWithdrawInstructions(protocol: Protocol, scout: ScoutResult): Exec
               conditionCode: "gte", amount: shares,
             },
             // Receive-side cap: state-v1 sends aeUSDC ≤ shares*2 — defensive against a
-            // buggy pool overpaying/draining. KB bug #35 intent preserved, re-anchored.
+            // buggy pool overpaying/draining (allows accrued interest, blocks runaway).
             {
               type: "ft", principal: GRANITE_STATE,
               asset: AEUSDC_TOKEN, assetName: "aeUSDC",
