@@ -690,6 +690,10 @@ function resolveHodlmmScriptTarget(command: string[]): string | null {
   return [".ts", ".tsx", ".js", ".mjs", ".cjs"].includes(extension) ? resolved : null;
 }
 
+function getHodlmmSecureExecutionError(): string {
+  return "Secure HODLMM execution requires HODLMM_MOVE_LIQUIDITY_CMD to resolve to a Bun-runnable script path";
+}
+
 async function runExternalJsonCommand(command: string[], args: string[], extraEnv: Record<string, string> = {}): Promise<ExternalCommandResult> {
   const proc = Bun.spawn({
     cmd: [...command, ...args],
@@ -724,7 +728,7 @@ async function runHodlmmJsonCommand(
   const scriptTarget = resolveHodlmmScriptTarget(command);
   if (!scriptTarget) {
     if (requirePasswordBridge) {
-      throw new Error("Secure HODLMM execution requires HODLMM_MOVE_LIQUIDITY_CMD to resolve to a Bun-runnable script path");
+      throw new Error(getHodlmmSecureExecutionError());
     }
     return runExternalJsonCommand(command, args, extraEnv);
   }
@@ -882,7 +886,10 @@ async function runDoctor(options: RunOptions): Promise<void> {
     checks.mempool = { ok: context.mempoolDepth <= options.mempoolDepthLimit, detail: `depth=${context.mempoolDepth} limit=${options.mempoolDepthLimit}` };
     try {
       const command = resolveHodlmmCommand();
-      checks.hodlmm_executor = { ok: true, detail: command.join(" ") };
+      const scriptTarget = resolveHodlmmScriptTarget(command);
+      checks.hodlmm_executor = scriptTarget
+        ? { ok: true, detail: command.join(" ") }
+        : { ok: false, detail: getHodlmmSecureExecutionError() };
     } catch (error) {
       checks.hodlmm_executor = { ok: false, detail: error instanceof Error ? error.message : String(error) };
     }
