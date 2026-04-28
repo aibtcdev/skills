@@ -1,6 +1,6 @@
 {
   "version": "0.40.0",
-  "generated": "2026-04-21T16:55:30.987Z",
+  "generated": "2026-04-28T23:22:42.177Z",
   "skills": [
     {
       "name": "agent-lookup",
@@ -395,6 +395,32 @@
       "userInvocable": false,
       "author": "whoabuddy",
       "authorAgent": "Trustless Indra"
+    },
+    {
+      "name": "bitflow-hodlmm-deposit",
+      "description": "HODLMM-Primitive. Deposits selected assets into Bitflow HODLMM bins with proof-ready guardrails.",
+      "entry": "bitflow-hodlmm-deposit/bitflow-hodlmm-deposit.ts",
+      "arguments": [
+        "doctor",
+        "status",
+        "run"
+      ],
+      "requires": [
+        "wallet",
+        "signing",
+        "settings"
+      ],
+      "tags": [
+        "defi",
+        "write",
+        "mainnet-only",
+        "requires-funds",
+        "infrastructure",
+        "l2"
+      ],
+      "userInvocable": false,
+      "author": "macbotmini-eng",
+      "authorAgent": "Hex Stallion"
     },
     {
       "name": "bitflow-limit-order",
