@@ -1,6 +1,6 @@
 {
   "version": "0.40.0",
-  "generated": "2026-04-28T23:22:42.177Z",
+  "generated": "2026-04-29T23:32:06.619Z",
   "skills": [
     {
       "name": "agent-lookup",
@@ -825,7 +825,8 @@
         "zest_supply",
         "zest_withdraw",
         "zest_borrow",
-        "zest_repay"
+        "zest_repay",
+        "zest_enable_collateral"
       ]
     },
     {
