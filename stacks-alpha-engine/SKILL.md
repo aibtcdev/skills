@@ -72,6 +72,46 @@ withdraw --protocol zest                                                       #
 
 **Economic rationale:** Hermetica USDh stake APY (~40% per live scan) − Zest USDh borrow APR (~7%) = **~33% positive carry** on the borrowed amount, with sBTC price exposure retained on-chain. Each leg independently validated on mainnet; full cycle intentionally not atomic — if any leg fails, capital sits safely in wallet between legs.
 
+### Silo-claim call shape (manual leg)
+
+After the 7-day cooldown elapses, the silo claim is a single `call_contract` step. The skill does not wrap this leg as a `claim-silo` subcommand because:
+
+1. **Stateful claim-id.** The `claim-id` is an artifact returned by the prior `staking-v1-1.unstake` response 7 days earlier. Wrapping it requires either persistent skill state (out of scope for a stateless tool) or a `--claim-id <uint>` CLI arg that adds no friction over a direct `call_contract`.
+2. **Once-per-unstake event.** Unlike `stake`/`unstake`/`withdraw` which fire repeatedly, silo claim runs exactly once per unstake. Copy-paste from this doc is lower-overhead than another command surface.
+
+Pre-check the claim is still pending and the cooldown has elapsed:
+
+```clarity
+(contract-call? .staking-silo-v1-1 get-claim u<CLAIM_ID>)
+;; → (ok { amount: uint, recipient: principal, ts: uint })
+(contract-call? .staking-silo-v1-1 get-current-ts)
+;; → must be ≥ claim.ts
+```
+
+Then submit:
+
+```ts
+call_contract({
+  contractAddress: "SPN5AKG35QZSK2M8GAMR4AFX45659RJHDW353HSG",
+  contractName:    "staking-silo-v1-1",
+  functionName:    "withdraw",
+  functionArgs:    [{ type: "uint", value: "<CLAIM_ID>" }],
+  postConditionMode: "deny",
+  postConditions: [{
+    type: "ft",
+    principal: "SPN5AKG35QZSK2M8GAMR4AFX45659RJHDW353HSG.staking-silo-v1-1",
+    asset:     "SPN5AKG35QZSK2M8GAMR4AFX45659RJHDW353HSG.usdh-token-v1",
+    assetName: "usdh",
+    conditionCode: "gte",
+    amount:    "<claim.amount from get-claim>",
+  }],
+});
+```
+
+PC mode is `deny` because the silo-claim flow is contract→wallet — opposite direction to `stake`/`unstake` (wallet→contract, handled by `allow + outgoing user lte` per the PC table below). Receive-side floor (`silo sent_gte amount`) mirrors the Granite redeem shape: Stacks FT PCs track outflows from the named principal, so the contract sender is the only place a protective constraint can express on this leg.
+
+**On-chain proof:** [`0xe1f1598b…`](https://explorer.hiro.so/txid/0xe1f1598b6355f9b7fbe54599ed11e0609a7d1af46265feb0c88482e145902cc5?chain=mainnet) — silo claim u2157, 500,699,105 µUSDh redeemed (block 7,789,631).
+
 ## Safety notes
 
 Stacks Alpha Engine uses a **defense-in-depth** approach. Stacks post-conditions are the standard safety mechanism, but DeFi operations that mint or burn tokens (LP shares, sUSDh) cannot be expressed as sender-side post-conditions. The engine compensates with layered gates that must all pass before any write executes.
