@@ -8,6 +8,9 @@ on:
     branches:
       - main
 
+permissions:
+  contents: write
+
 jobs:
   ci:
     name: Typecheck, validate, and manifest freshness
@@ -16,6 +19,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -29,13 +37,29 @@ jobs:
       - name: Validate skill frontmatter
         run: bun run validate
 
-      - name: Check manifest freshness
+      - name: Auto-regenerate manifest (same-repo PRs)
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
         run: |
-          # Save the committed skills array (excluding timestamp) for comparison
           jq '.skills' skills.json > /tmp/skills-before.json
-          # Regenerate the manifest
           bun run manifest
-          # Compare only the skills array — timestamp changes are expected and ignored
+          jq '.skills' skills.json > /tmp/skills-after.json
+          if ! diff -q /tmp/skills-before.json /tmp/skills-after.json > /dev/null 2>&1; then
+            echo "Manifest stale (likely from interleaved PR merges) — auto-regenerating and committing."
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add skills.json
+            git commit -m "chore(ci): auto-regenerate manifest after merge interleaving"
+            git push origin HEAD:${{ github.event.pull_request.head.ref }}
+            echo "Manifest regenerated and pushed. CI will re-run on the new commit."
+            exit 0
+          fi
+          echo "Manifest up to date."
+
+      - name: Check manifest freshness (forks and main pushes)
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
+        run: |
+          jq '.skills' skills.json > /tmp/skills-before.json
+          bun run manifest
           jq '.skills' skills.json > /tmp/skills-after.json
           if ! diff -q /tmp/skills-before.json /tmp/skills-after.json > /dev/null 2>&1; then
             echo "skills.json is stale — run 'bun run manifest' and commit the result."
