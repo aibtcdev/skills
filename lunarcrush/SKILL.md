@@ -46,7 +46,7 @@ Options:
 - `--symbol` (required) — Crypto ticker symbol (e.g. `BTC`, `ETH`, `STX`).
 - `--network` (optional, default `mainnet`) — `mainnet` or `testnet`. Mainnet uses real STX, testnet uses Hiro testnet faucet STX.
 
-Output:
+Output (fields surfaced by the worker; `payment_receipt` is decoded from the `payment-response` header when present):
 ```json
 {
   "symbol": "BTC",
@@ -57,10 +57,13 @@ Output:
   "price_usd": 76244.42,
   "percent_change_24h": 1.40,
   "source": "lunarcrush",
-  "ts": "2026-04-30T18:15:11.375Z",
-  "payment": {
-    "status": "confirmed",
-    "txid": "..."
+  "network": "mainnet",
+  "endpoint": "https://lunarcrush-x402-poc-prod.lunarcrush.workers.dev/galaxy-score/btc",
+  "payment_receipt": {
+    "success": true,
+    "payer": "SP...",
+    "transaction": "...",
+    "network": "stacks:1"
   }
 }
 ```
@@ -105,7 +108,7 @@ Output:
 - USD-pegged. Each endpoint has a fixed USD price target ($0.005 → $0.0275 across the catalog). The microSTX amount required is recomputed from live STX/USD and cached at the edge for one hour.
 - Premium over the LunarCrush Individual subscription per-call effective rate ($90/mo ≈ $0.003/call). Agents pay a convenience premium; heavy users self-funnel into the $90/mo Individual tier.
 
-## Endpoints
+## Worker Hosts
 
 - Mainnet (real money): `https://lunarcrush-x402-poc-prod.lunarcrush.workers.dev`
 - Testnet (faucet STX): `https://lunarcrush-x402-poc.lunarcrush.workers.dev`
