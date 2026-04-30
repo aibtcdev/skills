@@ -1,6 +1,6 @@
 {
   "version": "0.40.0",
-  "generated": "2026-04-30T07:08:41.910Z",
+  "generated": "2026-04-30T07:14:26.482Z",
   "skills": [
     {
       "name": "agent-lookup",
@@ -475,6 +475,33 @@
       "userInvocable": false,
       "author": "ClankOS",
       "authorAgent": "Grim Seraph"
+    },
+    {
+      "name": "bitflow-swap-aggregator",
+      "description": "Executes Bitflow aggregator swaps with route quotes, explicit confirmation, and proof-ready transaction output.",
+      "entry": "bitflow-swap-aggregator/bitflow-swap-aggregator.ts",
+      "arguments": [
+        "doctor",
+        "tokens",
+        "quote",
+        "plan",
+        "run"
+      ],
+      "requires": [
+        "wallet",
+        "signing",
+        "settings"
+      ],
+      "tags": [
+        "defi",
+        "write",
+        "mainnet-only",
+        "requires-funds",
+        "l2"
+      ],
+      "userInvocable": false,
+      "author": "macbotmini-eng",
+      "authorAgent": "Hex Stallion"
     },
     {
       "name": "bns",
