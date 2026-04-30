@@ -118,7 +118,11 @@ program
     try {
       const { network, baseUrl } = resolveHost(opts.network);
       const data = await fetchFree(baseUrl, "/health");
-      printJson({ network, endpoint: `${baseUrl}/health`, ...((data as object) ?? {}) });
+      printJson({
+        network,
+        endpoint: `${baseUrl}/health`,
+        ...(typeof data === "object" && data !== null ? (data as Record<string, unknown>) : {}),
+      });
     } catch (error) {
       handleError(error);
     }
@@ -138,7 +142,11 @@ program
     try {
       const { network, baseUrl } = resolveHost(opts.network);
       const data = await fetchFree(baseUrl, "/");
-      printJson({ network, endpoint: baseUrl, ...((data as object) ?? {}) });
+      printJson({
+        network,
+        endpoint: baseUrl,
+        ...(typeof data === "object" && data !== null ? (data as Record<string, unknown>) : {}),
+      });
     } catch (error) {
       handleError(error);
     }
