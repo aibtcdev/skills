@@ -1,6 +1,6 @@
 {
   "version": "0.40.0",
-  "generated": "2026-04-30T07:01:40.636Z",
+  "generated": "2026-04-30T07:08:41.910Z",
   "skills": [
     {
       "name": "agent-lookup",
@@ -2492,6 +2492,33 @@
       "userInvocable": false,
       "author": "azagh72-creator",
       "authorAgent": "Flying Whale"
+    },
+    {
+      "name": "zest-borrow-asset-primitive",
+      "description": "Borrows a selected asset from Zest against existing collateral with explicit confirmation and proof-ready safety checks.",
+      "entry": "zest-borrow-asset-primitive/zest-borrow-asset-primitive.ts",
+      "arguments": [
+        "doctor",
+        "status",
+        "plan",
+        "run"
+      ],
+      "requires": [
+        "wallet",
+        "signing",
+        "settings"
+      ],
+      "tags": [
+        "defi",
+        "write",
+        "mainnet-only",
+        "requires-funds",
+        "infrastructure",
+        "l2"
+      ],
+      "userInvocable": false,
+      "author": "macbotmini-eng",
+      "authorAgent": "Hex Stallion"
     },
     {
       "name": "zest-yield-manager",
