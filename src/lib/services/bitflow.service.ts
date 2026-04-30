@@ -275,6 +275,9 @@ interface PreparedRelativeWithdrawalBin extends HodlmmRelativeWithdrawalInput {
   binId: number;
 }
 
+// Default HODLMM API base. Read via getHodlmmApiBase() (line ~382), which checks
+// process.env.BITFLOW_HODLMM_API_HOST first — same env-override pattern as the
+// other Bitflow URL constants in this file.
 const HODLMM_API_BASE = "https://bff.bitflowapis.finance";
 const HODLMM_LIQUIDITY_ROUTER = "SM1FKXGNZJWSTWDWXQZJNF7B5TV5ZB235JTCXYXKD.dlmm-liquidity-router-v-1-1";
 const HODLMM_CORE_CONTRACT = "SP1PFR4V08H1RAZXREBGFFQ59WB739XM8VVGTFSEA.dlmm-core-v-1-1";

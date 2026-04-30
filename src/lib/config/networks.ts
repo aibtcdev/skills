@@ -22,6 +22,14 @@ export function getApiBaseUrl(network: Network): string {
     : "https://api.testnet.hiro.so";
 }
 
+// Inbox API base. mainnet → aibtc.com, testnet → aibtc.dev. Override with AIBTC_INBOX_BASE.
+export function getInboxBase(): string {
+  if (process.env.AIBTC_INBOX_BASE) return process.env.AIBTC_INBOX_BASE;
+  return NETWORK === "mainnet"
+    ? "https://aibtc.com/api/inbox"
+    : "https://aibtc.dev/api/inbox";
+}
+
 export const EXPLORER_URL = "https://explorer.hiro.so";
 
 export function getExplorerTxUrl(txid: string, network: Network): string {

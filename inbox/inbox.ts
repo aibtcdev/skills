@@ -7,14 +7,12 @@
  */
 
 import { Command } from "commander";
-import { NETWORK } from "../src/lib/config/networks.js";
+import { NETWORK, getInboxBase } from "../src/lib/config/networks.js";
 import {
   getAccount,
   getWalletAddress,
 } from "../src/lib/services/x402.service.js";
 import { printJson, handleError } from "../src/lib/utils/cli.js";
-
-const INBOX_BASE = "https://aibtc.com/api/inbox";
 
 // ---------------------------------------------------------------------------
 // Program
@@ -62,7 +60,7 @@ program
 
         const account = await getAccount();
 
-        const inboxUrl = `${INBOX_BASE}/${opts.recipientStxAddress}`;
+        const inboxUrl = `${getInboxBase()}/${opts.recipientStxAddress}`;
         const body = {
           toBtcAddress: opts.recipientBtcAddress,
           toStxAddress: opts.recipientStxAddress,
@@ -251,7 +249,7 @@ program
     try {
       const address = await getWalletAddress();
 
-      const url = `${INBOX_BASE}/${address}${opts.status !== "all" ? `?status=${opts.status}` : ""}`;
+      const url = `${getInboxBase()}/${address}${opts.status !== "all" ? `?status=${opts.status}` : ""}`;
 
       const res = await fetch(url, {
         method: "GET",
@@ -306,7 +304,7 @@ program
       const address = await getWalletAddress();
 
       // Single fetch — the API returns unreadCount and totalCount in one call
-      const res = await fetch(`${INBOX_BASE}/${address}`, {
+      const res = await fetch(`${getInboxBase()}/${address}`, {
         method: "GET",
       });
 

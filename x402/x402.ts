@@ -7,7 +7,7 @@
  */
 
 import { Command } from "commander";
-import { NETWORK, API_URL } from "../src/lib/config/networks.js";
+import { NETWORK, API_URL, getInboxBase } from "../src/lib/config/networks.js";
 import {
   classifyCanonicalPaymentOutcome,
   createApiClient,
@@ -425,8 +425,7 @@ program
 
         const account = await getAccount();
 
-        const INBOX_BASE = "https://aibtc.com/api/inbox";
-        const inboxUrl = `${INBOX_BASE}/${opts.recipientBtcAddress}`;
+        const inboxUrl = `${getInboxBase()}/${opts.recipientBtcAddress}`;
         const body = {
           toBtcAddress: opts.recipientBtcAddress,
           toStxAddress: opts.recipientStxAddress,

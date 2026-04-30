@@ -45,7 +45,7 @@ import {
   resolveCanonicalCheckStatusUrl,
   type CanonicalPaymentAction,
 } from "../services/x402.service.js";
-import { type Network, getStacksNetwork } from "../config/networks.js";
+import { type Network, getInboxBase, getStacksNetwork } from "../config/networks.js";
 import { getContracts, parseContractId } from "../config/contracts.js";
 import {
   emitPaymentDiagnostic,
@@ -109,8 +109,6 @@ const DEFAULT_RETRY_DELAY_MS = 2_000;
 const MAX_RETRY_AFTER_CAP_S = 60;
 /** Keep retry-loop canonical polling bounded so a slow status endpoint does not stall retries. */
 const RETRY_LOOP_CANONICAL_POLL_TIMEOUT_MS = 5_000;
-/** Inbox API base URL. */
-const INBOX_BASE = "https://aibtc.com/api/inbox";
 
 // ============================================================================
 // Retry Classifier
@@ -445,7 +443,7 @@ async function submitWithPaymentTxid(
   content: string,
   txid: string
 ): Promise<{ ok: boolean; status: number; body: string }> {
-  const url = `${INBOX_BASE}/${recipientBtcAddress}`;
+  const url = `${getInboxBase()}/${recipientBtcAddress}`;
   const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
