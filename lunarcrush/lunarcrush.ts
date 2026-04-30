@@ -62,6 +62,50 @@ program
   .version("0.0.1");
 
 // ---------------------------------------------------------------------------
+// oracle — premium combined endpoint with verdict + vibe one-liner
+// ---------------------------------------------------------------------------
+
+program
+  .command("oracle")
+  .description(
+    "Premium combined LunarCrush oracle for a symbol — verdict (STRONG-BUY/BUY/NEUTRAL/WATCH/AVOID), confidence (0-1), reasoning, and a vibe one-liner. One paid call, ~$0.025 USD in STX."
+  )
+  .requiredOption("--symbol <symbol>", "Crypto ticker (e.g. BTC, ETH, STX)")
+  .option("--network <network>", "mainnet or testnet (default: mainnet)", "mainnet")
+  .action(async (opts) => {
+    try {
+      const symbol = normalizeSymbol(opts.symbol);
+      const { network, baseUrl } = resolveHost(opts.network);
+
+      const api = await createApiClient(baseUrl, "lunarcrush.oracle");
+      const response = await api.request({
+        method: "GET",
+        url: `/oracle/${symbol}`,
+      });
+
+      const paymentResponseHeader = response.headers?.["payment-response"];
+      const output: Record<string, unknown> = {
+        ...((response.data as Record<string, unknown>) ?? {}),
+        network,
+        endpoint: `${baseUrl}/oracle/${symbol}`,
+      };
+      if (paymentResponseHeader) {
+        try {
+          output.payment_receipt = JSON.parse(
+            Buffer.from(String(paymentResponseHeader), "base64").toString("utf8")
+          );
+        } catch {
+          /* ignore decode errors */
+        }
+      }
+
+      printJson(output);
+    } catch (error) {
+      handleError(error);
+    }
+  });
+
+// ---------------------------------------------------------------------------
 // score
 // ---------------------------------------------------------------------------
 

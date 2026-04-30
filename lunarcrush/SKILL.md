@@ -5,7 +5,7 @@ metadata:
   author: "joevezzani"
   author-agent: "Prime Spoke"
   user-invocable: "true"
-  arguments: "score | health | meta"
+  arguments: "oracle | score | health | meta"
   entry: "lunarcrush/lunarcrush.ts"
   requires: "wallet"
   tags: "l2, read-only, requires-funds"
@@ -21,6 +21,7 @@ LunarCrush is the leading social intelligence platform for crypto and equities �
 
 | Subcommand | Network | Approx cost | Description |
 |---|---|---|---|
+| `oracle` | mainnet (default) or testnet | $0.025 USD in STX | Premium combined: verdict + confidence + reasoning + vibe one-liner + structured signals. One paid call, both trading-model and chatbot audiences served. |
 | `score` | mainnet (default) or testnet | $0.005 USD in STX | Galaxy Score, AltRank, market cap rank, price, 24h change |
 | `health` | n/a | free | Liveness probe |
 | `meta` | n/a | free | Live STX/USD price, full endpoint catalog with current microSTX amounts |
@@ -32,6 +33,52 @@ Endpoints planned (not yet live): `altrank` (dedicated), `topic`, `social-veloci
 ```
 bun run lunarcrush/lunarcrush.ts <subcommand> [options]
 ```
+
+### oracle
+
+Premium combined call — returns verdict, confidence, reasoning, a vibe one-liner, AND the full structured signals in a single response. Costs ~$0.025 USD in STX (~5x a `score` call) but saves you 5+ separate paid calls if you'd otherwise compose this yourself.
+
+```
+bun run lunarcrush/lunarcrush.ts oracle --symbol BTC
+bun run lunarcrush/lunarcrush.ts oracle --symbol ETH --network testnet
+```
+
+Options:
+- `--symbol` (required) — Crypto ticker symbol (e.g. `BTC`, `ETH`, `STX`).
+- `--network` (optional, default `mainnet`) — `mainnet` or `testnet`.
+
+Output:
+```json
+{
+  "symbol": "BTC",
+  "name": "Bitcoin",
+  "verdict": "BUY",
+  "confidence": 0.691,
+  "reasoning": "Galaxy Score 58.8, AltRank 85, 24h price +0.60%, top-10 market cap → composite 69/100 (Galaxy 45% / AltRank 35% / momentum 20%) → BUY.",
+  "vibe": "BTC is feeling itself 💪 Galaxy 58.8 on the up, momentum constructive. Mid-confidence vote.",
+  "signals": {
+    "galaxy_score": 58.8,
+    "alt_rank": 85,
+    "market_cap_rank": 1,
+    "price_usd": 76369.76,
+    "percent_change_24h": 0.59
+  },
+  "source": "lunarcrush",
+  "network": "mainnet",
+  "endpoint": "https://lunarcrush-x402-poc-prod.lunarcrush.workers.dev/oracle/btc",
+  "payment_receipt": { "success": true, "payer": "SP...", "transaction": "...", "network": "stacks:1" }
+}
+```
+
+Verdict tiers (deterministic synthesis from a weighted composite — Galaxy 45% / AltRank 35% / 24h momentum 20%):
+- `STRONG-BUY` (composite ≥ 75)
+- `BUY` (60-74)
+- `NEUTRAL` (45-59)
+- `WATCH` (30-44)
+- `AVOID` (< 30)
+- `UNKNOWN` (insufficient data)
+
+The `vibe` field is a personality-laden one-liner usable directly in chatbots, Telegram bots, agent narrative output, or anywhere you'd prefer human-readable over structured. The `signals` block is for quant models that want raw inputs.
 
 ### score
 
