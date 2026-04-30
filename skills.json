@@ -1,6 +1,6 @@
 {
   "version": "0.40.0",
-  "generated": "2026-04-30T09:12:20.112Z",
+  "generated": "2026-04-30T09:22:45.769Z",
   "skills": [
     {
       "name": "agent-lookup",
@@ -2118,6 +2118,8 @@
         "scan",
         "deploy",
         "withdraw",
+        "borrow",
+        "repay",
         "rebalance",
         "migrate",
         "emergency",

@@ -16,10 +16,10 @@
  * Safety: every write runs Scout -> Reserve -> Guardian -> Executor. No bypasses.
  *
  * Protocols & tokens:
- *   Zest      — supply sBTC, wSTX, stSTX, USDC, USDh  (MCP native zest_supply/withdraw)
- *   Hermetica — stake USDh -> sUSDh                     (call_contract staking-v1-1)
- *   Granite   — deposit aeUSDC to LP                    (call_contract liquidity-provider-v1)
- *   HODLMM    — LP in sBTC/STX/USDCx/USDh/aeUSDC pools (Bitflow skill)
+ *   Zest      — supply/withdraw sBTC; borrow/repay USDh  (MCP native zest_supply/withdraw/borrow/repay)
+ *   Hermetica — stake USDh -> sUSDh                       (call_contract staking-v1-1)
+ *   Granite   — deposit aeUSDC to LP                      (call_contract liquidity-provider-v1)
+ *   HODLMM    — LP in sBTC/STX/USDCx/USDh/aeUSDC pools   (Bitflow skill)
  *
  * Usage:
  *   bun run stacks-alpha-engine/stacks-alpha-engine.ts doctor
@@ -27,7 +27,7 @@
  *   bun run stacks-alpha-engine/stacks-alpha-engine.ts deploy --wallet <SP...> --protocol hermetica --token usdh --amount 1000000
  *   bun run stacks-alpha-engine/stacks-alpha-engine.ts withdraw --wallet <SP...> --protocol zest --token sbtc
  *   bun run stacks-alpha-engine/stacks-alpha-engine.ts rebalance --wallet <SP...> --pool-id dlmm_1
- *   bun run stacks-alpha-engine/stacks-alpha-engine.ts migrate --wallet <SP...> --from zest --to hermetica
+ *   bun run stacks-alpha-engine/stacks-alpha-engine.ts migrate --wallet <SP...> --from zest --to hermetica --amount 1000000
  *   bun run stacks-alpha-engine/stacks-alpha-engine.ts emergency --wallet <SP...>
  */
 
@@ -104,11 +104,17 @@ interface TokenMeta { symbol: string; contract: string; decimals: number; ftSuff
 const TOKENS: Record<string, TokenMeta> = {
   sbtc:   { symbol: "sBTC",   contract: SBTC_TOKEN,   decimals: 8, ftSuffix: "::sbtc-token" },
   stx:    { symbol: "STX",    contract: "stx",        decimals: 6, ftSuffix: "" },
-  usdcx:  { symbol: "USDCx",  contract: USDCX_TOKEN,  decimals: 6, ftSuffix: "::usdcx" },
-  usdh:   { symbol: "USDh",   contract: USDH_TOKEN,   decimals: 8, ftSuffix: "::usdh-token" },
-  susdh:  { symbol: "sUSDh",  contract: SUSDH_TOKEN,  decimals: 8, ftSuffix: "::susdh-token" },
-  aeusdc: { symbol: "aeUSDC", contract: AEUSDC_TOKEN, decimals: 6, ftSuffix: "::bridged-usdc" },
+  usdcx:  { symbol: "USDCx",  contract: USDCX_TOKEN,  decimals: 6, ftSuffix: "::usdcx-token" },
+  usdh:   { symbol: "USDh",   contract: USDH_TOKEN,   decimals: 8, ftSuffix: "::usdh" },
+  susdh:  { symbol: "sUSDh",  contract: SUSDH_TOKEN,  decimals: 8, ftSuffix: "::susdh" },
+  aeusdc: { symbol: "aeUSDC", contract: AEUSDC_TOKEN, decimals: 6, ftSuffix: "::aeUSDC" },
 };
+
+// Reverse lookup: token contract principal → TokenMeta. Used to derive asset_name + decimals
+// from on-chain route data (xToken/yToken/xForY) when building DLMM swap post-conditions.
+const TOKENS_BY_CONTRACT: Record<string, TokenMeta> = Object.fromEntries(
+  Object.values(TOKENS).filter(t => t.contract !== "stx").map(t => [t.contract, t]),
+);
 
 // == Types ====================================================================
 interface PoolDef { id: number; contract: string; name: string; tokenX: string; tokenY: string }
@@ -964,49 +970,70 @@ function writeState(state: EngineState): void {
   writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
 }
 
-async function checkGuardian(scout: ScoutResult): Promise<GuardianResult> {
+async function checkGuardian(
+  scout: ScoutResult,
+  opts: { targetPoolId?: string } = {},
+): Promise<GuardianResult> {
   const refusals: string[] = [];
+
+  // Target pool for slippage + volume gates. Defaults to dlmm_1 (sBTC/USDCx canonical pool)
+  // for read-only `scan` and any operation that doesn't pre-resolve a route. Callers that
+  // know which pool the upcoming write will touch (e.g. hermetica deploy → dlmm_8 USDh/USDCx,
+  // granite deploy → dlmm_7 aeUSDC/USDCx) should pass the actual pool so the gate measures
+  // the right liquidity venue.
+  const targetPoolId = opts.targetPoolId ?? "dlmm_1";
+  const targetPoolDef = HODLMM_POOLS.find(p => `dlmm_${p.id}` === targetPoolId) ?? HODLMM_POOLS[0];
 
   // 1. Price source gate
   const pricesOk = scout.prices.sbtc > 0 && scout.prices.stx > 0;
   if (!pricesOk) refusals.push("Price data unavailable — cannot calculate USD values safely");
 
-  // 2. Slippage check (HODLMM active bin vs market price)
+  // 2. Slippage check (HODLMM active bin vs market price) — measured against targetPoolId
   let slippagePct = 0;
   let slippageOk = true;
   const guardianPools = await fetchBitflowPools().catch(() => [] as BitflowPoolData[]);
   try {
-    const dlmm1 = guardianPools.find(p => p.poolId === "dlmm_1");
-    if (dlmm1?.tokens) {
-      const pool1 = HODLMM_POOLS[0];
-      const abr = await callReadOnly(pool1.contract, "get-active-bin-id", []);
+    const targetPool = guardianPools.find(p => p.poolId === targetPoolId);
+    if (targetPool?.tokens) {
+      const abr = await callReadOnly(targetPoolDef.contract, "get-active-bin-id", []);
       if (abr.okay && abr.result) {
-        const binsData = await fetchJson<{ bins?: Array<{ bin_id: number; price?: string }>; active_bin_id?: number }>(`${BITFLOW_API}/api/quotes/v1/bins/dlmm_1`);
+        const binsData = await fetchJson<{ bins?: Array<{ bin_id: number; price?: string }>; active_bin_id?: number }>(`${BITFLOW_API}/api/quotes/v1/bins/${targetPoolId}`);
         const activeBinId = binsData.active_bin_id ?? 0;
         const activeBinData = binsData.bins?.find(b => b.bin_id === activeBinId);
         if (activeBinData?.price) {
           const binPrice = parseFloat(activeBinData.price);
-          const hodlmmPriceUsd = (binPrice / PRICE_SCALE) * Math.pow(10, dlmm1.tokens.tokenX.decimals - dlmm1.tokens.tokenY.decimals);
-          const marketPrice = dlmm1.tokens.tokenX.priceUsd;
+          const hodlmmPriceUsd = (binPrice / PRICE_SCALE) * Math.pow(10, targetPool.tokens.tokenX.decimals - targetPool.tokens.tokenY.decimals);
+          const marketPrice = targetPool.tokens.tokenX.priceUsd;
           if (marketPrice > 0) {
             slippagePct = round(Math.abs(hodlmmPriceUsd - marketPrice) / marketPrice * 100, 4);
             slippageOk = slippagePct <= MAX_SLIPPAGE_PCT;
-            if (!slippageOk) refusals.push(`Slippage ${slippagePct}% > ${MAX_SLIPPAGE_PCT}% cap`);
+            if (!slippageOk) refusals.push(`Slippage ${slippagePct}% > ${MAX_SLIPPAGE_PCT}% cap on ${targetPoolId}`);
           }
         }
       }
     }
-  } catch { /* slippage check unavailable — allow */ }
+  } catch (e) {
+    // Fail-CLOSED: a thrown slippage check used to silently leave slippageOk=true
+    // (the initial value), letting writes proceed against unmeasured price drift.
+    // Refuse instead and record the reason so the operator sees why.
+    slippageOk = false;
+    refusals.push(`Slippage check unavailable (${(e as Error).message ?? "error"}) — refusing as safety default`);
+  }
 
-  // 3. Volume gate
+  // 3. Volume gate — measured against targetPoolId, not always dlmm_1
   let volumeUsd = 0;
   let volumeOk = true;
   try {
-    const dlmm1 = guardianPools.find(p => p.poolId === "dlmm_1");
-    volumeUsd = dlmm1?.volumeUsd1d ?? 0;
+    const targetPool = guardianPools.find(p => p.poolId === targetPoolId);
+    volumeUsd = targetPool?.volumeUsd1d ?? 0;
     volumeOk = volumeUsd >= MIN_24H_VOLUME_USD;
-    if (!volumeOk) refusals.push(`24h volume $${Math.round(volumeUsd)} < $${MIN_24H_VOLUME_USD} minimum`);
-  } catch { /* unavailable */ }
+    if (!volumeOk) refusals.push(`24h volume $${Math.round(volumeUsd)} on ${targetPoolId} < $${MIN_24H_VOLUME_USD} minimum`);
+  } catch (e) {
+    // Fail-CLOSED on volume API failure — refusing is safer than allowing a
+    // write into a pool whose liquidity we couldn't measure.
+    volumeOk = false;
+    refusals.push(`Volume check unavailable (${(e as Error).message ?? "error"}) — refusing as safety default`);
+  }
 
   // 4. Gas gate
   let gasStx = 0;
@@ -1016,7 +1043,12 @@ async function checkGuardian(scout: ScoutResult): Promise<GuardianResult> {
     gasStx = round((fees.transfer_fee_estimate ?? 6) * 3600 / 1e6, 2);
     gasOk = gasStx <= MAX_GAS_STX;
     if (!gasOk) refusals.push(`Estimated gas ${gasStx} STX > ${MAX_GAS_STX} STX cap`);
-  } catch { /* allow */ }
+  } catch (e) {
+    // Fail-CLOSED on Hiro fees endpoint failure — without a gas estimate we
+    // could pay 10-100x normal cost, so refuse rather than guess.
+    gasOk = false;
+    refusals.push(`Gas estimate unavailable (${(e as Error).message ?? "error"}) — refusing as safety default`);
+  }
 
   // 5. Cooldown
   const state = readState();
@@ -1060,10 +1092,12 @@ interface ExecuteInstruction {
 // Maps (tokenIn, tokenOut) to the DLMM pool and direction for swap-simple-multi.
 // Each route is a single-hop swap through a known Bitflow DLMM pool.
 interface DlmmSwapRoute {
-  pool: string;     // pool contract principal
-  xToken: string;   // x-token-trait principal (the pool's X token contract)
-  yToken: string;   // y-token-trait principal (the pool's Y token contract)
-  xForY: boolean;   // true = selling X for Y, false = selling Y for X
+  pool: string;          // pool contract principal
+  xToken: string;        // x-token-trait principal (the pool's X token contract)
+  yToken: string;        // y-token-trait principal (the pool's Y token contract)
+  xForY: boolean;        // true = selling X for Y, false = selling Y for X
+  inputSymbol: string;   // symbol of the input token (key into TOKENS)
+  outputSymbol: string;  // symbol of the output token (key into TOKENS)
 }
 
 function getDlmmSwapRoute(tokenIn: string, tokenOut: string): DlmmSwapRoute | null {
@@ -1072,6 +1106,7 @@ function getDlmmSwapRoute(tokenIn: string, tokenOut: string): DlmmSwapRoute | nu
     return {
       pool: "SM1FKXGNZJWSTWDWXQZJNF7B5TV5ZB235JTCXYXKD.dlmm-pool-aeusdc-usdcx-v-1-bps-1",
       xToken: AEUSDC_TOKEN, yToken: USDCX_TOKEN, xForY: false,
+      inputSymbol: tokenIn, outputSymbol: tokenOut,
     };
   }
   // USDCx → USDh (pool: USDh/USDCx, selling Y for X)
@@ -1079,6 +1114,7 @@ function getDlmmSwapRoute(tokenIn: string, tokenOut: string): DlmmSwapRoute | nu
     return {
       pool: "SM1FKXGNZJWSTWDWXQZJNF7B5TV5ZB235JTCXYXKD.dlmm-pool-usdh-usdcx-v-1-bps-1",
       xToken: USDH_TOKEN, yToken: USDCX_TOKEN, xForY: false,
+      inputSymbol: tokenIn, outputSymbol: tokenOut,
     };
   }
   // sBTC → USDCx (pool: sBTC/USDCx 10bps, selling X for Y)
@@ -1086,6 +1122,7 @@ function getDlmmSwapRoute(tokenIn: string, tokenOut: string): DlmmSwapRoute | nu
     return {
       pool: "SM1FKXGNZJWSTWDWXQZJNF7B5TV5ZB235JTCXYXKD.dlmm-pool-sbtc-usdcx-v-1-bps-10",
       xToken: SBTC_TOKEN, yToken: USDCX_TOKEN, xForY: true,
+      inputSymbol: tokenIn, outputSymbol: tokenOut,
     };
   }
   return null;
@@ -1099,11 +1136,109 @@ function defaultSlippagePct(route: DlmmSwapRoute): number {
   return bothStable ? 0.5 : 3;
 }
 
+// Map an upcoming operation to the DLMM pool whose liquidity it will actually touch,
+// so the Guardian's slippage + volume gates can measure the right venue. Defaults to
+// dlmm_1 (the canonical sBTC/USDCx pool) when an operation doesn't pre-resolve a route
+// or when the touched pool isn't a HODLMM pool tracked here.
+function inferTargetPoolId(command: string, opts: Record<string, string>): string {
+  const protocol = opts.protocol;
+  const token = opts.token;
+  if (command === "deploy") {
+    if (protocol === "hermetica" && token && token !== "usdh") return "dlmm_8";  // USDh/USDCx swap pool
+    if (protocol === "granite" && token && token !== "aeusdc") return "dlmm_7";  // aeUSDC/USDCx swap pool
+    if (protocol === "hodlmm") return ((opts as Record<string, string>).poolId ?? "dlmm_1");  // honor --pool-id for HODLMM direct deploy
+    return "dlmm_1";
+  }
+  if (command === "migrate") {
+    if (opts.to === "hermetica") return "dlmm_8";
+    if (opts.to === "granite") return "dlmm_7";
+    if (opts.to === "hodlmm") return ((opts as Record<string, string>).poolId ?? "dlmm_1");
+    return "dlmm_1";
+  }
+  return "dlmm_1";
+}
+
+// Estimate expected swap output in output-token atomic units, given input amount + scout prices.
+// Used by callers of buildDlmmSwapInstruction to derive the min-received guard correctly.
+function expectedSwapOutput(
+  inputAmount: number,
+  inputSymbol: string,
+  outputSymbol: string,
+  prices: { sbtc: number; stx: number; usdcx: number; usdh: number; aeusdc: number },
+): number {
+  const inputMeta = TOKENS[inputSymbol];
+  const outputMeta = TOKENS[outputSymbol];
+  if (!inputMeta || !outputMeta) return 0;
+  const priceMap = prices as Record<string, number>;
+  const inputPrice = priceMap[inputSymbol] ?? (["usdcx","usdh","aeusdc","susdh"].includes(inputSymbol) ? 1 : 0);
+  const outputPrice = priceMap[outputSymbol] ?? (["usdcx","usdh","aeusdc","susdh"].includes(outputSymbol) ? 1 : 0);
+  if (inputPrice <= 0 || outputPrice <= 0) return 0;
+  const inputUsd = (inputAmount / Math.pow(10, inputMeta.decimals)) * inputPrice;
+  const expectedOutUnits = inputUsd / outputPrice;
+  return Math.floor(expectedOutUnits * Math.pow(10, outputMeta.decimals));
+}
+
 // Build a call_contract instruction for a Bitflow DLMM swap.
 // Uses swap-simple-multi with a single swap in the list.
-function buildDlmmSwapInstruction(route: DlmmSwapRoute, amount: number, slippagePct?: number): ExecuteInstruction {
+//
+// Safety pattern (matches sibling skill bff-skills#494 commit 02d1098c, on-chain
+// proof tx 0xf4f4932800a80234845a8d199556ad9c0ff4aa99874a95c819c13779b164cbc8):
+//   - postConditionMode: "allow" with a dual-pin envelope
+//   - 2-entry post-conditions: caller's max input (willSendLte) + pool's min output (willSendGte)
+//   - min-received computed in OUTPUT-token atomic units (caller passes `expectedOut`)
+//   - max-steps u230 (per macbotmini-eng's #339 audit (d))
+//
+// Rationale for Allow-not-Deny: @macbotmini-eng's #494 audit established that DLMM swap
+// fees accrue inside dlmm-core's unclaimed-protocol-fees map and bin balances — they do
+// NOT emit FT transfer events on the swap tx (verified on-chain against 0x134df5e1 /
+// 0x5195822e / #494 proof tx 0xf4f49328). Under that verified fee flow, the pool-side
+// willSendGte pin IS the receive-side fund-safety protection; Deny mode adds no further
+// guarantee AND empirically over-constrains on stable-stable pools (tx 0x5986066a on
+// dlmm_7 aborted with abort_by_post_condition under Deny+2PC while the same envelope
+// shape works on dlmm_1 / dlmm_6 / dlmm_3 under Allow). Deny mode is reserved here
+// for unambiguous flows where the FT movement is fully sender-expressible — the
+// Granite redeem path below is the example.
+function buildDlmmSwapInstruction(
+  route: DlmmSwapRoute,
+  caller: string,
+  amount: number,
+  expectedOut: number,
+  slippagePct?: number,
+): ExecuteInstruction {
   slippagePct = slippagePct ?? defaultSlippagePct(route);
-  const minReceived = Math.floor(amount * (1 - slippagePct / 100));
+  // min-received is in OUTPUT-token atomic units (router arg expectation, verified against mainnet refs).
+  const minReceived = Math.max(1, Math.floor(expectedOut * (1 - slippagePct / 100)));
+
+  // Derive actual on-chain swap assets from route direction (single source of truth).
+  const inputAsset = route.xForY ? route.xToken : route.yToken;
+  const outputAsset = route.xForY ? route.yToken : route.xToken;
+  const inputMeta = TOKENS_BY_CONTRACT[inputAsset];
+  const outputMeta = TOKENS_BY_CONTRACT[outputAsset];
+
+  // 2-entry post-condition envelope mirroring the author's mainnet pattern:
+  //   PC[0] caller sends ≤ amount of input asset
+  //   PC[1] pool sends ≥ minReceived of output asset (output sourced from pool reserves)
+  const postConditions: Array<Record<string, unknown>> = [
+    {
+      type: "ft",
+      principal: caller,
+      asset: inputAsset,
+      assetName: inputMeta?.ftSuffix.replace("::", "") ?? "",
+      conditionCode: "lte",
+      amount: String(amount),
+    },
+    {
+      type: "ft",
+      principal: route.pool,
+      asset: outputAsset,
+      assetName: outputMeta?.ftSuffix.replace("::", "") ?? "",
+      conditionCode: "gte",
+      amount: String(minReceived),
+    },
+  ];
+
+  const inSym = inputMeta?.symbol ?? route.inputSymbol;
+  const outSym = outputMeta?.symbol ?? route.outputSymbol;
   return {
     tool: "call_contract",
     params: {
@@ -1114,7 +1249,7 @@ function buildDlmmSwapInstruction(route: DlmmSwapRoute, amount: number, slippage
         type: "list", value: [{
           type: "tuple", value: {
             amount: { type: "uint", value: String(amount) },
-            "max-steps": { type: "uint", value: "6" },
+            "max-steps": { type: "uint", value: "230" },
             "min-received": { type: "uint", value: String(minReceived) },
             "pool-trait": { type: "principal", value: route.pool },
             "x-for-y": { type: "bool", value: route.xForY },
@@ -1124,12 +1259,15 @@ function buildDlmmSwapInstruction(route: DlmmSwapRoute, amount: number, slippage
         }],
       }],
       postConditionMode: "allow",
+      postConditions,
+      requires_residual_check: true,
+      _note: "Agent runtime: read consumed-in from tx receipt before chained deploy step. If consumed-in < amount, surface residual to caller (max-steps may have capped fold).",
     },
-    description: `Swap ${amount} via Bitflow DLMM (${route.xForY ? "X→Y" : "Y→X"}, min-received: ${minReceived}, ${slippagePct}% slippage)`,
+    description: `Swap ${amount} ${inSym} → min ${minReceived} ${outSym} via Bitflow DLMM (allow + dual-pin, ${slippagePct}% slip)`,
   };
 }
 
-function buildDeployInstructions(protocol: Protocol, amount: number, token: string, scout: ScoutResult): ExecuteInstruction[] {
+function buildDeployInstructions(protocol: Protocol, amount: number, token: string, scout: ScoutResult, poolId: string = "dlmm_1"): ExecuteInstruction[] {
   const instructions: ExecuteInstruction[] = [];
   const wallet = scout.wallet;
 
@@ -1159,7 +1297,7 @@ function buildDeployInstructions(protocol: Protocol, amount: number, token: stri
             // allow mode required: staking mints sUSDh back to caller (not expressible as sender-side PC).
             // Belt-and-suspenders: outgoing USDh transfer is still asserted.
             postConditions: [
-              { type: "ft", principal: wallet, asset: USDH_TOKEN, assetName: "usdh-token", conditionCode: "lte", amount },
+              { type: "ft", principal: wallet, asset: USDH_TOKEN, assetName: "usdh", conditionCode: "lte", amount },
             ],
           },
           description: `Stake ${amount} USDh into Hermetica sUSDh (earning yield)`,
@@ -1171,10 +1309,15 @@ function buildDeployInstructions(protocol: Protocol, amount: number, token: stri
           instructions.push({ tool: "info", params: {}, description: `No DLMM swap route from ${token} to USDh. Acquire USDh manually.` });
           break;
         }
-        instructions.push(buildDlmmSwapInstruction(swapRoute, amount));
-        // Step 2 amount depends on Step 1 swap output — use input amount as estimate
+        const expectedUsdh = expectedSwapOutput(amount, token, "usdh", scout.prices);
+        if (expectedUsdh <= 0) {
+          instructions.push({ tool: "info", params: {}, description: `Cannot swap ${token} → USDh: price feed unavailable to size min-received guard. Re-run after prices recover.` });
+          break;
+        }
+        instructions.push(buildDlmmSwapInstruction(swapRoute, wallet, amount, expectedUsdh));
+        // Step 2 amount depends on Step 1 swap output — use expected output as estimate
         // Agent must read swap tx result and substitute actual received amount before executing
-        const hermeticaEstimate = String(amount);
+        const hermeticaEstimate = String(expectedUsdh);
         instructions.push({
           tool: "call_contract",
           params: {
@@ -1186,7 +1329,7 @@ function buildDeployInstructions(protocol: Protocol, amount: number, token: stri
             // allow mode required: staking mints sUSDh (not expressible as sender-side PC).
             // Belt-and-suspenders: outgoing USDh transfer is still asserted.
             postConditions: [
-              { type: "ft", principal: wallet, asset: USDH_TOKEN, assetName: "usdh-token", conditionCode: "lte", amount: hermeticaEstimate },
+              { type: "ft", principal: wallet, asset: USDH_TOKEN, assetName: "usdh", conditionCode: "lte", amount: hermeticaEstimate },
             ],
             requires_substitution: true,
             _note: "SEQUENTIAL: execute after Step 1 confirms. Replace amount with actual swap output from tx receipt.",
@@ -1216,7 +1359,7 @@ function buildDeployInstructions(protocol: Protocol, amount: number, token: stri
             // allow mode required: deposit mints LP tokens back to caller (not expressible as sender-side PC).
             // Belt-and-suspenders: outgoing aeUSDC transfer is still asserted.
             postConditions: [
-              { type: "ft", principal: wallet, asset: AEUSDC_TOKEN, assetName: "bridged-usdc", conditionCode: "lte", amount },
+              { type: "ft", principal: wallet, asset: AEUSDC_TOKEN, assetName: "aeUSDC", conditionCode: "lte", amount },
             ],
           },
           description: `Deposit ${amount} aeUSDC to Granite lending pool`,
@@ -1228,10 +1371,15 @@ function buildDeployInstructions(protocol: Protocol, amount: number, token: stri
           instructions.push({ tool: "info", params: {}, description: `No DLMM swap route from ${token} to aeUSDC. Acquire aeUSDC manually.` });
           break;
         }
-        instructions.push(buildDlmmSwapInstruction(swapRoute, amount));
-        // Step 2 amount depends on Step 1 swap output — use input amount as estimate
+        const expectedAeusdc = expectedSwapOutput(amount, token, "aeusdc", scout.prices);
+        if (expectedAeusdc <= 0) {
+          instructions.push({ tool: "info", params: {}, description: `Cannot swap ${token} → aeUSDC: price feed unavailable to size min-received guard. Re-run after prices recover.` });
+          break;
+        }
+        instructions.push(buildDlmmSwapInstruction(swapRoute, wallet, amount, expectedAeusdc));
+        // Step 2 amount depends on Step 1 swap output — use expected output as estimate
         // Agent must read swap tx result and substitute actual received amount before executing
-        const graniteEstimate = String(amount);
+        const graniteEstimate = String(expectedAeusdc);
         instructions.push({
           tool: "call_contract",
           params: {
@@ -1246,7 +1394,7 @@ function buildDeployInstructions(protocol: Protocol, amount: number, token: stri
             // allow mode required: deposit mints LP tokens (not expressible as sender-side PC).
             // Belt-and-suspenders: outgoing aeUSDC transfer is still asserted.
             postConditions: [
-              { type: "ft", principal: wallet, asset: AEUSDC_TOKEN, assetName: "bridged-usdc", conditionCode: "lte", amount: graniteEstimate },
+              { type: "ft", principal: wallet, asset: AEUSDC_TOKEN, assetName: "aeUSDC", conditionCode: "lte", amount: graniteEstimate },
             ],
             requires_substitution: true,
             _note: "SEQUENTIAL: execute after Step 1 confirms. Replace amount with actual swap output from tx receipt.",
@@ -1257,23 +1405,77 @@ function buildDeployInstructions(protocol: Protocol, amount: number, token: stri
       break;
 
     case "hodlmm": {
-      const hasSbtc = scout.balances.sbtc.amount > 0;
-      const hasUsdcx = scout.balances.usdcx.amount > 0;
+      // Parametric on --pool-id (mirrors the rebalance path pattern). Resolves the
+      // pool definition from HODLMM_POOLS and generalises bin construction to use
+      // the chosen pool's tokenX/tokenY instead of the prior sbtc/usdcx hardcode.
+      // Refuses if the caller's --token does not match either of the pool's tokens
+      // (safety floor — prevents silent no-op deposits when the token is unrelated
+      // to the pool).
+      const pool = HODLMM_POOLS.find(p => `dlmm_${p.id}` === poolId);
+      if (!pool) {
+        instructions.push({
+          tool: "info",
+          params: {},
+          description: `Unknown HODLMM pool ${poolId}. Known pools: ${HODLMM_POOLS.map(p => `dlmm_${p.id}`).join(", ")}.`,
+        });
+        break;
+      }
+      if (token !== pool.tokenX && token !== pool.tokenY) {
+        instructions.push({
+          tool: "info",
+          params: {},
+          description: `HODLMM pool ${poolId} (${pool.name}) accepts ${pool.tokenX.toUpperCase()} or ${pool.tokenY.toUpperCase()} only (got ${token}). Acquire ${pool.tokenX}/${pool.tokenY} first or choose a different --pool-id.`,
+        });
+        break;
+      }
+
+      // Read atomic balances of the pool's two tokens from scout. `scout.balances`
+      // is typed with fixed keys, so we cast through Record<string, …> to index by
+      // the pool's token-symbol strings.
+      const balances = scout.balances as unknown as Record<string, { amount: number; usd: number }>;
+      const xMeta = TOKENS[pool.tokenX];
+      const yMeta = TOKENS[pool.tokenY];
+      const xBalAtomic = Math.floor((balances[pool.tokenX]?.amount ?? 0) * Math.pow(10, xMeta?.decimals ?? 6));
+      const yBalAtomic = Math.floor((balances[pool.tokenY]?.amount ?? 0) * Math.pow(10, yMeta?.decimals ?? 6));
+      const hasX = xBalAtomic > 0;
+      const hasY = yBalAtomic > 0;
+
+      if (!hasX && !hasY) {
+        instructions.push({
+          tool: "info",
+          params: {},
+          description: `HODLMM deploy to ${poolId} (${pool.name}) requires ${pool.tokenX.toUpperCase()} and/or ${pool.tokenY.toUpperCase()} in wallet — neither present.`,
+        });
+        break;
+      }
+
       const bins: Array<{ activeBinOffset: number; xAmount: string; yAmount: string }> = [];
 
-      if (hasSbtc && hasUsdcx) {
-        bins.push({ activeBinOffset: 0, xAmount: String(amount), yAmount: String(Math.floor(scout.balances.usdcx.amount * 1e6)) });
-      } else if (hasSbtc) {
-        for (let i = 1; i <= 5; i++) bins.push({ activeBinOffset: i, xAmount: String(Math.floor(amount / 5)), yAmount: "0" });
-      } else if (hasUsdcx) {
-        const usdcxMicro = Math.floor(scout.balances.usdcx.amount * 1e6);
-        for (let i = -5; i <= -1; i++) bins.push({ activeBinOffset: i, xAmount: "0", yAmount: String(Math.floor(usdcxMicro / 5)) });
+      if (hasX && hasY) {
+        // Both tokens at active bin: dlmm-core allows both nonzero at bin-id == active-bin-id.
+        // `amount` is interpreted as the chosen --token's atomic amount; the counter-token
+        // pairs the full available balance.
+        const xAmt = token === pool.tokenX ? amount : xBalAtomic;
+        const yAmt = token === pool.tokenY ? amount : yBalAtomic;
+        bins.push({ activeBinOffset: 0, xAmount: String(xAmt), yAmount: String(yAmt) });
+      } else if (hasX) {
+        // X-only deposit. Per dlmm-core-v-1-1 invariant (lines 1672-1674):
+        //   (asserts! (or (>= bin-id active-bin-id) (is-eq x-amount u0)) ERR_INVALID_X_AMOUNT)
+        // X amounts are only allowed at bin-id ≥ active-bin-id — above (or at) active.
+        const xAmt = token === pool.tokenX ? amount : xBalAtomic;
+        for (let i = 1; i <= 5; i++) bins.push({ activeBinOffset: i, xAmount: String(Math.floor(xAmt / 5)), yAmount: "0" });
+      } else {
+        // Y-only deposit. Per dlmm-core-v-1-1 invariant (lines 1672-1674):
+        //   (asserts! (or (<= bin-id active-bin-id) (is-eq y-amount u0)) ERR_INVALID_Y_AMOUNT)
+        // Y amounts are only allowed at bin-id ≤ active-bin-id — below (or at) active.
+        const yAmt = token === pool.tokenY ? amount : yBalAtomic;
+        for (let i = -5; i <= -1; i++) bins.push({ activeBinOffset: i, xAmount: "0", yAmount: String(Math.floor(yAmt / 5)) });
       }
 
       instructions.push({
         tool: "bitflow:add-liquidity-simple",
-        params: { poolId: "dlmm_1", bins: JSON.stringify(bins) },
-        description: `Add liquidity to HODLMM sBTC-USDCx-10bps pool (${bins.length} bins)`,
+        params: { poolId, bins: JSON.stringify(bins) },
+        description: `Add liquidity to HODLMM ${pool.name} (${bins.length} bins)`,
       });
       break;
     }
@@ -1306,7 +1508,7 @@ function buildWithdrawInstructions(protocol: Protocol, scout: ScoutResult): Exec
             // allow mode required: unstake burns sUSDh and creates a claim (not expressible as sender-side PC).
             // Belt-and-suspenders: outgoing sUSDh transfer is still asserted.
             postConditions: [
-              { type: "ft", principal: wallet, asset: SUSDH_TOKEN, assetName: "susdh-token", conditionCode: "lte", amount: String(susdhSats) },
+              { type: "ft", principal: wallet, asset: SUSDH_TOKEN, assetName: "susdh", conditionCode: "lte", amount: String(susdhSats) },
             ],
           },
           description: `Unstake ${susdhSats} sUSDh (creates claim in staking-silo)`,
@@ -1324,28 +1526,50 @@ function buildWithdrawInstructions(protocol: Protocol, scout: ScoutResult): Exec
       const granitePos = scout.positions.granite;
       const shares = granitePos.lp_shares ?? "0";
       if (shares === "0") return [{ tool: "info", params: {}, description: "No Granite LP position to withdraw" }];
-      // Granite follows ERC-4626: redeem(shares) burns share count, withdraw(assets) takes asset amount.
-      // We have the share count, so use redeem().
+      // Granite follows ERC-4626: redeem(shares) burns share count, returns aeUSDC.
       const sharesNum = BigInt(shares);
-      const expectedAeusdc = String(sharesNum + sharesNum / 10n); // shares + 10% interest buffer for post-condition
+      // Upper cap shares*2 — defensive against a buggy pool over-paying/draining
+      // while admitting long-held positions whose accrued interest can exceed a
+      // narrower +10% buffer. Empirically wide enough for healthy redeems.
+      const expectedAeusdcCap = String(sharesNum * 2n);
       return [{
         tool: "call_contract",
         params: {
           contractAddress: "SP26NGV9AFZBX7XBDBS2C7EC7FCPSAV9PKREQNMVS",
           contractName: "liquidity-provider-v1", functionName: "redeem",
           functionArgs: [{ type: "uint", value: shares }, { type: "principal", value: wallet }],
+          postConditionMode: "deny",
+          // Post-condition anchoring per reference tx 0xd0bb0059b72e5f5d75a4dd1bedb12e44e32790567bc282184ca5309641a8f44f
+          // and live proof tx 0xd4aa0c4ed51b0951e91bb6680e44bc01da36722525fa7b28c39d98219e3eeba9 (2026-04-22).
+          // Stacks FT PCs track OUTFLOWS from the named principal. aeUSDC on Granite flows
+          // OUT OF state-v1 (not liquidity-provider-v1; the latter is a controller wrapper),
+          // and the asset_name on the token contract is "aeUSDC" (not "bridged-usdc"); the
+          // wallet BURNS lp-token (asset defined on state-v1), receives aeUSDC. The prior
+          // shape (lte on lp-v1, gte:1 on wallet for aeUSDC) aborted on-chain in both deny
+          // (tx 0x5780062068…) and allow (tx 0x60e2f84b83…) modes because all three PC fields
+          // bound to principals/assets that don't match the real FT flow.
           postConditions: [
-            // Cap outflow from pool (upper bound)
+            // Receive-side floor: state-v1 sends aeUSDC ≥ shares (a healthy pool pays ≥
+            // shares worth of aeUSDC; anything less signals a buggy pool or oracle drift).
             {
-              type: "ft", principal: "SP26NGV9AFZBX7XBDBS2C7EC7FCPSAV9PKREQNMVS.liquidity-provider-v1",
-              asset: AEUSDC_TOKEN, assetName: "bridged-usdc",
-              conditionCode: "lte", amount: expectedAeusdc,
+              type: "ft", principal: GRANITE_STATE,
+              asset: AEUSDC_TOKEN, assetName: "aeUSDC",
+              conditionCode: "gte", amount: shares,
             },
-            // Guarantee wallet receives non-zero aeUSDC — catches bugged pool returning 0
+            // Receive-side cap: state-v1 sends aeUSDC ≤ shares*2 — defensive against a
+            // buggy pool overpaying/draining (allows accrued interest, blocks runaway).
+            {
+              type: "ft", principal: GRANITE_STATE,
+              asset: AEUSDC_TOKEN, assetName: "aeUSDC",
+              conditionCode: "lte", amount: expectedAeusdcCap,
+            },
+            // Burn floor: wallet sends ≥ shares of lp-token (the redeem burn). Binds the
+            // caller-side outflow to the actual share count, so a buggy call path that tried
+            // to burn more shares than requested would abort.
             {
               type: "ft", principal: wallet,
-              asset: AEUSDC_TOKEN, assetName: "bridged-usdc",
-              conditionCode: "gte", amount: "1",
+              asset: GRANITE_STATE, assetName: "lp-token",
+              conditionCode: "gte", amount: shares,
             },
           ],
         },
@@ -1417,9 +1641,37 @@ async function _runPipeline(wallet: string, command: string, opts: Record<string
       return { status: "error", command, error: "Invalid protocol. Use: zest, hermetica, granite, hodlmm" };
     }
   }
+  if (command === "borrow" || command === "repay") {
+    // Zest v0 market is the only protocol exposing borrow/repay the skill wraps.
+    // Other protocols (Hermetica stake-yield, Granite LP supply, HODLMM LP) have
+    // no matching MCP surface for debt operations — intentionally excluded.
+    const protocol = opts.protocol;
+    if (!protocol || protocol !== "zest") {
+      return { status: "error", command, error: "Invalid protocol. Only zest supports borrow/repay." };
+    }
+    const amount = parseInt(opts.amount ?? "0", 10);
+    if (isNaN(amount) || amount <= 0) return { status: "error", command, error: "Amount must be a positive number" };
+    const token = (opts.token ?? "usdh").toLowerCase();
+    // USDh is the only asset for which zest_borrow via MCP succeeds on v0-4-market.borrow.
+    // Empirical probes (2026-04-22) on the same wallet + collateral returned
+    // abort_by_response (err none) for USDCx, wSTX, stSTX — likely an upstream MCP
+    // routing gap around borrow-helper-v2-1-7 (Pyth oracle fee wrapper). Refusing
+    // non-USDh saves gas rather than broadcasting a known-failing tx.
+    const validTokens_borrowRepay: Record<string, string[]> = { zest: ["usdh"] };
+    if (!validTokens_borrowRepay[protocol].includes(token)) {
+      return { status: "error", command, error: `${protocol} ${command} does not accept ${token}. Valid: ${validTokens_borrowRepay[protocol].join(", ")}` };
+    }
+  }
   if (command === "migrate") {
     if (!opts.from || !opts.to || opts.from === opts.to) {
       return { status: "error", command, error: "Specify --from and --to (different protocols)" };
+    }
+    // --amount is required. Earlier versions defaulted to the wallet sBTC balance, which
+    // silently produced zero-amount deploys when migrating from stablecoin protocols
+    // (hermetica/granite) on wallets without sBTC. Force the caller to be explicit.
+    const parsedAmt = parseInt(opts.amount ?? "", 10);
+    if (isNaN(parsedAmt) || parsedAmt <= 0) {
+      return { status: "error", command, error: "migrate requires --amount (positive integer, smallest unit of target token). Run 'scan' to inspect current positions." };
     }
   }
 
@@ -1475,8 +1727,10 @@ async function _runPipeline(wallet: string, command: string, opts: Record<string
     };
   }
 
-  // Step 3: Guardian check
-  const guardian = await checkGuardian(scout);
+  // Step 3: Guardian check — gate against the pool this operation will actually touch
+  // (not always dlmm_1) so slippage + volume reads measure the right liquidity venue.
+  const targetPoolId = inferTargetPoolId(command, opts);
+  const guardian = await checkGuardian(scout, { targetPoolId });
   if (!guardian.can_proceed) {
     return {
       status: "refused", command, scout, reserve, guardian,
@@ -1516,8 +1770,8 @@ async function _runPipeline(wallet: string, command: string, opts: Record<string
         }
       }
 
-      instructions = buildDeployInstructions(protocol, amount, token, scout);
-      description = `Deploy ${amount} ${token} to ${protocol}`;
+      instructions = buildDeployInstructions(protocol, amount, token, scout, ((opts as Record<string, string>).poolId ?? "dlmm_1"));
+      description = `Deploy ${amount} ${token} to ${protocol}${protocol === "hodlmm" ? ` (${((opts as Record<string, string>).poolId ?? "dlmm_1")})` : ""}`;
       break;
     }
 
@@ -1530,7 +1784,7 @@ async function _runPipeline(wallet: string, command: string, opts: Record<string
     }
 
     case "rebalance": {
-      const poolId = opts["pool-id"] ?? "dlmm_1";
+      const poolId = ((opts as Record<string, string>).poolId ?? "dlmm_1");
       const poolNum = parseInt(poolId.replace("dlmm_", ""), 10);
       const pool = scout.positions.hodlmm.pools.find(p => p.pool_id === poolNum);
       if (!pool) return { status: "error", command, error: `No position found in pool ${poolId}` };
@@ -1554,15 +1808,43 @@ async function _runPipeline(wallet: string, command: string, opts: Record<string
     }
 
     case "migrate": {
-      // Input already validated in Step 0 above
+      // Input (including --amount > 0) already validated in Step 0 above
       const from = opts.from as Protocol;
       const to = opts.to as Protocol;
       instructions.push(...buildWithdrawInstructions(from, scout));
       const token = opts.token ?? inferToken(to);
-      const parsedAmt = opts.amount ? parseInt(opts.amount, 10) : NaN;
-      const amount = isNaN(parsedAmt) ? Math.floor(scout.balances.sbtc.amount * 1e8) : parsedAmt;
-      instructions.push(...buildDeployInstructions(to, amount, token, scout));
+      const amount = parseInt(opts.amount!, 10);
+      instructions.push(...buildDeployInstructions(to, amount, token, scout, ((opts as Record<string, string>).poolId ?? "dlmm_1")));
       description = `Migrate from ${from} to ${to}`;
+      break;
+    }
+
+    case "borrow": {
+      // Input already validated in Step 0 (zest-only, USDh-only, positive amount).
+      // Borrow is the debt-issuance leg of the leveraged-yield pattern. No YTG gate
+      // applies — the earn leg (Hermetica stake of the borrowed USDh) is where YTG
+      // is evaluated on its own `deploy` call.
+      const token = (opts.token ?? "usdh").toUpperCase();
+      const amount = parseInt(opts.amount!, 10);
+      instructions.push({
+        tool: "zest_borrow",
+        params: { asset: token, amount: String(amount) },
+        description: `Borrow ${amount} ${token} from Zest v2 against existing collateral`,
+      });
+      description = `Borrow ${amount} ${token} from Zest`;
+      break;
+    }
+
+    case "repay": {
+      // Input already validated in Step 0.
+      const token = (opts.token ?? "usdh").toUpperCase();
+      const amount = parseInt(opts.amount!, 10);
+      instructions.push({
+        tool: "zest_repay",
+        params: { asset: token, amount: String(amount) },
+        description: `Repay ${amount} ${token} debt to Zest v2`,
+      });
+      description = `Repay ${amount} ${token} to Zest`;
       break;
     }
   }
@@ -1902,6 +2184,7 @@ program
   .requiredOption("--protocol <name>", "Target protocol: zest, hermetica, granite, hodlmm")
   .requiredOption("--amount <value>", "Amount in smallest unit (sats for sBTC, micro for stablecoins)")
   .option("--token <symbol>", "Token to deploy (default: inferred from protocol)")
+  .option("--pool-id <id>", "HODLMM pool ID for protocol=hodlmm (default: dlmm_1). Ignored for other protocols.", "dlmm_1")
   .option("--force", "Override 0% APY refusal")
   .option("--confirm", "Execute the transaction (without this flag, outputs a dry-run preview)")
   .action(async (opts: Record<string, string>) => {
@@ -1935,6 +2218,34 @@ program
   });
 
 program
+  .command("borrow")
+  .description("Borrow a debt asset against existing Zest collateral (leveraged-yield leg)")
+  .requiredOption("--wallet <address>", "Stacks wallet address (SP...)")
+  .requiredOption("--protocol <name>", "Protocol: zest")
+  .requiredOption("--token <symbol>", "Borrow asset (Zest: usdh)")
+  .requiredOption("--amount <value>", "Amount in smallest unit (µUSDh for usdh; USDh has 8 decimals)")
+  .option("--confirm", "Execute the transaction (without this flag, outputs a dry-run preview)")
+  .action(async (opts: Record<string, string>) => {
+    const result = await runPipeline(opts.wallet, "borrow", opts);
+    console.log(JSON.stringify(result, null, 2));
+    if (result.status !== "ok") process.exit(1);
+  });
+
+program
+  .command("repay")
+  .description("Repay a borrowed Zest debt asset")
+  .requiredOption("--wallet <address>", "Stacks wallet address (SP...)")
+  .requiredOption("--protocol <name>", "Protocol: zest")
+  .requiredOption("--token <symbol>", "Repay asset (Zest: usdh)")
+  .requiredOption("--amount <value>", "Amount in smallest unit (µUSDh for usdh)")
+  .option("--confirm", "Execute the transaction (without this flag, outputs a dry-run preview)")
+  .action(async (opts: Record<string, string>) => {
+    const result = await runPipeline(opts.wallet, "repay", opts);
+    console.log(JSON.stringify(result, null, 2));
+    if (result.status !== "ok") process.exit(1);
+  });
+
+program
   .command("migrate")
   .description("Move capital from one protocol to another (withdraw + deploy)")
   .requiredOption("--wallet <address>", "Stacks wallet address (SP...)")
@@ -1942,6 +2253,7 @@ program
   .requiredOption("--to <protocol>", "Target protocol: zest, hermetica, granite, hodlmm")
   .option("--token <symbol>", "Token to deploy into target (default: inferred)")
   .option("--amount <value>", "Amount in smallest unit (default: all)")
+  .option("--pool-id <id>", "HODLMM pool ID when --to=hodlmm (default: dlmm_1). Ignored otherwise.", "dlmm_1")
   .option("--confirm", "Execute the transaction (without this flag, outputs a dry-run preview)")
   .action(async (opts: Record<string, string>) => {
     const result = await runPipeline(opts.wallet, "migrate", opts);
@@ -1957,6 +2269,7 @@ program
   .action(async (opts: Record<string, string>) => {
     const result = await runPipeline(opts.wallet, "emergency", opts);
     console.log(JSON.stringify(result, null, 2));
+    if (result.status !== "ok") process.exit(1);
   });
 
 program

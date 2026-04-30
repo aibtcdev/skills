@@ -5,7 +5,7 @@ metadata:
   author: "cliqueengagements"
   author-agent: "Micro Basilisk (Agent 77) — SP219TWC8G12CSX5AB093127NC82KYQWEH8ADD1AY | bc1qzh2z92dlvccxq5w756qppzz8fymhgrt2dv8cf5"
   user-invocable: "false"
-  arguments: "doctor | scan | deploy | withdraw | rebalance | migrate | emergency | install-packs"
+  arguments: "doctor | scan | deploy | withdraw | borrow | repay | rebalance | migrate | emergency | install-packs"
   entry: "stacks-alpha-engine/stacks-alpha-engine.ts"
   requires: "wallet, signing, settings"
   tags: "defi, write, mainnet-only, requires-funds, l2"
@@ -19,12 +19,12 @@ Cross-protocol yield executor covering **all 4 major Stacks DeFi protocols** —
 
 **Protocol coverage:**
 
-| Protocol | Token(s) | Deposit | Withdraw | Method |
-|----------|---------|---------|----------|--------|
-| Zest v2 | sBTC, wSTX, stSTX, USDC, USDh | `zest_supply` | `zest_withdraw` | MCP native |
-| Hermetica | USDh -> sUSDh | `staking-v1-1.stake(amount, affiliate)` | `staking-v1-1.unstake` + `silo.withdraw` | call_contract |
-| Granite | aeUSDC | `liquidity-provider-v1.deposit` | `.redeem` (ERC-4626 shares) | call_contract |
-| HODLMM | sBTC, STX, USDCx, USDh, aeUSDC (per pool) | `add-liquidity-simple` | `withdraw-liquidity-simple` | Bitflow skill |
+| Protocol | Token(s) | Deposit | Withdraw | Debt (borrow/repay) | Method |
+|----------|---------|---------|----------|---------------------|--------|
+| Zest v2 | sBTC (supply), USDh (borrow) | `zest_supply` | `zest_withdraw` | `zest_borrow` / `zest_repay` — USDh only | MCP native |
+| Hermetica | USDh -> sUSDh | `staking-v1-1.stake(amount, affiliate)` | `staking-v1-1.unstake` + `silo.withdraw` | — | call_contract |
+| Granite | aeUSDC | `liquidity-provider-v1.deposit` | `.redeem` (ERC-4626 shares) | — | call_contract |
+| HODLMM | sBTC, STX, USDCx, USDh, aeUSDC (per pool) | `add-liquidity-simple` | `withdraw-liquidity-simple` | — | Bitflow skill |
 
 **3-tier yield mapping:**
 
@@ -41,26 +41,95 @@ No other skill covers all 4 Stacks DeFi protocols with working read AND write pa
 ## On-chain proof
 
 - **Zest sBTC supply**: [txid b8ec03c3ba85c40840cdc933b61a14faf2a9516e1ce1314d9768228f3328803f](https://explorer.hiro.so/txid/b8ec03c3ba85c40840cdc933b61a14faf2a9516e1ce1314d9768228f3328803f?chain=mainnet) — 14,336 zsBTC shares received (block 7,495,066)
+- **Zest sBTC supply (refresh)**: [`0x315a6d54…`](https://explorer.hiro.so/txid/0x315a6d54c524aaef4c01834b2fec5b8c5ee4997e79a8f3c344394761276d253d?chain=mainnet) — 10,000 sats → 9,995 zsBTC via `v0-4-market.supply-collateral-add` (same contract MCP `zest_supply` routes to)
+- **Zest sBTC withdraw**: [`0x016c3996…`](https://explorer.hiro.so/txid/0x016c3996f981ffcf345e11268905e2d3332f1c0e6e188ab2627e07317c0694a6?chain=mainnet) — 15,335 zsBTC → 15,342 sats sBTC via `v0-4-market.collateral-remove-redeem`
+- **Zest USDh borrow**: [`0x2b465aae…`](https://explorer.hiro.so/txid/0x2b465aae05812d25e4f52799b5f2882b21ca411d892359aba5157dba85d1162a?chain=mainnet) — 50M µUSDh borrowed against sBTC collateral via `v0-4-market.borrow`
+- **Zest USDh repay**: [`0xd3b46ae7…`](https://explorer.hiro.so/txid/0xd3b46ae74b666af2e06a765d29e30bd2b0341507266827a2140cc4d9e6053fba?chain=mainnet) — full 50M µUSDh debt cleared via `v0-4-market.repay`
 - **Hermetica staking**: USDh stake via `staking-v1-1.stake` — [`e8b2213d...`](https://explorer.hiro.so/txid/e8b2213d39faf2e9ccfe52bc3cbe33885303aa01c63f93badd3e8a41900a2ecf?chain=mainnet) (block 7,512,730)
-- **Granite aeUSDC deposit**: `liquidity-provider-v1.deposit` — [`205bf3f1...`](https://explorer.hiro.so/txid/205bf3f135c5f1cddd8323c1a1a054f3a63ac81904c4244a763b0ce4b26c3352?chain=mainnet) (block 7,512,722)
+- **Hermetica unstake**: sUSDh → 7-day silo claim via `staking-v1-1.unstake` — [`0x7834cd32…`](https://explorer.hiro.so/txid/0x7834cd325b986f2db2275b3fe867ca094c3c375d67a77d7f5fb3858d0f94eaad?chain=mainnet) — 408,500,348 sUSDh burned → 5.007 USDh in silo claim 2157 (ratio 1.2257, block 7,703,650)
+- **Granite aeUSDC deposit** (write-path proof for `lp-v1.deposit`): [`0x205bf3f1`](https://explorer.hiro.so/txid/0x205bf3f135c5f1cddd8323c1a1a054f3a63ac81904c4244a763b0ce4b26c3352?chain=mainnet) — 4,997,500 µaeUSDC supplied → 4,936,276 lp-token minted on `state-v1` (block 7,512,722)
+- **Granite redeem** (with corrected 3-PC shape): [`0xd4aa0c4e…`](https://explorer.hiro.so/txid/0xd4aa0c4ed51b0951e91bb6680e44bc01da36722525fa7b28c39d98219e3eeba9?chain=mainnet) — 4,936,276 lp-token burned → 4,999,538 aeUSDC (ratio 1.0128)
 - **HODLMM add-liquidity**: [`f2ffb41e...`](https://explorer.hiro.so/txid/f2ffb41e1f29a5c5ee5fa0df628a700e21bf14a4aabbd334b5f49b98bab9e315?chain=mainnet) — dlmm-liquidity-router (block 7,423,687)
+
+## Leveraged-yield pattern
+
+A composition of Zest supply + Zest borrow + Hermetica stake unlocks positive-carry leveraged yield without selling sBTC. Each leg is a supported skill command:
+
+```bash
+# ---- enter position ----
+deploy   --protocol zest       --token sbtc --amount <collateral_sats>         # supply sBTC to Zest
+borrow   --protocol zest       --token usdh --amount <debt_micro_usdh>         # take USDh debt (~7% APR)
+deploy   --protocol hermetica  --token usdh --amount <debt_micro_usdh>         # stake for 40% APY
+
+# ---- earning ~33% positive carry on debt_micro_usdh while sBTC exposure preserved ----
+
+# ---- exit position ----
+withdraw --protocol hermetica                                                  # unstake sUSDh → creates 7-day silo claim
+# ... wait 7 days, then claim via staking-silo-v1-1.withdraw(claim-id) ...
+repay    --protocol zest       --token usdh --amount <principal_plus_interest> # close the debt
+withdraw --protocol zest                                                       # recover sBTC collateral
+```
+
+**Economic rationale:** Hermetica USDh stake APY (~40% per live scan) − Zest USDh borrow APR (~7%) = **~33% positive carry** on the borrowed amount, with sBTC price exposure retained on-chain. Each leg independently validated on mainnet; full cycle intentionally not atomic — if any leg fails, capital sits safely in wallet between legs.
+
+### Silo-claim call shape (manual leg)
+
+After the 7-day cooldown elapses, the silo claim is a single `call_contract` step. The skill does not wrap this leg as a `claim-silo` subcommand because:
+
+1. **Stateful claim-id.** The `claim-id` is an artifact returned by the prior `staking-v1-1.unstake` response 7 days earlier. Wrapping it requires either persistent skill state (out of scope for a stateless tool) or a `--claim-id <uint>` CLI arg that adds no friction over a direct `call_contract`.
+2. **Once-per-unstake event.** Unlike `stake`/`unstake`/`withdraw` which fire repeatedly, silo claim runs exactly once per unstake. Copy-paste from this doc is lower-overhead than another command surface.
+
+Pre-check the claim is still pending and the cooldown has elapsed:
+
+```clarity
+(contract-call? .staking-silo-v1-1 get-claim u<CLAIM_ID>)
+;; → (ok { amount: uint, recipient: principal, ts: uint })
+(contract-call? .staking-silo-v1-1 get-current-ts)
+;; → must be ≥ claim.ts
+```
+
+Then submit:
+
+```ts
+call_contract({
+  contractAddress: "SPN5AKG35QZSK2M8GAMR4AFX45659RJHDW353HSG",
+  contractName:    "staking-silo-v1-1",
+  functionName:    "withdraw",
+  functionArgs:    [{ type: "uint", value: "<CLAIM_ID>" }],
+  postConditionMode: "deny",
+  postConditions: [{
+    type: "ft",
+    principal: "SPN5AKG35QZSK2M8GAMR4AFX45659RJHDW353HSG.staking-silo-v1-1",
+    asset:     "SPN5AKG35QZSK2M8GAMR4AFX45659RJHDW353HSG.usdh-token-v1",
+    assetName: "usdh",
+    conditionCode: "gte",
+    amount:    "<claim.amount from get-claim>",
+  }],
+});
+```
+
+PC mode is `deny` because the silo-claim flow is contract→wallet — opposite direction to `stake`/`unstake` (wallet→contract, handled by `allow + outgoing user lte` per the PC table below). Receive-side floor (`silo sent_gte amount`) mirrors the Granite redeem shape: Stacks FT PCs track outflows from the named principal, so the contract sender is the only place a protective constraint can express on this leg.
+
+**On-chain proof:** [`0xe1f1598b…`](https://explorer.hiro.so/txid/0xe1f1598b6355f9b7fbe54599ed11e0609a7d1af46265feb0c88482e145902cc5?chain=mainnet) — silo claim u2157, 500,699,105 µUSDh redeemed (block 7,789,631).
 
 ## Safety notes
 
 Stacks Alpha Engine uses a **defense-in-depth** approach. Stacks post-conditions are the standard safety mechanism, but DeFi operations that mint or burn tokens (LP shares, sUSDh) cannot be expressed as sender-side post-conditions. The engine compensates with layered gates that must all pass before any write executes.
 
-### Why `postConditionMode: "allow"`
+### Post-condition modes per operation
 
-Deposit, stake, unstake, and swap paths use `postConditionMode: "allow"` because:
+The engine uses `postConditionMode: "deny"` only where the on-chain flow is unambiguous
+(fixed, sender-expressible FT movements). For operations with routable fee flows or mint/burn
+paths, `"allow"` is paired with an explicit dual-pin envelope so wallet layer and contract
+layer enforce the same safety invariants.
 
-| Operation | Why `deny` mode is impossible |
-|-----------|-------------------------------|
-| Hermetica stake | Mints sUSDh back to caller — mint is not a sender-side transfer |
-| Hermetica unstake | Burns sUSDh and creates a claim — burn is not expressible as sender post-condition |
-| Granite deposit | Mints LP tokens back to caller — same mint issue |
-| DLMM swap | Router may touch intermediate pools — sender can't predict exact hops |
-
-Where `deny` mode IS possible, the engine uses it. Granite `redeem` has explicit post-conditions: `lte` cap on pool outflow + `gte: "1"` floor on wallet receive.
+| Operation | Mode | Rationale |
+|-----------|------|-----------|
+| DLMM swap (`swap-simple-multi`) | **allow** + dual-pin | Envelope: `Pc.principal(sender).willSendLte(amount_in)` on input + `Pc.principal(pool).willSendGte(min_out)` on output. Matches the sibling skill's pattern validated in [`bff-skills#494`](https://github.com/BitflowFinance/bff-skills/pull/494) (commit [`02d1098c`](https://github.com/cliqueengagements/bff-skills/commit/02d1098c), on-chain proof tx [`0xf4f49328…`](https://explorer.hiro.so/txid/0xf4f4932800a80234845a8d199556ad9c0ff4aa99874a95c819c13779b164cbc8?chain=mainnet)). Allow mode preserved because protocol/provider fees accrue inside `dlmm-core`'s `unclaimed-protocol-fees` map and bin balances without emitting FT transfer events on the swap tx; the pool-side `willSendGte` pin IS the receive-side fund-safety protection. Empirically Deny + 2 PCs under-specifies stable-stable pools (tx [`0x5986066a…`](https://explorer.hiro.so/txid/0x5986066a93b3c8e6466d4f3f2da33a4fbe3e703fe81ca2dc23b0fe0d5f945531?chain=mainnet) aborted on dlmm_7). |
+| Granite `redeem` | **deny** | 3-PC envelope (rebuilt in commit `3c12b0f` against on-chain reference tx [`0xd0bb0059…`](https://explorer.hiro.so/txid/0xd0bb0059b72e5f5d75a4dd1bedb12e44e32790567bc282184ca5309641a8f44f?chain=mainnet) and proof tx [`0xd4aa0c4e…`](https://explorer.hiro.so/txid/0xd4aa0c4ed51b0951e91bb6680e44bc01da36722525fa7b28c39d98219e3eeba9?chain=mainnet)): pool (`state-v1`) sends aeUSDC `gte` shares (receive-side floor) + pool sends aeUSDC `lte` shares × 2 (defensive overpayment cap, per @arc0btc's review) + wallet sends `lp-token` `gte` shares (burn-side floor on caller). Two distinct FT flows (pool → caller for aeUSDC; caller → contract for lp-token burn) so each leg is bound separately. The earlier shape (`lte` on `liquidity-provider-v1` + `gte:"1"` on wallet receive) aborted on-chain in both Deny ([`0x5780062068…`](https://explorer.hiro.so/txid/0x5780062068?chain=mainnet)) and Allow ([`0x60e2f84b83…`](https://explorer.hiro.so/txid/0x60e2f84b83?chain=mainnet)) modes because the principal/asset bindings did not match the real flow. |
+| Hermetica `stake` | allow | Mints sUSDh back to caller — mint is not a sender-side transfer. Outgoing USDh `lte` PC asserted as belt-and-suspenders. |
+| Hermetica `unstake` | allow | Burns sUSDh and creates a claim — burn is not expressible as sender PC. Outgoing sUSDh `lte` PC asserted. |
+| Granite `deposit` | allow | Mints LP tokens back to caller — same mint issue. Outgoing aeUSDC `lte` PC asserted. |
 
 ### What provides safety instead
 
@@ -111,6 +180,8 @@ All commands output JSON to stdout:
 | `scan` | read | Full report: 6 tokens, 4 protocols, 3-tier yields, PoR, safety gates |
 | `deploy` | write | Deploy capital to a protocol (with --token flag for specific token) |
 | `withdraw` | write | Pull capital from a specific protocol |
+| `borrow` | write | Borrow a debt asset against existing Zest collateral (USDh only — leveraged-yield leg) |
+| `repay` | write | Repay a borrowed Zest debt asset |
 | `rebalance` | write | Withdraw out-of-range HODLMM bins, re-add centered on active bin |
 | `migrate` | write | Cross-protocol capital movement (withdraw A + deploy B) |
 | `emergency` | write | Withdraw ALL positions across all 4 protocols |
@@ -118,12 +189,12 @@ All commands output JSON to stdout:
 
 ## Write Paths (verified on-chain)
 
-| Protocol | Deposit | Withdraw | Token | Method |
-|----------|---------|----------|-------|--------|
-| Zest v2 | `zest_supply` | `zest_withdraw` | sBTC | MCP native |
-| Hermetica | `staking-v1-1.stake(uint, optional buff)` | `staking-v1-1.unstake(uint)` + `silo-v1-1.withdraw(uint)` | USDh/sUSDh | call_contract |
-| Granite | `lp-v1.deposit(assets, principal)` | `lp-v1.redeem(shares, principal)` | aeUSDC | call_contract |
-| HODLMM | `add-liquidity-simple` | `withdraw-liquidity-simple` | per pool pair | Bitflow skill |
+| Protocol | Deposit | Withdraw | Debt (borrow/repay) | Token | Method |
+|----------|---------|----------|---------------------|-------|--------|
+| Zest v2 | `zest_supply` | `zest_withdraw` | `zest_borrow` / `zest_repay` (USDh only) | sBTC (supply), USDh (borrow) | MCP native |
+| Hermetica | `staking-v1-1.stake(uint, optional buff)` | `staking-v1-1.unstake(uint)` + `silo-v1-1.withdraw(uint)` | — | USDh/sUSDh | call_contract |
+| Granite | `lp-v1.deposit(assets, principal)` | `lp-v1.redeem(shares, principal)` | — | aeUSDC | call_contract |
+| HODLMM | `add-liquidity-simple` | `withdraw-liquidity-simple` | — | per pool pair | Bitflow skill |
 
 All 4 protocols have **zero trait_reference** requirements in their write paths.
 
@@ -159,6 +230,9 @@ All 4 protocols have **zero trait_reference** requirements in their write paths.
 
 ### Granite Borrower Path (Blocked)
 Granite `borrower-v1.add-collateral` requires `trait_reference` — blocked by MCP. The engine uses the **LP deposit path** (aeUSDC supply) which works without trait_reference.
+
+### Zest borrow/repay asset restriction (USDh only)
+`zest_borrow` via MCP succeeds only for USDh. Probes against USDCx, wSTX, and stSTX on the same wallet + sBTC collateral + cap-debt headroom all return `abort_by_response (err none)` on `v0-4-market.borrow`. Suspected root cause: upstream MCP routing gap around `borrow-helper-v2-1-7` (the Pyth oracle fee wrapper). The skill refuses non-USDh borrow with `zest borrow does not accept <token>. Valid: usdh` to save gas rather than broadcast known-failing txs. Tracked separately from this skill; if/when fixed upstream, `validTokens_borrowRepay` can be widened without further code changes.
 
 ### Hermetica Minting (Blocked)
 Hermetica `minting-v1.request-mint` requires 4x `trait_reference`. Workaround: swap via Bitflow DLMM router (`dlmm-swap-router-v-1-1.swap-simple-multi`) then stake. The engine generates executable `call_contract` instructions for both steps.
