@@ -69,12 +69,22 @@ export interface RelayPoolSummary {
   wallets: RelayPoolWalletSummary[];
 }
 
+/**
+ * Connectivity and metadata from the relay endpoint.
+ *
+ * `reachable=true` with `error` set is a valid degraded-but-up state: at least
+ * one relay endpoint responded, but the /health or /pool call returned partial
+ * data. Callers should surface the error as a warning rather than treating the
+ * relay as down.
+ */
 export interface RelayStatus {
   url: string;
+  /** true if at least one relay endpoint responded; does not guarantee full health */
   reachable: boolean;
   status?: string;
   version?: string;
   requestId?: string;
+  /** set when a relay call partially failed; reachable may still be true */
   error?: string;
 }
 
@@ -98,14 +108,26 @@ export interface RelaySponsorSummary {
   healthy: boolean | null;
 }
 
+/**
+ * Top-level result of a relay health check.
+ *
+ * `healthy` is `true` only when the relay is reachable AND `issues` is empty.
+ * `advisories` carries routine operational notes (e.g. relay recommendations)
+ * that do NOT indicate a malfunction and do NOT affect `healthy`. Callers that
+ * previously branched on `issues.length === 0` should continue to do so;
+ * `advisories` is a separate, informational channel.
+ */
 export interface RelayHealthStatus {
+  /** false if relay is unreachable or any entry in issues[] is present */
   healthy: boolean;
   network: Network;
   relay: RelayStatus;
   sponsor: RelaySponsorSummary;
   pool?: RelayPoolSummary;
   stuckTransactions?: StuckTransaction[];
+  /** hard problems that flip healthy=false */
   issues: string[];
+  /** routine relay notes (e.g. pool.recommendation); does NOT affect healthy */
   advisories: string[];
   formatted: string;
 }
