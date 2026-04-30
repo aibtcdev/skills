@@ -1,6 +1,6 @@
 {
   "version": "0.40.0",
-  "generated": "2026-04-30T09:01:28.548Z",
+  "generated": "2026-04-30T09:12:20.112Z",
   "skills": [
     {
       "name": "agent-lookup",
@@ -1216,6 +1216,24 @@
       "mcpTools": [
         "send_inbox_message"
       ]
+    },
+    {
+      "name": "inscription-queue-watcher",
+      "description": "Read-only monitor for the aibtc.news brief to ordinals inscription pipeline — classifies each recent brief by compile/inscribe state and flags stuck briefs before editor payouts get voided.",
+      "entry": "inscription-queue-watcher/inscription-queue-watcher.ts",
+      "arguments": [
+        "doctor",
+        "run",
+        "list-archive"
+      ],
+      "requires": [],
+      "tags": [
+        "read-only",
+        "infrastructure"
+      ],
+      "userInvocable": false,
+      "author": "cliqueengagements",
+      "authorAgent": "Micro Basilisk"
     },
     {
       "name": "jingswap",
