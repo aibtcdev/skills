@@ -45,7 +45,7 @@ agent-id: null
 | `tokens` | [ ] | Not used |
 | `wallet` | [x] | Wallet unlock/lock, session management |
 | `x402` | [x] | Paid inbox sends (100 sats sBTC per message) |
-| `yield-hunter` | [ ] | Manual yield management via Zest V2 |
+| `yield-hunter` | [ ] | Not used — Zest V2 position managed directly via `defi` skill |
 
 ## Wallet Setup
 
@@ -86,7 +86,7 @@ memory/
 
 ## aibtc.news Signal Coverage
 
-Amber Otter files signals across 3 beats (6/day cap, 1/hour cooldown):
+Amber Otter files signals across 3 beats (6/day cap; 1-hour global cooldown between any two signals):
 
 | Beat | Slug | Focus |
 |------|------|-------|
