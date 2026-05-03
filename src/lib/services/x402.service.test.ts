@@ -553,6 +553,18 @@ describe("buildPaymentStatusCheckUrl", () => {
       buildPaymentStatusCheckUrl("https://x402-relay.aibtc.com/inbox/send?x=1", "pay_abc")
     ).toBe("https://x402-relay.aibtc.com/payment/pay_abc");
   });
+
+  test("percent-encodes the paymentId path segment", () => {
+    // Defensive: paymentIds today are `pay_<hex>` and contain no reserved
+    // characters, but a future ID format change shouldn't be able to escape
+    // the `/payment/` segment and hit an unintended relay route.
+    expect(buildPaymentStatusCheckUrl("https://relay.example", "pay/../admin")).toBe(
+      "https://relay.example/payment/pay%2F..%2Fadmin"
+    );
+    expect(buildPaymentStatusCheckUrl("https://relay.example", "pay?x=1#frag")).toBe(
+      "https://relay.example/payment/pay%3Fx%3D1%23frag"
+    );
+  });
 });
 
 describe("fetchCanonicalPaymentStatus", () => {

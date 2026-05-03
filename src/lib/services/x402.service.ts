@@ -156,7 +156,7 @@ export function isInFlightPaymentStatus(
  */
 export function buildPaymentStatusCheckUrl(baseUrl: string, paymentId: string): string {
   const origin = new URL(baseUrl).origin;
-  return `${origin}/payment/${paymentId}`;
+  return `${origin}/payment/${encodeURIComponent(paymentId)}`;
 }
 
 /**
