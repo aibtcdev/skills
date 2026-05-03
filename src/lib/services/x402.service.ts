@@ -145,10 +145,18 @@ export function isInFlightPaymentStatus(
 /**
  * Local compatibility helper for inbox or other explicitly bounded first-party
  * flows. This is not a generic caller-facing x402 contract.
+ *
+ * The relay exposes payment status at `/payment/{paymentId}` (verified against
+ * x402-relay v1.32.x). The previous `/api/payment-status/{paymentId}` path
+ * 404s on the live relay; when the relay response omits `checkStatusUrl`,
+ * the fallback was synthesizing `{status: "not_found", terminalReason:
+ * "unknown_payment_identity"}` from those 404s, which the retry loop
+ * interpreted as a terminal payment-identity failure and burned the retry
+ * budget chasing phantom IDs.
  */
 export function buildPaymentStatusCheckUrl(baseUrl: string, paymentId: string): string {
   const origin = new URL(baseUrl).origin;
-  return `${origin}/api/payment-status/${paymentId}`;
+  return `${origin}/payment/${paymentId}`;
 }
 
 /**
@@ -157,7 +165,7 @@ export function buildPaymentStatusCheckUrl(baseUrl: string, paymentId: string): 
  * Currently a pass-through that returns the upstream-provided URL as-is.
  * The unused `_baseUrl` and `_paymentId` params are retained for forward
  * compatibility: when the relay omits `checkStatusUrl`, a future version
- * can construct a fallback from `{baseUrl}/api/payment-status/{paymentId}`.
+ * can construct a fallback via `buildPaymentStatusCheckUrl`.
  */
 export function resolveCanonicalCheckStatusUrl(
   _baseUrl: string,

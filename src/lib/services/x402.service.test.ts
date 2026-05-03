@@ -4,6 +4,7 @@ import { once } from "node:events";
 import { getStacksChainId } from "../config/caip.js";
 import { NETWORK, type Network } from "../config/networks.js";
 import {
+  buildPaymentStatusCheckUrl,
   classifyCanonicalPaymentOutcome,
   createApiClient,
   extractPaymentIdentifierFromPaymentSignature,
@@ -171,7 +172,7 @@ describe("createApiClient canonical payment flow", () => {
         return;
       }
 
-      if (seen.paymentId && url.pathname === `/api/payment-status/${seen.paymentId}`) {
+      if (seen.paymentId && url.pathname === `/payment/${seen.paymentId}`) {
         seen.canonicalPolls += 1;
         res.statusCode = 200;
         res.setHeader("content-type", "application/json");
@@ -275,7 +276,7 @@ describe("createApiClient canonical payment flow", () => {
         return;
       }
 
-      if (seen.paymentId && url.pathname === `/api/payment-status/${seen.paymentId}`) {
+      if (seen.paymentId && url.pathname === `/payment/${seen.paymentId}`) {
         seen.canonicalPolls += 1;
         res.statusCode = 200;
         res.setHeader("content-type", "application/json");
@@ -365,7 +366,7 @@ describe("createApiClient canonical payment flow", () => {
         return;
       }
 
-      if (seen.paymentId && url.pathname === `/api/payment-status/${seen.paymentId}`) {
+      if (seen.paymentId && url.pathname === `/payment/${seen.paymentId}`) {
         res.statusCode = 500;
         res.end("boom");
         return;
@@ -537,6 +538,23 @@ describe("resolveCanonicalCheckStatusUrl", () => {
   });
 });
 
+describe("buildPaymentStatusCheckUrl", () => {
+  // Pin the URL contract so a future rename of the relay route surfaces here
+  // instead of as runtime `unknown_payment_identity` failures whenever the
+  // relay omits checkStatusUrl from its response.
+  test("constructs the relay's /payment/{id} route", () => {
+    expect(buildPaymentStatusCheckUrl("https://x402-relay.aibtc.com", "pay_abc")).toBe(
+      "https://x402-relay.aibtc.com/payment/pay_abc"
+    );
+  });
+
+  test("preserves the origin and ignores path/query on the input baseUrl", () => {
+    expect(
+      buildPaymentStatusCheckUrl("https://x402-relay.aibtc.com/inbox/send?x=1", "pay_abc")
+    ).toBe("https://x402-relay.aibtc.com/payment/pay_abc");
+  });
+});
+
 describe("fetchCanonicalPaymentStatus", () => {
   test("consumes an explicit canonical poll hint when provided", async () => {
     const seen = { hintHits: 0, localRouteHits: 0 };
@@ -556,7 +574,7 @@ describe("fetchCanonicalPaymentStatus", () => {
         return;
       }
 
-      if (url.pathname === "/api/payment-status/pay_123") {
+      if (url.pathname === "/payment/pay_123") {
         seen.localRouteHits += 1;
         res.statusCode = 500;
         res.end("should not be called");
@@ -596,7 +614,7 @@ describe("fetchCanonicalPaymentStatus", () => {
     const seen = { localRouteHits: 0 };
     const server = createServer((req: IncomingMessage, res: ServerResponse) => {
       const url = new URL(req.url ?? "/", "http://127.0.0.1");
-      if (url.pathname === "/api/payment-status/pay_123") {
+      if (url.pathname === "/payment/pay_123") {
         seen.localRouteHits += 1;
         res.statusCode = 200;
         res.setHeader("content-type", "application/json");
@@ -653,7 +671,7 @@ describe("fetchCanonicalPaymentStatus", () => {
         return;
       }
 
-      if (url.pathname === "/api/payment-status/pay_123") {
+      if (url.pathname === "/payment/pay_123") {
         seen.localRouteHits += 1;
         res.statusCode = 200;
         res.setHeader("content-type", "application/json");
