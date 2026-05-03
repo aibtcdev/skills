@@ -101,7 +101,7 @@ const HODLMM_POOLS: PoolDef[] = [
 
 // Token metadata for yield calculations
 interface TokenMeta { symbol: string; contract: string; decimals: number; ftSuffix: string }
-const TOKENS: Record<string, TokenMeta> = {
+export const TOKENS: Record<string, TokenMeta> = {
   sbtc:   { symbol: "sBTC",   contract: SBTC_TOKEN,   decimals: 8, ftSuffix: "::sbtc-token" },
   stx:    { symbol: "STX",    contract: "stx",        decimals: 6, ftSuffix: "" },
   usdcx:  { symbol: "USDCx",  contract: USDCX_TOKEN,  decimals: 6, ftSuffix: "::usdcx-token" },
@@ -1160,7 +1160,7 @@ function inferTargetPoolId(command: string, opts: Record<string, string>): strin
 
 // Estimate expected swap output in output-token atomic units, given input amount + scout prices.
 // Used by callers of buildDlmmSwapInstruction to derive the min-received guard correctly.
-function expectedSwapOutput(
+export function expectedSwapOutput(
   inputAmount: number,
   inputSymbol: string,
   outputSymbol: string,
