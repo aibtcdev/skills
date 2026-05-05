@@ -51,6 +51,15 @@ async function fetchFree(baseUrl: string, path: string): Promise<unknown> {
   return res.json();
 }
 
+function decodePaymentReceipt(header: unknown): Record<string, unknown> | undefined {
+  if (!header) return undefined;
+  try {
+    return JSON.parse(Buffer.from(String(header), "base64").toString("utf8"));
+  } catch {
+    return undefined;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Commander setup
 // ---------------------------------------------------------------------------
@@ -83,21 +92,13 @@ program
         url: `/oracle/${symbol}`,
       });
 
-      const paymentResponseHeader = response.headers?.["payment-response"];
       const output: Record<string, unknown> = {
         ...((response.data as Record<string, unknown>) ?? {}),
         network,
         endpoint: `${baseUrl}/oracle/${symbol}`,
       };
-      if (paymentResponseHeader) {
-        try {
-          output.payment_receipt = JSON.parse(
-            Buffer.from(String(paymentResponseHeader), "base64").toString("utf8")
-          );
-        } catch {
-          /* ignore decode errors */
-        }
-      }
+      const receipt = decodePaymentReceipt(response.headers?.["payment-response"]);
+      if (receipt) output.payment_receipt = receipt;
 
       printJson(output);
     } catch (error) {
@@ -127,22 +128,13 @@ program
         url: `/galaxy-score/${symbol}`,
       });
 
-      // Surface payment receipt if the response carried one (header-encoded settlement).
-      const paymentResponseHeader = response.headers?.["payment-response"];
       const output: Record<string, unknown> = {
         ...((response.data as Record<string, unknown>) ?? {}),
         network,
         endpoint: `${baseUrl}/galaxy-score/${symbol}`,
       };
-      if (paymentResponseHeader) {
-        try {
-          output.payment_receipt = JSON.parse(
-            Buffer.from(String(paymentResponseHeader), "base64").toString("utf8")
-          );
-        } catch {
-          /* ignore decode errors */
-        }
-      }
+      const receipt = decodePaymentReceipt(response.headers?.["payment-response"]);
+      if (receipt) output.payment_receipt = receipt;
 
       printJson(output);
     } catch (error) {
