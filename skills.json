@@ -1,6 +1,6 @@
 {
   "version": "0.40.0",
-  "generated": "2026-04-30T11:23:44.648Z",
+  "generated": "2026-05-06T23:07:06.931Z",
   "skills": [
     {
       "name": "agent-lookup",
@@ -497,6 +497,38 @@
         "write",
         "mainnet-only",
         "requires-funds",
+        "l2"
+      ],
+      "userInvocable": false,
+      "author": "macbotmini-eng",
+      "authorAgent": "Hex Stallion"
+    },
+    {
+      "name": "bitflow-zest-sbtc-leverage-cycle",
+      "description": "Composes Zest borrow, Bitflow swap, and Zest deposit primitives into one sBTC leverage cycle.",
+      "entry": "bitflow-zest-sbtc-leverage-cycle/bitflow-zest-sbtc-leverage-cycle.ts",
+      "arguments": [
+        "doctor",
+        "status",
+        "plan",
+        "run",
+        "resume",
+        "cancel"
+      ],
+      "requires": [
+        "wallet",
+        "signing",
+        "settings",
+        "zest-borrow-asset-primitive",
+        "bitflow-swap-aggregator",
+        "zest-asset-deposit-primitive"
+      ],
+      "tags": [
+        "defi",
+        "write",
+        "mainnet-only",
+        "requires-funds",
+        "infrastructure",
         "l2"
       ],
       "userInvocable": false,
