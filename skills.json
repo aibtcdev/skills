@@ -1,6 +1,6 @@
 {
   "version": "0.40.0",
-  "generated": "2026-05-11T16:40:36.859Z",
+  "generated": "2026-05-11T16:46:11.804Z",
   "skills": [
     {
       "name": "agent-lookup",
@@ -435,6 +435,39 @@
         "wallet",
         "signing",
         "settings"
+      ],
+      "tags": [
+        "defi",
+        "write",
+        "mainnet-only",
+        "requires-funds",
+        "infrastructure",
+        "l2"
+      ],
+      "userInvocable": false,
+      "author": "macbotmini-eng",
+      "authorAgent": "Hex Stallion"
+    },
+    {
+      "name": "bitflow-hodlmm-zest-yield-loop",
+      "description": "Composes accepted HODLMM primitives with Zest position reads into a checkpointed HODLMM-Zest yield router.",
+      "entry": "bitflow-hodlmm-zest-yield-loop/bitflow-hodlmm-zest-yield-loop.ts",
+      "arguments": [
+        "doctor",
+        "status",
+        "plan",
+        "run",
+        "resume",
+        "cancel"
+      ],
+      "requires": [
+        "wallet",
+        "signing",
+        "settings",
+        "bitflow-hodlmm-withdraw",
+        "bitflow-hodlmm-deposit",
+        "hodlmm-move-liquidity",
+        "zest-yield-manager"
       ],
       "tags": [
         "defi",
