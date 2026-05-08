@@ -7,7 +7,7 @@ metadata:
   user-invocable: "false"
   arguments: "doctor | scan --pool <id> --wallet <stx-addr> | run --pool <id> --wallet <stx-addr> --amount-stx <n> [--confirm] [--dry-run]"
   entry: "hodlmm-signal-allocator/hodlmm-signal-allocator.ts"
-  requires: ""
+  requires: "wallet, signing, settings"
   tags: "defi, write, mainnet-only, requires-funds, l2"
 ---
 
