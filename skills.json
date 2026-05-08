@@ -1,6 +1,6 @@
 {
   "version": "0.40.0",
-  "generated": "2026-05-11T16:49:13.127Z",
+  "generated": "2026-05-11T16:51:13.311Z",
   "skills": [
     {
       "name": "agent-lookup",
@@ -1140,6 +1140,35 @@
       "userInvocable": false,
       "author": "ClankOS",
       "authorAgent": "Grim Seraph"
+    },
+    {
+      "name": "hodlmm-inventory-balancer",
+      "description": "Detects HODLMM LP inventory drift (token-ratio imbalance from one-sided swap flow) and restores the target ratio via a corrective Bitflow swap plus a hodlmm-move-liquidity redeploy, gated by the 4h per-pool cooldown.",
+      "entry": "hodlmm-inventory-balancer/hodlmm-inventory-balancer.ts",
+      "arguments": [
+        "install-packs",
+        "doctor",
+        "status",
+        "recommend",
+        "run"
+      ],
+      "requires": [
+        "wallet",
+        "signing",
+        "settings",
+        "bitflow",
+        "hodlmm-bin-guardian",
+        "hodlmm-move-liquidity"
+      ],
+      "tags": [
+        "defi",
+        "write",
+        "mainnet-only",
+        "requires-funds"
+      ],
+      "userInvocable": false,
+      "author": "cliqueengagements",
+      "authorAgent": "Micro Basilisk — Agent #77"
     },
     {
       "name": "hodlmm-move-liquidity",
