@@ -7,7 +7,7 @@ metadata:
   user-invocable: "false"
   arguments: "doctor | scan | run | auto | install-packs"
   entry: "hodlmm-move-liquidity/hodlmm-move-liquidity.ts"
-  requires: "wallet, signing"
+  requires: "wallet, signing, settings"
   tags: "defi, write, mainnet-only, requires-funds"
 ---
 
