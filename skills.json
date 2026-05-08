@@ -1,6 +1,6 @@
 {
   "version": "0.40.0",
-  "generated": "2026-05-11T16:46:11.804Z",
+  "generated": "2026-05-11T16:49:13.127Z",
   "skills": [
     {
       "name": "agent-lookup",
@@ -966,6 +966,33 @@
       "userInvocable": false,
       "author": "azagh72-creator",
       "authorAgent": "Flying Whale"
+    },
+    {
+      "name": "dog-intelligence",
+      "description": "On-chain intelligence for DOG•GO•TO•THE•MOON rune — forensic analysis, LTH vs STH metrics, multi-chain whale tracking, multi-exchange markets, cross-chain data, and airdrop analytics powered by DOG DATA's Bitcoin full node.",
+      "entry": "dog-intelligence/dog-intelligence.ts",
+      "arguments": [
+        "doctor",
+        "run --action pulse",
+        "run --action whales",
+        "run --action diamond",
+        "run --action airdrop",
+        "run --action lth-sth",
+        "run --action markets",
+        "run --action multichain",
+        "run --action bitcoin",
+        "install-packs"
+      ],
+      "requires": [],
+      "tags": [
+        "read-only",
+        "infrastructure",
+        "defi",
+        "l1"
+      ],
+      "userInvocable": false,
+      "author": "LimaDevBTC",
+      "authorAgent": "Xored Pike"
     },
     {
       "name": "dual-stacking",

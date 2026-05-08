@@ -1,0 +1,8 @@
+{
+  "name": "dog-intelligence",
+  "version": "0.1.0",
+  "description": "On-chain intelligence for DOG•GO•TO•THE•MOON rune",
+  "dependencies": {
+    "commander": "^12.1.0"
+  }
+}
