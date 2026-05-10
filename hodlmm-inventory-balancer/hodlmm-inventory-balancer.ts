@@ -1677,8 +1677,52 @@ async function recommendOrRun(opts: Record<string, string | boolean | undefined>
         hint: "Resume from withdraw-done needs gas reserve for swap + redeposit (2 txs). Top up STX and re-run.",
       });
     }
-    const { pool: poolGathered } = await gatherPool(poolId, stxAddress);
+    const { pool: poolGathered, poolBins: freshPoolBins } = await gatherPool(poolId, stxAddress);
     const pending = poolState.rebalance_pending_details;
+    // Stale-price guard. Leg-2 reuses the swap plan snapshotted at leg-1 success;
+    // its `minimum_amount_out_raw` was sized at the price observed when the cycle
+    // started. If the active bin moved against us between legs (long-wait resume,
+    // market shock), the broadcast aborts via ERR_MINIMUM_RECEIVED at the contract
+    // because the actual output at current price falls below the snapshot's floor —
+    // leaving the marker stuck on `withdraw_done_swap_pending`. Refuse with a
+    // clean blocked status pointing at `reset-marker`; do NOT silently resize the
+    // floor (that would break the slippage contract the operator signed up for).
+    const freshActivePrice = activeBinPriceScaled(freshPoolBins.bins, freshPoolBins.active_bin_id);
+    if (freshActivePrice === 0n) {
+      log(`active bin ${freshPoolBins.active_bin_id} missing from poolBins on resume for ${poolId}`);
+      return out("blocked", action, {
+        pool_id: poolId,
+        reason: "active_bin_price_unavailable_on_resume",
+        active_bin_id: freshPoolBins.active_bin_id,
+        hint: "Could not read active bin price from the quotes endpoint. Retry shortly; if persistent, run `reset-marker --pool <id> --confirm` and re-plan.",
+      });
+    }
+    const snapshotSwapInRaw = BigInt(pending.swap.amount_in_raw);
+    const snapshotMinOutRaw = BigInt(pending.swap.minimum_amount_out_raw);
+    // Direction-aware: bin price represents raw_y per raw_x, scaled by PRICE_SCALE.
+    //   X→Y: raw_y_out = raw_x_in * price / PRICE_SCALE
+    //   Y→X: raw_x_out = raw_y_in * PRICE_SCALE / price
+    // Mirrors the planner derivation at planRebalanceWithdraw so this guard's
+    // expected-output formula stays in lockstep with how the snapshot was sized.
+    const freshExpectedOutRaw = pending.swap.direction === "X->Y"
+      ? (snapshotSwapInRaw * freshActivePrice) / BigInt(PRICE_SCALE)
+      : (snapshotSwapInRaw * BigInt(PRICE_SCALE)) / freshActivePrice;
+    if (freshExpectedOutRaw < snapshotMinOutRaw) {
+      return out("blocked", action, {
+        pool_id: poolId,
+        reason: "price_moved_beyond_slippage_replan_required",
+        direction: pending.swap.direction,
+        snapshot_amount_in_raw: pending.swap.amount_in_raw,
+        snapshot_minimum_out_raw: snapshotMinOutRaw.toString(),
+        snapshot_expected_out_raw: pending.swap.expected_amount_out_raw,
+        fresh_expected_out_raw: freshExpectedOutRaw.toString(),
+        active_bin_id: freshPoolBins.active_bin_id,
+        slippage_bps: pending.swap.slippage_bps,
+        last_withdraw_tx: poolState.last_withdraw_tx,
+        explorer: `${EXPLORER}/0x${poolState.last_withdraw_tx}?chain=mainnet`,
+        hint: "Active bin price has moved against the snapshot beyond slippage_bps since leg 1 landed. Resume swap would abort via ERR_MINIMUM_RECEIVED. Run `reset-marker --pool <id> --confirm` to clear the marker and re-plan against the current ratio.",
+      });
+    }
     // Leg 2: swap (reuses snapshotted plan)
     const n2 = await fetchNonce(stxAddress);
     const swapTx2 = await executeCorrectiveSwap(stxPrivateKey, stxAddress, poolGathered, pending.swap, n2);
