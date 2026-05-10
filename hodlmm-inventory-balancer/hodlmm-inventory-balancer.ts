@@ -204,6 +204,16 @@ interface InventoryState {
       target_ratio_x: number;
       captured_at: string;
     };
+    // Captured at leg-1 success in the 3-leg flow so legs 2+3 can rebuild
+    // the contract calls on resume without re-planning. Re-planning mid-cycle
+    // would need to derive amounts from on-chain tx events of the prior leg —
+    // brittle and indexer-lag-prone — so we snapshot the original plan instead.
+    rebalance_pending_details?: {
+      swap: SwapPlan;
+      redeposit: RedepositPlan;
+      target_ratio_x: number;
+      captured_at: string;
+    };
   };
 }
 
@@ -915,8 +925,14 @@ function planRebalanceWithdraw(
   const expectedXRaw = totalExpectedX;
   const expectedYRaw = totalExpectedY;
 
-  // Swap plan — input is 100% of the overweight proceeds from the withdraw.
-  const swapInRaw = overWeightX ? expectedXRaw : expectedYRaw;
+  // Swap plan — input is the GUARANTEED-DELIVERED floor of the overweight side
+  // (totalMinX/Y, not totalExpectedX/Y). The withdraw contract honors per-bin
+  // and aggregate min floors but may deliver anywhere between min and expected
+  // — sizing the swap to expected risks an insufficient-input-balance abort on
+  // leg-2 if withdraw lands at the floor (worst case 0.5% short at default
+  // slippageBps=50). Tradeoff: up to slippageBps of overweight token may sit
+  // in the wallet post-cycle and absorb into the next cycle's accumulator.
+  const swapInRaw = overWeightX ? totalMinX : totalMinY;
   if (swapInRaw < MIN_SWAP_SATS) {
     return { status: "refused", reason: "planned_swap_below_minimum", detail: { planned_raw: swapInRaw.toString() } };
   }
@@ -1002,6 +1018,7 @@ function planRebalanceWithdraw(
 
 async function executeWithdrawSlice(
   privateKey: string,
+  senderAddress: string,
   pool: PoolMeta,
   slice: WithdrawSlicePlan,
   nonce: bigint
@@ -1016,6 +1033,7 @@ async function executeWithdrawSlice(
     contractPrincipalCV,
     PostConditionMode,
     AnchorMode,
+    Pc,
   } = await import("@stacks/transactions" as string);
   const { STACKS_MAINNET } = await import("@stacks/network" as string);
 
@@ -1031,6 +1049,39 @@ async function executeWithdrawSlice(
     "pool-trait": contractPrincipalCV(poolAddr, poolName),
   }));
 
+  // 3-pin envelope on withdraw — defense-in-depth alongside the contract-level
+  // per-bin / aggregate min floors and the per-bin shares-burned arg.
+  //   PC1: sender willSendLte(total_shares).ft(pool, 'pool-token') — DLP burn cap
+  //   PC2: pool   willSendGte(total_min_x).ft(token_x, ...)        — X receive floor
+  //   PC3: pool   willSendGte(total_min_y).ft(token_y, ...)        — Y receive floor
+  // PC1 asset name `pool-token` verified live on tx 0x89315a8b… burn event
+  // (asset_id: <pool_contract>::pool-token). Every DLMM pool deploys from the
+  // same template (deployer SM1FKX...) so `pool-token` is uniform across pools.
+  // Sided per-token on PC2/PC3: skip the asset whose total_min is 0 (over-weight
+  // side fully drained, no withdrawal of that side). resolveTokenAsset() unifies
+  // STX vs FT branching with the swap-leg PCs.
+  const xAsset = resolveTokenAsset(pool.token_x);
+  const yAsset = resolveTokenAsset(pool.token_y);
+  const minX = BigInt(slice.total_min_x_raw);
+  const minY = BigInt(slice.total_min_y_raw);
+  const totalShares = slice.entries.reduce((s, e) => s + BigInt(e.shares_to_withdraw_raw), 0n);
+  const poolPin = Pc.principal(pool.pool_contract);
+  const senderPin = Pc.principal(senderAddress);
+  const pcs: unknown[] = [];
+  if (totalShares > 0n) {
+    pcs.push(senderPin.willSendLte(totalShares).ft(pool.pool_contract as `${string}.${string}`, "pool-token"));
+  }
+  if (minX > 0n) {
+    pcs.push(xAsset.kind === "stx"
+      ? poolPin.willSendGte(minX).ustx()
+      : poolPin.willSendGte(minX).ft(xAsset.contract, xAsset.assetName));
+  }
+  if (minY > 0n) {
+    pcs.push(yAsset.kind === "stx"
+      ? poolPin.willSendGte(minY).ustx()
+      : poolPin.willSendGte(minY).ft(yAsset.contract, yAsset.assetName));
+  }
+
   const fee = await estimateSwapFeeUstx();
   const tx = await makeContractCall({
     contractAddress: DLMM_LIQUIDITY_ROUTER_ADDR,
@@ -1040,16 +1091,18 @@ async function executeWithdrawSlice(
       listCV(positionTuples),
       contractPrincipalCV(xAddr, xName),
       contractPrincipalCV(yAddr, yName),
-      uintCV(BigInt(slice.total_min_x_raw)),
-      uintCV(BigInt(slice.total_min_y_raw)),
+      uintCV(minX),
+      uintCV(minY),
     ],
     senderKey: privateKey,
     network: STACKS_MAINNET,
-    // DLP burn returns 2 FTs to sender — mirrors move-liquidity-multi's Allow
-    // rationale in hodlmm-move-liquidity. Aggregate min-x/y-amount-total above
-    // is the upper gate; per-bin min-x/y on the position tuple is the lower gate.
+    // Allow mode (vs Deny + per-fee enumeration) preserved because per-bin
+    // `bin-liquidity-fee` accruals are routed inside dlmm-core and don't always
+    // emit FT transfer events. The wallet-level receive pins above + per-bin
+    // min-x/y on the position tuple + aggregate min-x/y-amount-total in the
+    // function args together form the safety envelope.
     postConditionMode: PostConditionMode.Allow,
-    postConditions: [],
+    postConditions: pcs as never[],
     anchorMode: AnchorMode.Any,
     nonce,
     fee,
@@ -1064,6 +1117,7 @@ async function executeWithdrawSlice(
 
 async function executeAddLiquidityRedeposit(
   privateKey: string,
+  senderAddress: string,
   pool: PoolMeta,
   plan: RedepositPlan,
   nonce: bigint
@@ -1079,6 +1133,7 @@ async function executeAddLiquidityRedeposit(
     noneCV,
     PostConditionMode,
     AnchorMode,
+    Pc,
   } = await import("@stacks/transactions" as string);
   const { STACKS_MAINNET } = await import("@stacks/network" as string);
 
@@ -1116,6 +1171,35 @@ async function executeAddLiquidityRedeposit(
   // enforced on each `positions` entry: max-x-liquidity-fee + max-y-liquidity-fee
   // (per-bin 5% caps), min-dlp (>=1 share required for the deposit to settle),
   // and per-bin x-amount / y-amount limits.
+  //
+  // The plan's active_bin_expected / active_bin_tolerance fields stay in the
+  // snapshot schema as informational metadata but are no longer load-bearing.
+
+  // Wallet-level send-side pin — defense-in-depth alongside the contract's
+  // per-bin x-amount/y-amount + max-liquidity-fee gates. We pin sender
+  // willSendLte (total + 5% fee headroom — matches the per-tuple
+  // max-(x|y)-liquidity-fee ceiling). Sided per-token: skip the asset whose
+  // total is 0 (one-sided redeposit, only X above active or Y below).
+  // resolveTokenAsset() unifies STX vs FT branching with the swap-leg PCs.
+  const xAsset = resolveTokenAsset(pool.token_x);
+  const yAsset = resolveTokenAsset(pool.token_y);
+  const totalX = BigInt(plan.total_x_raw);
+  const totalY = BigInt(plan.total_y_raw);
+  const senderPin = Pc.principal(senderAddress);
+  const pcs: unknown[] = [];
+  if (totalX > 0n) {
+    const capX = (totalX * 105n) / 100n; // 5% headroom for liquidity-fee accrual
+    pcs.push(xAsset.kind === "stx"
+      ? senderPin.willSendLte(capX).ustx()
+      : senderPin.willSendLte(capX).ft(xAsset.contract, xAsset.assetName));
+  }
+  if (totalY > 0n) {
+    const capY = (totalY * 105n) / 100n;
+    pcs.push(yAsset.kind === "stx"
+      ? senderPin.willSendLte(capY).ustx()
+      : senderPin.willSendLte(capY).ft(yAsset.contract, yAsset.assetName));
+  }
+
   const fee = await estimateSwapFeeUstx();
   const tx = await makeContractCall({
     contractAddress: DLMM_LIQUIDITY_ROUTER_ADDR,
@@ -1130,11 +1214,12 @@ async function executeAddLiquidityRedeposit(
     ],
     senderKey: privateKey,
     network: STACKS_MAINNET,
-    // DLP mint from sender FT inputs — Allow for same reason as swap path:
-    // router routes X and Y deposits plus may emit per-bin fee transfers that
-    // vary with pool config (see PR #494 comment to @TheBigMacBTC).
+    // Allow mode (vs Deny + per-fee enumeration) preserved because per-bin
+    // fee transfers vary with pool config and don't always emit FT events
+    // (see PR #494 comment to @TheBigMacBTC). Sender send-cap pins above
+    // bound the wallet-side capital motion.
     postConditionMode: PostConditionMode.Allow,
-    postConditions: [],
+    postConditions: pcs as never[],
     anchorMode: AnchorMode.Any,
     nonce,
     fee,
@@ -1175,6 +1260,22 @@ async function waitForTxConfirmation(txId: string, timeoutMs = 600_000): Promise
   throw new Error(`Tx ${txId} did not confirm within ${timeoutMs / 1000}s`);
 }
 
+// Light-touch tx-status probe used on the resume path in the 3-leg flow.
+// Unlike waitForTxConfirmation, this returns immediately rather than polling —
+// the operator has already waited (they re-ran the skill); we just need to
+// know whether the prior leg's tx ultimately landed `success` before we let
+// the resume proceed. Returns `{ status: "unknown_lookup_failed", ok: false }`
+// on lookup error so callers can surface a clear hint instead of throwing.
+async function probeTxStatus(txId: string): Promise<{ status: string; ok: boolean }> {
+  try {
+    const res = await fetchJson<Record<string, unknown>>(`${HIRO_API}/extended/v1/tx/0x${txId}`);
+    const status = String(res.tx_status ?? "unknown");
+    return { status, ok: status === "success" };
+  } catch (e) {
+    return { status: `lookup_failed: ${(e as Error).message}`, ok: false };
+  }
+}
+
 // ─── Redeploy via hodlmm-move-liquidity CLI ───────────────────────────────────
 
 function invokeMoveLiquidityRedeploy(poolId: string, stxAddress: string, password: string | undefined): string {
@@ -1192,7 +1293,13 @@ function invokeMoveLiquidityRedeploy(poolId: string, stxAddress: string, passwor
   // and `ps auxww` for the child's lifetime; env vars are not visible to peers without ptrace.
   const childEnv = password ? { ...process.env, WALLET_PASSWORD: password } : process.env;
 
-  const result = spawnSync("bun", args, { encoding: "utf-8", timeout: 120_000, env: childEnv });
+  // 600s timeout matches waitForTxConfirmation's default. The child invocation
+  // polls Hiro for tx confirmation internally; congested-chain indexing routinely
+  // lags 60–180s. A 120s parent timeout would kill the child mid-poll, leaving
+  // last_cycle_status === "swap_done_redeploy_pending" with the redeploy tx in
+  // flight — the next resume call would then re-broadcast invokeMoveLiquidityRedeploy
+  // and risk a double-broadcast if the original landed.
+  const result = spawnSync("bun", args, { encoding: "utf-8", timeout: 600_000, env: childEnv });
   if (result.error) throw new Error(`move-liquidity invoke failed: ${result.error.message}`);
   if (result.status !== 0) {
     throw new Error(`move-liquidity exited ${result.status}: ${result.stderr || result.stdout}`);
@@ -1267,9 +1374,14 @@ program
         checks.push({ name: "wallet", ok: false, detail: (e as Error).message });
       }
 
+      // Cached pool list — reused below for the per-pool cooldown iteration so we
+      // hit /api/app/v1/pools at most once per doctor run. Failure of the first
+      // call leaves cachedPools null; the cooldown branch then degrades to an
+      // empty pool list rather than re-calling and re-failing.
+      let cachedPools: PoolMeta[] | null = null;
       try {
-        const pools = await fetchPools();
-        const eligible = pools.filter(isEligibleHodlmmPool);
+        cachedPools = await fetchPools();
+        const eligible = cachedPools.filter(isEligibleHodlmmPool);
         checks.push({ name: "bitflow_app_api", ok: eligible.length > 0, detail: `${eligible.length} eligible pools` });
       } catch (e) {
         checks.push({ name: "bitflow_app_api", ok: false, detail: (e as Error).message });
@@ -1304,13 +1416,12 @@ program
       let poolsToCheck: string[];
       if (targetPool) {
         poolsToCheck = [targetPool];
+      } else if (cachedPools) {
+        poolsToCheck = cachedPools.filter(isEligibleHodlmmPool).map((p) => p.pool_id);
       } else {
-        try {
-          const livePools = await fetchPools();
-          poolsToCheck = livePools.filter(isEligibleHodlmmPool).map((p) => p.pool_id);
-        } catch {
-          poolsToCheck = [];
-        }
+        // First fetchPools() call failed above; degrade to empty rather than
+        // re-fetch (which would hit the same upstream error and double the noise).
+        poolsToCheck = [];
       }
       for (const pid of poolsToCheck) {
         const ms = readMoveLiquidityCooldownMs(pid);
@@ -1405,6 +1516,33 @@ program
   });
 
 program
+  .command("reset-marker")
+  .description("Clear stale state marker for a pool (escape hatch for stuck cycles)")
+  .requiredOption("--pool <id>", "Pool whose state entry to clear")
+  .option("--confirm", "Required — irreversible; deletes the in-flight cycle snapshot")
+  .action((opts) => {
+    try {
+      if (!opts.confirm) {
+        return err("reset-marker", "--confirm required (this is irreversible)");
+      }
+      const state = loadInventoryState();
+      const cleared = state[opts.pool];
+      if (!cleared) {
+        return out("success", "reset-marker", { pool_id: opts.pool, note: "no state marker present" });
+      }
+      delete state[opts.pool];
+      saveInventoryState(state);
+      out("success", "reset-marker", {
+        pool_id: opts.pool,
+        cleared,
+        note: "Re-run `run --pool <id> --allow-rebalance-withdraw --confirm BALANCE` to plan a fresh cycle from current ratio.",
+      });
+    } catch (e) {
+      err("reset-marker", (e as Error).message);
+    }
+  });
+
+program
   .command("run")
   .description("Execute the corrective cycle (requires --confirm=BALANCE)")
   .option("--pool <id>", "Pool to correct (required)")
@@ -1449,9 +1587,20 @@ async function recommendOrRun(opts: Record<string, string | boolean | undefined>
 
   const { stxAddress, stxPrivateKey } = await getWalletKeys(password);
 
+  // Load state BEFORE cooldown check — the move-liquidity cooldown only applies
+  // to flows that invoke the hodlmm-move-liquidity CLI (default mode + leg-3
+  // of the v1-style fallback). The 3-leg rebalance-withdraw resume path uses
+  // add-relative-liquidity-same-multi directly with no CLI invocation, so the
+  // cooldown is irrelevant on resumes from a 3-leg intermediate state.
+  const state = loadInventoryState();
+  const poolState = state[poolId];
+  const isThreeLegResume =
+    poolState?.last_cycle_status === "withdraw_done_swap_pending" ||
+    poolState?.last_cycle_status === "withdraw_done_swap_done_redeposit_pending";
+
   // Cooldown gate
   const cooldownMs = readMoveLiquidityCooldownMs(poolId);
-  if (cooldownMs > 0 && !skipRedeploy) {
+  if (cooldownMs > 0 && !skipRedeploy && !isThreeLegResume) {
     return out("blocked", action, {
       pool_id: poolId,
       reason: "move_liquidity_cooldown_active",
@@ -1460,38 +1609,184 @@ async function recommendOrRun(opts: Record<string, string | boolean | undefined>
     });
   }
 
-  // Check state marker: resume-from-redeploy path
-  const state = loadInventoryState();
-  const poolState = state[poolId];
-
-  // Rebalance-withdraw intermediate states: surface as blocked with explicit
-  // remediation hints. Re-planning mid-cycle from a partial state is fragile
-  // (position shifted, wallet has partial proceeds, direction could be inferred
-  // wrong). Operator flow: wait for the last known tx to confirm via explorer,
-  // then re-run `run --allow-rebalance-withdraw` — the planner will see the
-  // current (partially-corrected) ratio and plan a fresh 3-leg cycle sized to
-  // close the remaining gap. Clear the stale marker with `status` after the
-  // prior txs have all landed.
+  // Rebalance-withdraw intermediate states: pick up where the prior cycle
+  // stopped. The plan snapshot at leg-1-success (rebalance_pending_details)
+  // tells us exactly which legs to broadcast. We verify the prior tx(s) hit
+  // `success` on-chain before resuming so we never broadcast leg N+1 against
+  // an aborted leg N — that would silently corrupt state. If the snapshot is
+  // missing (state file from before this fix shipped, or manually edited),
+  // fall back to surfacing `--reset-marker` as the escape hatch — the operator
+  // re-runs from scratch and the planner re-plans against the current ratio.
   if (poolState?.last_cycle_status === "withdraw_done_swap_pending") {
-    return out("blocked", action, {
+    if (!poolState.rebalance_pending_details || !poolState.last_withdraw_tx) {
+      return out("blocked", action, {
+        pool_id: poolId,
+        reason: "withdraw_done_swap_pending_legacy_marker",
+        last_withdraw_tx: poolState.last_withdraw_tx ?? null,
+        explorer: poolState.last_withdraw_tx ? `${EXPLORER}/0x${poolState.last_withdraw_tx}?chain=mainnet` : null,
+        hint: "State marker present but no rebalance_pending_details snapshot — cannot rebuild swap/redeposit plans. Run `reset-marker --pool <id> --confirm` to clear, then re-run `run --pool <id> --allow-rebalance-withdraw --confirm BALANCE` to plan a fresh cycle from current ratio.",
+      });
+    }
+    if (!execute) {
+      return out("success", action, {
+        pool_id: poolId,
+        resume: "swap+redeposit",
+        last_withdraw_tx: poolState.last_withdraw_tx,
+        pending: poolState.rebalance_pending_details,
+      });
+    }
+    // Verify withdraw landed `success` on-chain before resuming. Three buckets:
+    //   1. pending — tx still propagating; safe to wait + re-run
+    //   2. lookup_failed — Hiro down / rate-limited / operator offline; we
+    //      DO NOT KNOW the tx state, so default to safe-wait. Pointing the
+    //      operator at reset-marker on uncertainty would orphan an in-flight
+    //      tx if it lands later.
+    //   3. terminal-non-success — confirmed aborted (abort_by_response /
+    //      abort_by_post_condition / dropped_*). Reset-marker is safe here.
+    const verifyW = await probeTxStatus(poolState.last_withdraw_tx);
+    if (!verifyW.ok) {
+      const isPending = verifyW.status === "pending";
+      const isLookupFailed = verifyW.status.startsWith("lookup_failed");
+      const safeWait = isPending || isLookupFailed;
+      return out("blocked", action, {
+        pool_id: poolId,
+        reason: isPending
+          ? "prior_withdraw_tx_still_pending"
+          : isLookupFailed
+            ? "prior_withdraw_tx_status_lookup_failed"
+            : "prior_withdraw_tx_aborted",
+        last_withdraw_tx: poolState.last_withdraw_tx,
+        chain_status: verifyW.status,
+        explorer: `${EXPLORER}/0x${poolState.last_withdraw_tx}?chain=mainnet`,
+        hint: safeWait
+          ? "Cannot positively confirm withdraw landed `success` (tx still propagating, or Hiro lookup failed). Wait until the explorer shows tx_status=success, then re-run. Do NOT run `reset-marker` — that would orphan an in-flight tx if it lands later."
+          : "Withdraw aborted on-chain (positively-confirmed non-success status). Inspect on the explorer to confirm the abort reason; then run `reset-marker --pool <id> --confirm` to clear and start a new cycle.",
+      });
+    }
+    // Gas-reserve guard for the 2 follow-on broadcasts (swap + redeposit).
+    // Wallet may have drained between leg 1 and resume from other tx activity.
+    // Without this, leg 2 fires then leg 3 runs out of gas → SECOND stuck cycle.
+    const stxBalResume = await fetchStxBalanceUstx(stxAddress);
+    if (stxBalResume < STX_GAS_FLOOR_USTX * 2n) {
+      return out("blocked", action, {
+        pool_id: poolId,
+        reason: "insufficient_stx_gas_for_resume",
+        stx_balance_ustx: stxBalResume.toString(),
+        required_ustx: (STX_GAS_FLOOR_USTX * 2n).toString(),
+        legs_remaining: 2,
+        hint: "Resume from withdraw-done needs gas reserve for swap + redeposit (2 txs). Top up STX and re-run.",
+      });
+    }
+    const { pool: poolGathered } = await gatherPool(poolId, stxAddress);
+    const pending = poolState.rebalance_pending_details;
+    // Leg 2: swap (reuses snapshotted plan)
+    const n2 = await fetchNonce(stxAddress);
+    const swapTx2 = await executeCorrectiveSwap(stxPrivateKey, stxAddress, poolGathered, pending.swap, n2);
+    state[poolId] = {
+      ...(state[poolId] ?? {}),
+      last_cycle_status: "withdraw_done_swap_done_redeposit_pending",
+      last_swap_tx: swapTx2,
+    };
+    saveInventoryState(state);
+    await waitForTxConfirmation(swapTx2);
+    // Leg 3: redeposit (reuses snapshotted plan)
+    const n3 = await fetchNonce(stxAddress);
+    const redepositTx = await executeAddLiquidityRedeposit(stxPrivateKey, stxAddress, poolGathered, pending.redeposit, n3);
+    state[poolId] = {
+      ...(state[poolId] ?? {}),
+      last_cycle_at: new Date().toISOString(),
+      last_cycle_status: "success",
+      last_redeposit_tx: redepositTx,
+      rebalance_pending_details: undefined,
+    };
+    saveInventoryState(state);
+    const ratioAfter = await readRatioAfterDelay(poolId, stxAddress, pending.target_ratio_x);
+    return out("success", action, {
       pool_id: poolId,
-      reason: "withdraw_done_swap_pending",
-      last_withdraw_tx: poolState.last_withdraw_tx,
-      explorer: poolState.last_withdraw_tx ? `${EXPLORER}/0x${poolState.last_withdraw_tx}?chain=mainnet` : null,
-      hint: "Withdraw broadcast but the run didn't land the follow-on swap. Wait for the withdraw tx to confirm on the explorer, then re-run `run --pool <id> --allow-rebalance-withdraw --confirm BALANCE`. Fresh 3-leg cycle will re-plan from current state.",
+      pair: poolGathered.token_x_symbol + "/" + poolGathered.token_y_symbol,
+      mode: "rebalance_withdraw",
+      resumed_from: "withdraw_done_swap_pending",
+      ratio_after: ratioAfter,
+      withdraw: { tx_id: poolState.last_withdraw_tx, explorer: `${EXPLORER}/0x${poolState.last_withdraw_tx}?chain=mainnet` },
+      swap: { ...pending.swap, tx_id: swapTx2, explorer: `${EXPLORER}/0x${swapTx2}?chain=mainnet` },
+      redeposit: { ...pending.redeposit, tx_id: redepositTx, explorer: `${EXPLORER}/0x${redepositTx}?chain=mainnet` },
+      state_marker: { path: INVENTORY_STATE_FILE, status: "success" },
     });
   }
   if (poolState?.last_cycle_status === "withdraw_done_swap_done_redeposit_pending") {
-    return out("blocked", action, {
+    if (!poolState.rebalance_pending_details || !poolState.last_swap_tx) {
+      return out("blocked", action, {
+        pool_id: poolId,
+        reason: "withdraw_done_swap_done_redeposit_pending_legacy_marker",
+        last_withdraw_tx: poolState.last_withdraw_tx ?? null,
+        last_swap_tx: poolState.last_swap_tx ?? null,
+        hint: "State marker present but no rebalance_pending_details snapshot — cannot rebuild redeposit plan. Run `reset-marker --pool <id> --confirm` to clear, then re-run.",
+      });
+    }
+    if (!execute) {
+      return out("success", action, {
+        pool_id: poolId,
+        resume: "redeposit-only",
+        last_withdraw_tx: poolState.last_withdraw_tx,
+        last_swap_tx: poolState.last_swap_tx,
+        pending: poolState.rebalance_pending_details,
+      });
+    }
+    const verifyS = await probeTxStatus(poolState.last_swap_tx);
+    if (!verifyS.ok) {
+      const isPending = verifyS.status === "pending";
+      const isLookupFailed = verifyS.status.startsWith("lookup_failed");
+      const safeWait = isPending || isLookupFailed;
+      return out("blocked", action, {
+        pool_id: poolId,
+        reason: isPending
+          ? "prior_swap_tx_still_pending"
+          : isLookupFailed
+            ? "prior_swap_tx_status_lookup_failed"
+            : "prior_swap_tx_aborted",
+        last_swap_tx: poolState.last_swap_tx,
+        chain_status: verifyS.status,
+        explorer: `${EXPLORER}/0x${poolState.last_swap_tx}?chain=mainnet`,
+        hint: safeWait
+          ? "Cannot positively confirm swap landed `success` (tx still propagating, or Hiro lookup failed). Wait until the explorer shows tx_status=success, then re-run. Do NOT run `reset-marker` — that would orphan an in-flight tx if it lands later."
+          : "Swap aborted on-chain (positively-confirmed non-success status). Inspect on the explorer; then run `reset-marker --pool <id> --confirm` to clear.",
+      });
+    }
+    // Gas-reserve guard for the 1 follow-on broadcast (redeposit).
+    const stxBalResume = await fetchStxBalanceUstx(stxAddress);
+    if (stxBalResume < STX_GAS_FLOOR_USTX) {
+      return out("blocked", action, {
+        pool_id: poolId,
+        reason: "insufficient_stx_gas_for_resume",
+        stx_balance_ustx: stxBalResume.toString(),
+        required_ustx: STX_GAS_FLOOR_USTX.toString(),
+        legs_remaining: 1,
+        hint: "Resume from swap-done needs gas reserve for redeposit (1 tx). Top up STX and re-run.",
+      });
+    }
+    const { pool: poolGathered } = await gatherPool(poolId, stxAddress);
+    const pending = poolState.rebalance_pending_details;
+    const n3 = await fetchNonce(stxAddress);
+    const redepositTx = await executeAddLiquidityRedeposit(stxPrivateKey, stxAddress, poolGathered, pending.redeposit, n3);
+    state[poolId] = {
+      ...(state[poolId] ?? {}),
+      last_cycle_at: new Date().toISOString(),
+      last_cycle_status: "success",
+      last_redeposit_tx: redepositTx,
+      rebalance_pending_details: undefined,
+    };
+    saveInventoryState(state);
+    const ratioAfter = await readRatioAfterDelay(poolId, stxAddress, pending.target_ratio_x);
+    return out("success", action, {
       pool_id: poolId,
-      reason: "withdraw_done_swap_done_redeposit_pending",
-      last_withdraw_tx: poolState.last_withdraw_tx,
-      last_swap_tx: poolState.last_swap_tx,
-      explorer: {
-        withdraw: poolState.last_withdraw_tx ? `${EXPLORER}/0x${poolState.last_withdraw_tx}?chain=mainnet` : null,
-        swap: poolState.last_swap_tx ? `${EXPLORER}/0x${poolState.last_swap_tx}?chain=mainnet` : null,
-      },
-      hint: "Withdraw + swap landed but the redeposit did not. Wait for both prior txs on the explorer, then re-run the skill — it will plan a redeposit-sized cycle from the current wallet + ratio.",
+      pair: poolGathered.token_x_symbol + "/" + poolGathered.token_y_symbol,
+      mode: "rebalance_withdraw",
+      resumed_from: "withdraw_done_swap_done_redeposit_pending",
+      ratio_after: ratioAfter,
+      withdraw: poolState.last_withdraw_tx ? { tx_id: poolState.last_withdraw_tx, explorer: `${EXPLORER}/0x${poolState.last_withdraw_tx}?chain=mainnet` } : null,
+      swap: { ...pending.swap, tx_id: poolState.last_swap_tx, explorer: `${EXPLORER}/0x${poolState.last_swap_tx}?chain=mainnet` },
+      redeposit: { ...pending.redeposit, tx_id: redepositTx, explorer: `${EXPLORER}/0x${redepositTx}?chain=mainnet` },
+      state_marker: { path: INVENTORY_STATE_FILE, status: "success" },
     });
   }
 
@@ -1623,15 +1918,25 @@ async function recommendOrRun(opts: Record<string, string | boolean | undefined>
       });
     }
 
-    // Leg 1: withdraw-slice
+    // Leg 1: withdraw-slice. We snapshot the swap + redeposit plans into
+    // rebalance_pending_details at the same moment we mark the marker — the
+    // resume path (above) reads this snapshot to rebuild the contract calls
+    // without re-planning. Snapshot at marker-write-time means the snapshot
+    // is durable across crash-between-broadcasts as well.
     const n1 = await fetchNonce(stxAddress);
-    const withdrawTx = await executeWithdrawSlice(stxPrivateKey, pool, rwPlan.withdraw, n1);
+    const withdrawTx = await executeWithdrawSlice(stxPrivateKey, stxAddress, pool, rwPlan.withdraw, n1);
     state[poolId] = {
       ...(state[poolId] ?? {}),
       last_cycle_at: new Date().toISOString(),
       last_cycle_status: "withdraw_done_swap_pending",
       last_withdraw_tx: withdrawTx,
       last_cycle_mode: "rebalance_withdraw",
+      rebalance_pending_details: {
+        swap: rwPlan.swap,
+        redeposit: rwPlan.redeposit,
+        target_ratio_x: targetXRatio,
+        captured_at: new Date().toISOString(),
+      },
     };
     saveInventoryState(state);
     await waitForTxConfirmation(withdrawTx);
@@ -1649,12 +1954,13 @@ async function recommendOrRun(opts: Record<string, string | boolean | undefined>
 
     // Leg 3: redeposit swapped underweight proceeds as fresh liquidity near active
     const n3 = await fetchNonce(stxAddress);
-    const redepositTx = await executeAddLiquidityRedeposit(stxPrivateKey, pool, rwPlan.redeposit, n3);
+    const redepositTx = await executeAddLiquidityRedeposit(stxPrivateKey, stxAddress, pool, rwPlan.redeposit, n3);
     state[poolId] = {
       ...(state[poolId] ?? {}),
       last_cycle_at: new Date().toISOString(),
       last_cycle_status: "success",
       last_redeposit_tx: redepositTx,
+      rebalance_pending_details: undefined,
     };
     saveInventoryState(state);
 
