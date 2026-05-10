@@ -1239,11 +1239,13 @@ async function executeAddLiquidityRedeposit(
 // being generous here trades wall-clock for a lower false-failure rate when the
 // state marker is between legs. Prefix `0x` on Hiro tx lookups — some codepaths
 // return the tx without, some require it, and querying with the prefix works
-// consistently.
+// consistently. The .replace strips any leading 0x defensively so an SDK
+// upgrade that changes broadcastTransaction's return shape can't double-prefix
+// the URL into a silent lookup_failed (per arc0btc's PR #2 carryover).
 async function waitForTxConfirmation(txId: string, timeoutMs = 600_000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   const poll = 6_000;
-  const url = `${HIRO_API}/extended/v1/tx/0x${txId}`;
+  const url = `${HIRO_API}/extended/v1/tx/0x${txId.replace(/^0x/, "")}`;
   while (Date.now() < deadline) {
     try {
       const res = await fetchJson<Record<string, unknown>>(url);
@@ -1268,7 +1270,11 @@ async function waitForTxConfirmation(txId: string, timeoutMs = 600_000): Promise
 // on lookup error so callers can surface a clear hint instead of throwing.
 async function probeTxStatus(txId: string): Promise<{ status: string; ok: boolean }> {
   try {
-    const res = await fetchJson<Record<string, unknown>>(`${HIRO_API}/extended/v1/tx/0x${txId}`);
+    // Strip leading 0x defensively: SDK currently returns txid without prefix
+    // (verified empirically via existing live txs 0x89315a8b…, 0xf4f49328…),
+    // but normalizing here means an SDK upgrade can't silently route prior-
+    // leg lookups to lookup_failed via double-prefix. See PR #2 carryover.
+    const res = await fetchJson<Record<string, unknown>>(`${HIRO_API}/extended/v1/tx/0x${txId.replace(/^0x/, "")}`);
     const status = String(res.tx_status ?? "unknown");
     return { status, ok: status === "success" };
   } catch (e) {
