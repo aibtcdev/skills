@@ -1,6 +1,6 @@
 {
   "version": "0.40.0",
-  "generated": "2026-05-11T16:51:13.311Z",
+  "generated": "2026-05-11T16:51:16.630Z",
   "skills": [
     {
       "name": "agent-lookup",
@@ -1150,7 +1150,8 @@
         "doctor",
         "status",
         "recommend",
-        "run"
+        "run",
+        "reset-marker"
       ],
       "requires": [
         "wallet",
