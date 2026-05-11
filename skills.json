@@ -1,6 +1,6 @@
 {
   "version": "0.41.0",
-  "generated": "2026-05-11T17:04:41.503Z",
+  "generated": "2026-05-11T17:09:18.666Z",
   "skills": [
     {
       "name": "agent-lookup",
@@ -2078,7 +2078,7 @@
     },
     {
       "name": "sbtc-yield-maximizer",
-      "description": "Routes idle sBTC to the highest safe live yield path and executes capped Zest supply when Zest is the best current route.",
+      "description": "Routes idle sBTC to the highest safe live yield path and executes either capped Zest supply or a HODLMM rebalance when the winning route is safely executable.",
       "entry": "sbtc-yield-maximizer/sbtc-yield-maximizer.ts",
       "arguments": [
         "doctor",
@@ -2089,7 +2089,9 @@
       "requires": [
         "wallet",
         "signing",
-        "settings"
+        "settings",
+        "hodlmm-move-liquidity",
+        "bitflow"
       ],
       "tags": [
         "defi",
