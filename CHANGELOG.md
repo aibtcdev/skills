@@ -1,5 +1,45 @@
 # Changelog
 
+## [0.41.0](https://github.com/aibtcdev/skills/compare/skills-v0.40.0...skills-v0.41.0) (2026-05-11)
+
+
+### Features
+
+* add bitflow-hodlmm-deposit (BFF Skills Comp Day 21 winner by [@macbotmini-eng](https://github.com/macbotmini-eng)) ([#357](https://github.com/aibtcdev/skills/issues/357)) ([eff01e1](https://github.com/aibtcdev/skills/commit/eff01e1fe1dda7c9e8dd9d9ae0a4b4771a4f1c6d))
+* add bitflow-hodlmm-withdraw (BFF Skills Comp Day 22 winner by [@macbotmini-eng](https://github.com/macbotmini-eng)) ([#356](https://github.com/aibtcdev/skills/issues/356)) ([db5bdb8](https://github.com/aibtcdev/skills/commit/db5bdb868fcf6c62d03ab86b97d818bc2a0dd679))
+* add bitflow-hodlmm-zest-yield-loop (BFF Skills Comp Day 27 winner by [@macbotmini-eng](https://github.com/macbotmini-eng)) ([920d127](https://github.com/aibtcdev/skills/commit/920d1270c3eb622895c1931248a379544def860d))
+* add bitflow-limit-order (BFF Skills Comp Day 18 winner by @ClankOS) ([#329](https://github.com/aibtcdev/skills/issues/329)) ([8aa5d3f](https://github.com/aibtcdev/skills/commit/8aa5d3f93bfff9c778b35904c80c8de5b92e8a8e))
+* add bitflow-swap-aggregator (BFF Skills Comp Day 25 winner by [@macbotmini-eng](https://github.com/macbotmini-eng)) ([#360](https://github.com/aibtcdev/skills/issues/360)) ([ddbb9cb](https://github.com/aibtcdev/skills/commit/ddbb9cb0ff407e79e09ccdef9c360345eb699b9e))
+* add bitflow-zest-sbtc-leverage-cycle (BFF Skills Comp Day 26 winner by [@macbotmini-eng](https://github.com/macbotmini-eng)) ([#374](https://github.com/aibtcdev/skills/issues/374)) ([c8e8fc9](https://github.com/aibtcdev/skills/commit/c8e8fc95d39fb82736c7747c2b8bd00b1d2517e1))
+* add dog-intelligence (BFF Skills Comp Day 30 winner by @LimaDevBTC) ([b8fa740](https://github.com/aibtcdev/skills/commit/b8fa740ed870fe11ad431370bfb17b3aac4c3637))
+* add hodlmm-arb-executor (BFF Skills Comp Day 20 winner by [@ronkenx9](https://github.com/ronkenx9)) ([#326](https://github.com/aibtcdev/skills/issues/326)) ([5472699](https://github.com/aibtcdev/skills/commit/54726995fc9b60a17177f1d433d064cb970428c6))
+* add hodlmm-flow (BFF Skills Comp Day 19 winner by @ClankOS) ([#328](https://github.com/aibtcdev/skills/issues/328)) ([7839339](https://github.com/aibtcdev/skills/commit/7839339f70823eb0ab9e7adf62669571a9a193fc))
+* add hodlmm-inventory-balancer (BFF Skills Comp Day 24 winner by [@cliqueengagements](https://github.com/cliqueengagements)) ([9debfad](https://github.com/aibtcdev/skills/commit/9debfad29cd83e90f39fa37b55a6d3fdef6a2495))
+* add stacks-alpha-engine (BFF Skills Comp Day 13 winner by [@cliqueengagements](https://github.com/cliqueengagements)) ([#339](https://github.com/aibtcdev/skills/issues/339)) ([7c5ca44](https://github.com/aibtcdev/skills/commit/7c5ca4479fd0ea712837a57626d351d2585d7487))
+* add zest-asset-deposit-primitive (BFF Skills Comp Day 23 winner by [@macbotmini-eng](https://github.com/macbotmini-eng)) ([#358](https://github.com/aibtcdev/skills/issues/358)) ([d7b116f](https://github.com/aibtcdev/skills/commit/d7b116f0ea23a340eb7c570dca1f8315a9913568))
+* add zest-borrow-asset-primitive (BFF Skills Comp Day 24 winner by [@macbotmini-eng](https://github.com/macbotmini-eng)) ([#359](https://github.com/aibtcdev/skills/issues/359)) ([f5f831b](https://github.com/aibtcdev/skills/commit/f5f831badb4137110264bafbd5e5f5565b9aeaab))
+* **aibtc-news:** add x402 payment flow to file-signal subcommand ([#264](https://github.com/aibtcdev/skills/issues/264)) ([5c11c53](https://github.com/aibtcdev/skills/commit/5c11c5319b60ce7f0a09b09aa84aa6ebc58e66aa))
+* **jingswap-v2:** add V2 limit-price auction skill ([#325](https://github.com/aibtcdev/skills/issues/325)) ([52e6c3c](https://github.com/aibtcdev/skills/commit/52e6c3c589a3e682d253d481a0701e8e2c40cc8d))
+* **transactions:** add nonce-tracker integration and retry logic to sponsor-builder ([#312](https://github.com/aibtcdev/skills/issues/312)) ([ef69b08](https://github.com/aibtcdev/skills/commit/ef69b08b4af9f38824c862acbae38a154f662193))
+
+
+### Bug Fixes
+
+* **aibtc-news:** inherit process.env in signing subprocess + support signatureBase64 ([#362](https://github.com/aibtcdev/skills/issues/362)) ([70575ee](https://github.com/aibtcdev/skills/commit/70575eebb2583f9f76f98a35c07f84deb177bdde))
+* **bitflow-limit-order:** address post-merge audit — fee, atomic writes, pair normalization, slippage retry ([#355](https://github.com/aibtcdev/skills/issues/355)) ([7f9d804](https://github.com/aibtcdev/skills/commit/7f9d804feb16c73d99a8f45d8b0a79fe0148553a))
+* **contract-preflight:** swap hardcoded --sender for &lt;YOUR_STACKS_ADDRESS&gt; placeholder ([#343](https://github.com/aibtcdev/skills/issues/343)) ([7b47804](https://github.com/aibtcdev/skills/commit/7b47804d34cdfc8e253d2d756a3c217061c484b4))
+* **contracts:** update ZEST_BORROW_HELPER to borrow-helper-v2-1-7 ([#341](https://github.com/aibtcdev/skills/issues/341)) ([2562a62](https://github.com/aibtcdev/skills/commit/2562a6266530abc67f38313bdf8e94557fbd13ed))
+* hermetica-yield-rotator unstake/withdraw calls wrong function names ([#314](https://github.com/aibtcdev/skills/issues/314)) ([0714e58](https://github.com/aibtcdev/skills/commit/0714e5880e937e7bbbbb46f4670be9f98525029e))
+* **hodlmm-flow:** SWAP_FUNCTIONS coverage + liquidation + 429 partial results [blocking [#348](https://github.com/aibtcdev/skills/issues/348)] ([#350](https://github.com/aibtcdev/skills/issues/350)) ([88684c2](https://github.com/aibtcdev/skills/commit/88684c2fd8cc7fe9e6e9c56be31f3528a199f18d))
+* **hodlmm-move-liquidity:** add settings to requires field on write-tagged skill ([#377](https://github.com/aibtcdev/skills/issues/377)) ([b4c8f7a](https://github.com/aibtcdev/skills/commit/b4c8f7aebd5c690703b89016e022db55459dd6f6))
+* **hodlmm-move-liquidity:** Apr 2026 API migration, 208→220 list cap, min-dlp cross-bin, fee floor ([#338](https://github.com/aibtcdev/skills/issues/338)) ([c1026f8](https://github.com/aibtcdev/skills/commit/c1026f856f44846c7f15ecf48c879d76274853bd))
+* **hodlmm-signal-allocator:** declare requires field on write-tagged skill ([#376](https://github.com/aibtcdev/skills/issues/376)) ([8754df6](https://github.com/aibtcdev/skills/commit/8754df6132bce521f31899f4b4828df6cf4f5f7c))
+* **relay-health:** consume pool state and unify diagnostics ([#321](https://github.com/aibtcdev/skills/issues/321)) ([502d60c](https://github.com/aibtcdev/skills/commit/502d60cd31eb90da7b136894687c70e67d62f211))
+* **src:** bind INBOX_BASE to NETWORK + clarify HODLMM_API_BASE override ([#368](https://github.com/aibtcdev/skills/issues/368)) ([8657129](https://github.com/aibtcdev/skills/commit/8657129dc5bf2f1bca44d4311f42ef468edc7dbc))
+* **src:** surface SENDER_NONCE_GAP and queue management in sponsor relay ([#266](https://github.com/aibtcdev/skills/issues/266)) ([2749dd9](https://github.com/aibtcdev/skills/commit/2749dd9528573c6fd55f7853d93c53f29320058c))
+* **stacks-alpha-engine:** post-[#339](https://github.com/aibtcdev/skills/issues/339) audit sweep (rebased) ([#367](https://github.com/aibtcdev/skills/issues/367)) ([4e02afe](https://github.com/aibtcdev/skills/commit/4e02afec1d2df8d9b01209113e4e008f6ec3eacf))
+* **x402:** correct payment-status fallback URL to relay's /payment/{id} route ([#372](https://github.com/aibtcdev/skills/issues/372)) ([e11cbd1](https://github.com/aibtcdev/skills/commit/e11cbd1d54d5bf26c33aba180335705394a883ba))
+
 ## [0.40.0](https://github.com/aibtcdev/skills/compare/skills-v0.39.0...skills-v0.40.0) (2026-04-16)
 
 
