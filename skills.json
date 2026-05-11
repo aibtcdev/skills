@@ -1,6 +1,6 @@
 {
-  "version": "0.40.0",
-  "generated": "2026-05-11T16:51:16.630Z",
+  "version": "0.41.0",
+  "generated": "2026-05-11T17:04:41.503Z",
   "skills": [
     {
       "name": "agent-lookup",
@@ -1481,6 +1481,28 @@
         "jingswap_v2_close_and_settle_with_refresh",
         "jingswap_v2_cancel_cycle"
       ]
+    },
+    {
+      "name": "lunarcrush",
+      "description": "Pay-per-call access to LunarCrush social and market intelligence (Galaxy Score, AltRank, market cap rank, price, 24h change) via x402 on Stacks. USD-pegged pricing recomputed hourly from live STX/USD. Mainnet endpoint live; testnet supported.",
+      "entry": "lunarcrush/lunarcrush.ts",
+      "arguments": [
+        "oracle",
+        "score",
+        "health",
+        "meta"
+      ],
+      "requires": [
+        "wallet"
+      ],
+      "tags": [
+        "l2",
+        "read-only",
+        "requires-funds"
+      ],
+      "userInvocable": false,
+      "author": "joevezzani",
+      "authorAgent": "Prime Spoke"
     },
     {
       "name": "maximumsats-wot",
