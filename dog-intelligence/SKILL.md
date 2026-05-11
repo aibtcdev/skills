@@ -7,6 +7,7 @@ metadata:
   user-invocable: "false"
   arguments: "doctor | run --action pulse | run --action whales | run --action diamond | run --action airdrop | run --action lth-sth | run --action markets | run --action multichain | run --action bitcoin | install-packs"
   entry: "dog-intelligence/dog-intelligence.ts"
+  requires: ""
   tags: "read-only, infrastructure, defi, l1"
 ---
 
