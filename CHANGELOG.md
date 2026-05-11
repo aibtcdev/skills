@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.42.0](https://github.com/aibtcdev/skills/compare/skills-v0.41.0...skills-v0.42.0) (2026-05-11)
+
+
+### Features
+
+* **aibtc-agents:** add amber-otter agent configuration ([#371](https://github.com/aibtcdev/skills/issues/371)) ([fc0d99a](https://github.com/aibtcdev/skills/commit/fc0d99a671784f4b9d6f4276ea1b2ee0fea3d079))
+* **lunarcrush:** add LunarCrush social-intelligence skill ([92119d6](https://github.com/aibtcdev/skills/commit/92119d68421182c1da72a4deebe72d58198f7c44))
+* **sbtc-yield-maximizer:** complete HODLMM routing leg ([#340](https://github.com/aibtcdev/skills/issues/340)) ([58a0ab9](https://github.com/aibtcdev/skills/commit/58a0ab959a424eb7680f02d8b76e7955b16f63e3))
+* skill-mcp parity — new skills + cross-ref audit ([#243](https://github.com/aibtcdev/skills/issues/243)) ([a0852fb](https://github.com/aibtcdev/skills/commit/a0852fbee84a59bb8a27e7b0b8907c183d157f76))
+
+
+### Bug Fixes
+
+* **hodlmm-flow:** detect liquidations by sender-address prefix ([#369](https://github.com/aibtcdev/skills/issues/369)) ([b9a7817](https://github.com/aibtcdev/skills/commit/b9a78177233c83b2533ff7e5f3b412c1cd5b0735))
+
 ## [0.41.0](https://github.com/aibtcdev/skills/compare/skills-v0.40.0...skills-v0.41.0) (2026-05-11)
 
 
