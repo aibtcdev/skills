@@ -6,28 +6,25 @@ description: Web of Trust operations for Nostr pubkeys — trust scoring, sybil 
 
 # WoT Agent
 
-Query the Nostr Web of Trust to assess counterparty trust before payments, vet agents for contract interactions, or filter contacts by sybil risk. Pass a `--pubkey` (hex or npub) explicitly, or use `--key-source` to derive the agent's own pubkey from the wallet.
+Query the Nostr Web of Trust to assess counterparty trust before payments, vet agents for contract interactions, or filter contacts by sybil risk.
 
-All WoT subcommands are read-only. No write operations. Wallet is only needed if deriving the agent's own pubkey (no explicit `--pubkey` provided).
+This is a doc-only MCP-tool skill. There is no `wot.ts` CLI entrypoint. Use `nostr_get_pubkey({})` to get a Nostr pubkey, then call the WoT HTTP API directly. All WoT operations are read-only.
 
 ## Prerequisites
 
-- **With explicit `--pubkey`**: No wallet required for any subcommand
-- **Without `--pubkey`** (deriving own pubkey): Wallet must be unlocked: `bun run wallet/wallet.ts unlock --password <password>`
 - Input must be a Nostr hex pubkey (64 hex chars) or `npub1...` bech32 — not a Stacks address, BTC address, or ordinals address (those are hashed and cannot be looked up in the WoT graph)
+- To look up the agent's own pubkey: call `nostr_get_pubkey({})` — no wallet unlock needed for read-only WoT queries
 
 ## Decision Logic
 
-| Goal | Subcommand | Required args |
-|------|-----------|---------------|
-| Check trust score and rank for a pubkey | `trust-score` | `--pubkey` or `--npub` or `--key-source` |
-| Classify a pubkey as normal/suspicious/sybil | `sybil-check` | `--pubkey` or `--npub` or `--key-source` |
-| Find trusted neighbors of a pubkey | `neighbors` | `--pubkey` or `--npub` or `--key-source` |
-| Find trust path between two pubkeys | `trust-path` | `--from` and `--to` (hex or npub) |
-| Get follow recommendations for a pubkey | `recommend` | `--pubkey` or `--npub` or `--key-source` |
-| Check graph-wide WoT statistics | `network-health` | None |
-| View or update trust thresholds | `config` | Optional: `--min-rank`, `--require-top100` |
-| Check cache hit rate and entry count | `cache-status` | None |
+| Goal | API Endpoint |
+|------|-------------|
+| Check trust score and rank for a pubkey | `GET https://wot.klabo.world/api/trust-score?pubkey=<hex>` |
+| Classify a pubkey as normal/suspicious/sybil | `GET https://wot.klabo.world/api/sybil-check?pubkey=<hex>` |
+| Find trusted neighbors of a pubkey | `GET https://wot.klabo.world/api/neighbors?pubkey=<hex>` |
+| Find trust path between two pubkeys | `GET https://wot.klabo.world/api/trust-path?from=<hex>&to=<hex>` |
+| Get follow recommendations for a pubkey | `GET https://wot.klabo.world/api/recommend?pubkey=<hex>` |
+| Check graph-wide WoT statistics | `GET https://wot.klabo.world/api/network-health` |
 
 ## When to Use Each --key-source
 
@@ -85,31 +82,29 @@ If you have only a Stacks or BTC address and need the WoT score, you cannot look
 
 ## Example Invocations
 
-```bash
-# Check trust score for a specific npub
-bun run wot/wot.ts trust-score --npub npub1abc...
+This skill has no CLI entrypoint. All operations use MCP tool calls or HTTP requests.
 
-# Sybil check before sending Lightning payment
-bun run wot/wot.ts sybil-check --pubkey 2b4603d2...
+```
+// Get agent's own Nostr pubkey
+nostr_get_pubkey({})
 
-# Look up agent's own WoT score using NIP-06 derived key (default)
-bun run wot/wot.ts trust-score
+// Check trust score for a specific npub
+GET https://wot.klabo.world/api/trust-score?npub=npub1abc...
 
-# Same but using taproot-derived key (for agents with bc1p identity)
-bun run wot/wot.ts --key-source taproot trust-score
+// Sybil check before sending Lightning payment
+GET https://wot.klabo.world/api/sybil-check?pubkey=2b4603d2...
 
-# Find trust path between two agents
-bun run wot/wot.ts trust-path --from npub1alice... --to npub1bob...
+// Look up agent's own WoT score
+nostr_get_pubkey({})
+// → { pubkey: "2b4603d2..." }
+GET https://wot.klabo.world/api/trust-score?pubkey=2b4603d2...
 
-# Get follow recommendations for an agent
-bun run wot/wot.ts recommend --pubkey 2b4603d2...
+// Find trust path between two agents
+GET https://wot.klabo.world/api/trust-path?from=2b4603d2...&to=dbe4d9fb...
 
-# Check WoT graph health (no pubkey needed)
-bun run wot/wot.ts network-health
+// Get follow recommendations for an agent
+GET https://wot.klabo.world/api/recommend?pubkey=2b4603d2...
 
-# View current trust thresholds
-bun run wot/wot.ts config
-
-# Check cache stats before making more requests
-bun run wot/wot.ts cache-status
+// Check WoT graph health (no pubkey needed)
+GET https://wot.klabo.world/api/network-health
 ```

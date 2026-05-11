@@ -7,6 +7,7 @@ metadata:
   user-invocable: "false"
   arguments: "trust-score | sybil-check | neighbors | trust-path | recommend | network-health | config | cache-status"
   entry: "wot/SKILL.md"
+  mcp-tools: "nostr_get_pubkey, nostr_get_profile"
   requires: "wallet"
   tags: "read-only"
 ---
@@ -21,31 +22,27 @@ Pre-transaction counterparty risk assessment using Nostr Web of Trust scores. Ac
 - Paid fallback: `maximumsats.com/api/wot-report` (100 sats via L402) when free tier exhausted
 - 1-hour local cache to avoid redundant API calls
 
-This is an MCP-tool skill. Agents use `--key-source` to derive the Nostr pubkey from their wallet, then pass it to WoT subcommands.
+This is a doc-only MCP-tool skill. Agents derive the Nostr pubkey via `nostr_get_pubkey` and then call external WoT APIs directly. There is no `wot.ts` CLI entrypoint — all operations use MCP tool calls or direct HTTP requests to the WoT API.
 
-## Global Options
+## Key Derivation
 
-### --key-source
+Use `nostr_get_pubkey` to get the agent's Nostr pubkey before calling WoT API endpoints:
 
-Selects the key derivation path to use when looking up the agent's own pubkey. Applies whenever the agent calls a subcommand without an explicit `--pubkey` argument.
+```
+nostr_get_pubkey({})
+```
+
+Returns `{ pubkey: "2b4603d2...", npub: "npub1abc..." }`.
+
+## Key Source
+
+The Nostr pubkey derivation path is configured in the `nostr` skill settings. Options:
 
 | Value | Path | Description |
 |-------|------|-------------|
 | `nip06` (default) | `m/44'/1237'/0'/0/0` | NIP-06 standard — compatible with Alby, Damus, Amethyst |
 | `taproot` | `m/86'/coin_type'/0'/0/0` | Taproot x-only key — same keypair as bc1p address |
 | `stacks` | `m/84'/coin_type'/0'/0/0` | BTC SegWit path — backward-compat with pre-NIP-06 agents |
-
-```bash
-# Use NIP-06 derived pubkey (default)
-bun run wot/wot.ts trust-score
-
-# Use taproot-derived pubkey (same key as bc1p address)
-bun run wot/wot.ts --key-source taproot trust-score
-
-# Explicit pubkey (no wallet derivation needed)
-bun run wot/wot.ts trust-score --pubkey 2b4603d2...
-bun run wot/wot.ts trust-score --npub npub1abc...
-```
 
 ## What WoT Accepts
 
@@ -66,20 +63,21 @@ WoT is a Nostr-native protocol. It indexes secp256k1 x-only public keys (32 byte
 
 ## Usage
 
-```
-bun run wot/wot.ts [--key-source nip06|taproot|stacks] <subcommand> [options]
-```
+This skill has no CLI entrypoint. Agents:
+1. Call `nostr_get_pubkey({})` to get the Nostr pubkey.
+2. Use `HTTP GET` to query the WoT API endpoints directly.
 
 ## Subcommands
 
 ### trust-score
 
-Look up WoT trust score, rank, and percentile for a pubkey. Checks against configurable thresholds.
+Look up WoT trust score, rank, and percentile for a pubkey via the klabo.world API.
 
-```bash
-bun run wot/wot.ts trust-score --pubkey 2b4603d2...
-bun run wot/wot.ts trust-score --npub npub1abc...
-bun run wot/wot.ts --key-source taproot trust-score
+```
+nostr_get_pubkey({})
+// → { pubkey: "2b4603d2..." }
+
+GET https://wot.klabo.world/api/trust-score?pubkey=2b4603d2...
 ```
 
 Output:
@@ -100,9 +98,8 @@ Output:
 
 Classify a pubkey as `normal`, `suspicious`, or `likely_sybil` using follower quality, mutual trust ratio, and community integration signals.
 
-```bash
-bun run wot/wot.ts sybil-check --pubkey 2b4603d2...
-bun run wot/wot.ts sybil-check --npub npub1abc...
+```
+GET https://wot.klabo.world/api/sybil-check?pubkey=2b4603d2...
 ```
 
 Output:
@@ -120,19 +117,18 @@ Output:
 
 Discover trust graph neighbors — connected pubkeys with combined trust scores.
 
-```bash
-bun run wot/wot.ts neighbors --pubkey 2b4603d2...
+```
+GET https://wot.klabo.world/api/neighbors?pubkey=2b4603d2...
 ```
 
 Output: array of connected pubkeys with their trust scores and edge weights.
 
 ### trust-path
 
-Find the trust path between two pubkeys in the WoT graph. Shows the chain of trust edges connecting `--from` to `--to`.
+Find the trust path between two pubkeys in the WoT graph. Shows the chain of trust edges connecting `from` to `to`.
 
-```bash
-bun run wot/wot.ts trust-path --from npub1abc... --to npub1xyz...
-bun run wot/wot.ts trust-path --from 2b4603d2... --to dbe4d9fb...
+```
+GET https://wot.klabo.world/api/trust-path?from=2b4603d2...&to=dbe4d9fb...
 ```
 
 Output: ordered list of pubkeys forming the trust path, with hop count and per-hop scores.
@@ -141,9 +137,8 @@ Output: ordered list of pubkeys forming the trust path, with hop count and per-h
 
 Get personalized follow recommendations for a pubkey based on WoT graph proximity and trust score.
 
-```bash
-bun run wot/wot.ts recommend --pubkey 2b4603d2...
-bun run wot/wot.ts recommend --npub npub1abc...
+```
+GET https://wot.klabo.world/api/recommend?pubkey=2b4603d2...
 ```
 
 Output: array of recommended pubkeys with trust scores and reasoning.
@@ -152,8 +147,8 @@ Output: array of recommended pubkeys with trust scores and reasoning.
 
 Graph-wide stats: total nodes, edges, Gini coefficient, power law alpha. No pubkey required.
 
-```bash
-bun run wot/wot.ts network-health
+```
+GET https://wot.klabo.world/api/network-health
 ```
 
 Output:
@@ -169,26 +164,13 @@ Output:
 
 ### config
 
-View or update trust thresholds. Stored at `~/.aibtc/wot/config.json`.
-
-```bash
-bun run wot/wot.ts config                    # view current thresholds
-bun run wot/wot.ts config --min-rank 5000
-bun run wot/wot.ts config --require-top100
-bun run wot/wot.ts config --no-require-top100
-```
-
-Threshold fields:
-- `minRank` — Maximum acceptable rank. Default: `10000`
-- `requireTop100` — Reject if not in top 100. Default: `false`
+Trust threshold configuration is managed locally. The recommended thresholds:
+- `minRank`: maximum rank to accept as trusted. Default: `10000`
+- `requireTop100`: reject if not in top 100. Default: `false`
 
 ### cache-status
 
-Show cache statistics. Cache stored at `~/.aibtc/wot/cache.json` with 1-hour TTL.
-
-```bash
-bun run wot/wot.ts cache-status
-```
+The WoT API responses should be cached locally for 1 hour to avoid hitting the 50 req/day free tier limit. Use the `credentials` skill to store L402 tokens for the paid tier.
 
 ## Trust Thresholds
 

@@ -1,6 +1,6 @@
 {
   "version": "0.41.0",
-  "generated": "2026-05-11T17:10:56.851Z",
+  "generated": "2026-05-11T17:12:53.906Z",
   "skills": [
     {
       "name": "agent-lookup",
@@ -1360,10 +1360,8 @@
       "author": "whoabuddy",
       "authorAgent": "Trustless Indra",
       "mcpTools": [
-        "register_identity",
-        "get_identity",
-        "identity_get_last_id",
         "identity_get",
+        "identity_get_last_id",
         "identity_get_metadata",
         "identity_register",
         "identity_set_uri",
@@ -1792,10 +1790,7 @@
         "estimate_inscription_fee",
         "inscribe",
         "inscribe_reveal",
-        "get_inscription",
-        "inscribe_child",
-        "inscribe_child_reveal",
-        "estimate_child_inscription_fee"
+        "get_inscription"
       ]
     },
     {
@@ -2111,8 +2106,6 @@
       "author": "whoabuddy",
       "authorAgent": "Trustless Indra",
       "mcpTools": [
-        "give_feedback",
-        "get_reputation",
         "reputation_append_response",
         "reputation_approve_client",
         "reputation_get_approved_limit",
@@ -2817,7 +2810,11 @@
       ],
       "userInvocable": false,
       "author": "arc0btc",
-      "authorAgent": "Trustless Indra"
+      "authorAgent": "Trustless Indra",
+      "mcpTools": [
+        "nostr_get_pubkey",
+        "nostr_get_profile"
+      ]
     },
     {
       "name": "x402",
