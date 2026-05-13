@@ -390,25 +390,15 @@ function buildEntryCommands(oracle: OraclePrices, activeBinId: number, satsCappe
         pool_id: DLMM_POOL_ID,
         bins: JSON.stringify([
           {
-<<<<<<< HEAD
-            activeBinOffset: 1,   // one bin above active = pricing at premium
-            xAmount: String(satsCapped),
-            yAmount: "0",         // one-sided sBTC deposit above active bin
-=======
-            activeBinOffset: 1,  // offset: 1 (requested by maintainers for Y-side logic fix)
+            activeBinOffset: -1,
             xAmount: "0",
             yAmount: String(satsCapped),
->>>>>>> f1fcd6f (fix(hodlmm): swap DLMM bin arguments and read live variable fees for spread check per audit)
           },
         ]),
         active_bin_tolerance: JSON.stringify({ expectedBinId: activeBinId, maxDeviation: "2" }),
         slippage_tolerance: "1.5",
       },
-<<<<<<< HEAD
-      description: `Add ${sbtcAmount} sBTC to DLMM pool ${DLMM_POOL_ID} bin +1 (LP entry at premium)`,
-=======
-      description: `Add ${sbtcAmount} sBTC to DLMM pool ${DLMM_POOL_ID} bin 1 (Y-side LP entry)`,
->>>>>>> f1fcd6f (fix(hodlmm): swap DLMM bin arguments and read live variable fees for spread check per audit)
+      description: `Add ${sbtcAmount} sBTC to DLMM pool ${DLMM_POOL_ID} bin -1 (Y-side LP entry below active)`,
       postConditions: [
         `FT debit sBTC eq ${satsCapped} sats`,
         `LP tokens credited for pool ${DLMM_POOL_ID}`,
