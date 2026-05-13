@@ -310,6 +310,10 @@ async function fetchDlmmBins(): Promise<DlmmData> {
     const stxPerBtc = rawPrice * 10;
 
     const poolData = pools.pools?.find(p => p.pool_id === DLMM_POOL_ID);
+    if (!poolData) {
+      // Pool missing from /pools?amm_type=dlmm — fees default to 0, understating arb cost.
+      console.warn(`[hodlmm-arb-executor] ${DLMM_POOL_ID} not found in DLMM pools API; yFeeBps defaulting to 0`);
+    }
     const xFeeBps = poolData?.x_total_fee_bps ? Number(poolData.x_total_fee_bps) : 0;
     const yFeeBps = poolData?.y_total_fee_bps ? Number(poolData.y_total_fee_bps) : 0;
 
