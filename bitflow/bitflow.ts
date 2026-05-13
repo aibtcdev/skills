@@ -16,6 +16,7 @@ import {
   type HodlmmActiveBinToleranceInput,
   type HodlmmRelativeLiquidityBinInput,
   type HodlmmRelativeWithdrawalInput,
+  type HodlmmWithdrawalInput,
   type UnifiedBitflowRouteQuote,
 } from "../src/lib/services/bitflow.service.js";
 import { resolveFee } from "../src/lib/utils/fee.js";
@@ -86,6 +87,39 @@ function normalizeWithdrawalPositions(rawPositions: unknown): HodlmmRelativeWith
     return {
       activeBinOffset: activeBinOffset as number,
       binId: binId as number,
+      amount: String(amount),
+      minXAmount: String(minXAmount),
+      minYAmount: String(minYAmount),
+    };
+  });
+}
+
+function normalizeAbsoluteWithdrawalPositions(rawPositions: unknown): HodlmmWithdrawalInput[] {
+  if (!Array.isArray(rawPositions) || rawPositions.length === 0) {
+    throw new Error("--positions must be a non-empty JSON array");
+  }
+
+  return rawPositions.map((position, index) => {
+    if (!position || typeof position !== "object") {
+      throw new Error(`positions[${index}] must be an object`);
+    }
+
+    const value = position as Record<string, unknown>;
+    const binId = value.binId ?? value.bin_id;
+    const amount = value.amount;
+    const minXAmount = value.minXAmount ?? value.min_x_amount ?? 0;
+    const minYAmount = value.minYAmount ?? value.min_y_amount ?? 0;
+
+    if (binId === undefined || typeof binId !== "number") {
+      throw new Error(`positions[${index}].binId must be a number`);
+    }
+
+    if (amount === undefined || amount === null) {
+      throw new Error(`positions[${index}].amount is required`);
+    }
+
+    return {
+      binId,
       amount: String(amount),
       minXAmount: String(minXAmount),
       minYAmount: String(minYAmount),
@@ -1086,14 +1120,14 @@ program
 
         const bitflowService = getBitflowService(NETWORK);
         const account = await getWriteAccount(opts.walletPassword);
-        const positions = normalizeWithdrawalPositions(
+        const positions = normalizeAbsoluteWithdrawalPositions(
           parseJsonOption<unknown>(opts.positions, "--positions")
         );
         const resolvedFee = await resolveFee(opts.fee, NETWORK, "contract_call");
         const result = await bitflowService.withdrawHodlmmLiquidity({
           account,
           poolId: opts.poolId,
-          positions: positions as any,
+          positions,
           allowFallback: opts.allowFallback,
           fee: resolvedFee,
           poolContract: opts.poolContract,

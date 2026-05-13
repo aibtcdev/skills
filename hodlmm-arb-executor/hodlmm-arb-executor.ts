@@ -348,7 +348,7 @@ function analyzeSpread(oracle: OraclePrices, xyk: XykReserves, dlmm: DlmmData): 
   if (dlmm.source === "unavailable" || dlmm.stxPerBtc === 0) return null;
 
   const grossSpread = Math.abs(((xyk.stxPerBtc - dlmm.stxPerBtc) / dlmm.stxPerBtc) * 100);
-  const dlmmFeeTotal = (dlmm.xFeeBps + dlmm.yFeeBps) / 100;
+  const dlmmFeeTotal = dlmm.yFeeBps / 100;
   const estFee = (xyk.feeBps / 100) + dlmmFeeTotal;
   const netSpread = grossSpread - estFee;
   // Confidence buffer: STX feed uncertainty as % of price.
@@ -395,7 +395,7 @@ function buildEntryCommands(oracle: OraclePrices, activeBinId: number, satsCappe
         pool_id: DLMM_POOL_ID,
         bins: JSON.stringify([
           {
-            activeBinOffset: 1,
+            activeBinOffset: -1,
             xAmount: "0",
             yAmount: String(satsCapped),
           },
@@ -417,7 +417,7 @@ function buildEntryCommands(oracle: OraclePrices, activeBinId: number, satsCappe
 // ---------------------------------------------------------------------------
 
 function buildExitCommands(position: LpPosition, currentActiveBinId: number, oracle: OraclePrices): McpCommand[] {
-  // entryBinId stores the actual LP bin (activeBin + 1 at entry time).
+  // entryBinId stores the actual LP bin (activeBin - 1 at entry time = Y-only below active).
   // currentOffset = LP bin relative to current active bin.
   const currentOffset = position.entryBinId - currentActiveBinId;
   const sbtcAmount = position.satsSent / 1e8;
@@ -800,7 +800,7 @@ program
       state.openPosition = {
         entryTimestamp: state.lastExecutionAt,
         entrySpreadPct: signal.grossSpreadPct,
-
+        entryBinId: dlmm.activeBinId - 1,
         satsSent: satsCapped,
         estimatedEntryUsd: round((satsCapped / 1e8) * oracle.btcUsd, 2),
       };
