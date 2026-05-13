@@ -80,7 +80,6 @@ interface XykReserves {
   yBalanceMicro: number;
   stxPerBtc: number;
   liquidityUsd: number;
-  feeBps: number;
 }
 
 interface DlmmData {
@@ -223,7 +222,7 @@ async function fetchOraclePrices(): Promise<OraclePrices> {
 // Data source 2: Hiro Stacks API — on-chain XYK pool reserves
 // ---------------------------------------------------------------------------
 
-function decodeClarityPool(hex: string): { xBalance: bigint; yBalance: bigint; feeBps: number } {
+function decodeClarityPool(hex: string): { xBalance: bigint; yBalance: bigint } {
   // Use @stacks/transactions deserializer — safe against field reordering.
   // get-pool returns (ok (tuple ...)) — ResponseOK wraps the tuple, so fields are at json.value.value.
   const cv = deserializeCV(Buffer.from(hex, "hex"));
@@ -231,9 +230,7 @@ function decodeClarityPool(hex: string): { xBalance: bigint; yBalance: bigint; f
   const fields = json.value.value;
   const xBalance = BigInt(fields["x-balance"].value);
   const yBalance = BigInt(fields["y-balance"].value);
-  const xProtocolFee = Number(fields["x-protocol-fee"]?.value ?? 0);
-  const xProviderFee = Number(fields["x-provider-fee"]?.value ?? 0);
-  return { xBalance, yBalance, feeBps: xProtocolFee + xProviderFee };
+  return { xBalance, yBalance };
 }
 
 async function fetchXykReserves(oracle: OraclePrices): Promise<XykReserves> {
@@ -261,7 +258,6 @@ async function fetchXykReserves(oracle: OraclePrices): Promise<XykReserves> {
     yBalanceMicro,
     stxPerBtc: round(yStx / xBtc, 2),
     liquidityUsd: round(xBtc * oracle.btcUsd + yStx * oracle.stxUsd, 2),
-    feeBps: decoded.feeBps,
   };
 }
 
@@ -348,8 +344,9 @@ function analyzeSpread(oracle: OraclePrices, xyk: XykReserves, dlmm: DlmmData): 
   if (dlmm.source === "unavailable" || dlmm.stxPerBtc === 0) return null;
 
   const grossSpread = Math.abs(((xyk.stxPerBtc - dlmm.stxPerBtc) / dlmm.stxPerBtc) * 100);
+  // XYK fee is a fixed protocol parameter (30 bps). Only DLMM fees are variable.
   const dlmmFeeTotal = dlmm.yFeeBps / 100;
-  const estFee = (xyk.feeBps / 100) + dlmmFeeTotal;
+  const estFee = (FEE_BPS.xyk / 100) + dlmmFeeTotal;
   const netSpread = grossSpread - estFee;
   // Confidence buffer: STX feed uncertainty as % of price.
   // stxPerBtc = btcUsd / stxUsd — latency between publishes creates noise.

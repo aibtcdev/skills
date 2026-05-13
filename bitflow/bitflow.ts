@@ -71,13 +71,12 @@ function normalizeWithdrawalPositions(rawPositions: unknown): HodlmmRelativeWith
 
     const value = position as Record<string, unknown>;
     const activeBinOffset = value.activeBinOffset ?? value.active_bin_offset;
-    const binId = value.binId ?? value.bin_id;
     const amount = value.amount;
     const minXAmount = value.minXAmount ?? value.min_x_amount ?? 0;
     const minYAmount = value.minYAmount ?? value.min_y_amount ?? 0;
 
-    if (activeBinOffset === undefined && binId === undefined) {
-      throw new Error(`positions[${index}].activeBinOffset or binId is required`);
+    if (activeBinOffset === undefined || typeof activeBinOffset !== "number") {
+      throw new Error(`positions[${index}].activeBinOffset must be a number`);
     }
 
     if (amount === undefined || amount === null) {
@@ -85,8 +84,7 @@ function normalizeWithdrawalPositions(rawPositions: unknown): HodlmmRelativeWith
     }
 
     return {
-      activeBinOffset: activeBinOffset as number,
-      binId: binId as number,
+      activeBinOffset,
       amount: String(amount),
       minXAmount: String(minXAmount),
       minYAmount: String(minYAmount),
@@ -1139,8 +1137,7 @@ program
           success: true,
           network: NETWORK,
           txid: result.txid,
-          poolId: result.poolId,
-          preparedPositions: result.preparedPositions,
+          poolId: opts.poolId,
           explorerUrl: getExplorerTxUrl(result.txid, NETWORK),
         });
       } catch (error) {
