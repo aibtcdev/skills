@@ -80,6 +80,7 @@ interface XykReserves {
   yBalanceMicro: number;
   stxPerBtc: number;
   liquidityUsd: number;
+  feeBps: number;
 }
 
 interface DlmmData {
@@ -222,7 +223,7 @@ async function fetchOraclePrices(): Promise<OraclePrices> {
 // Data source 2: Hiro Stacks API — on-chain XYK pool reserves
 // ---------------------------------------------------------------------------
 
-function decodeClarityPool(hex: string): { xBalance: bigint; yBalance: bigint } {
+function decodeClarityPool(hex: string): { xBalance: bigint; yBalance: bigint; feeBps: number } {
   // Use @stacks/transactions deserializer — safe against field reordering.
   // get-pool returns (ok (tuple ...)) — ResponseOK wraps the tuple, so fields are at json.value.value.
   const cv = deserializeCV(Buffer.from(hex, "hex"));
@@ -230,7 +231,9 @@ function decodeClarityPool(hex: string): { xBalance: bigint; yBalance: bigint } 
   const fields = json.value.value;
   const xBalance = BigInt(fields["x-balance"].value);
   const yBalance = BigInt(fields["y-balance"].value);
-  return { xBalance, yBalance };
+  const xProtocolFee = Number(fields["x-protocol-fee"]?.value ?? 0);
+  const xProviderFee = Number(fields["x-provider-fee"]?.value ?? 0);
+  return { xBalance, yBalance, feeBps: xProtocolFee + xProviderFee };
 }
 
 async function fetchXykReserves(oracle: OraclePrices): Promise<XykReserves> {
@@ -244,7 +247,8 @@ async function fetchXykReserves(oracle: OraclePrices): Promise<XykReserves> {
   if (!data.okay) throw new Error(`Contract call failed: ${JSON.stringify(data)}`);
 
   const hex = data.result.startsWith("0x") ? data.result.substring(2) : data.result;
-  const { xBalance, yBalance } = decodeClarityPool(hex);
+  const decoded = decodeClarityPool(hex);
+  const { xBalance, yBalance } = decoded;
 
   const xBalanceSats = Number(xBalance);
   const yBalanceMicro = Number(yBalance);
@@ -257,6 +261,7 @@ async function fetchXykReserves(oracle: OraclePrices): Promise<XykReserves> {
     yBalanceMicro,
     stxPerBtc: round(yStx / xBtc, 2),
     liquidityUsd: round(xBtc * oracle.btcUsd + yStx * oracle.stxUsd, 2),
+    feeBps: decoded.feeBps,
   };
 }
 
@@ -344,7 +349,7 @@ function analyzeSpread(oracle: OraclePrices, xyk: XykReserves, dlmm: DlmmData): 
 
   const grossSpread = Math.abs(((xyk.stxPerBtc - dlmm.stxPerBtc) / dlmm.stxPerBtc) * 100);
   const dlmmFeeTotal = (dlmm.xFeeBps + dlmm.yFeeBps) / 100;
-  const estFee = (FEE_BPS.xyk / 100) + dlmmFeeTotal;
+  const estFee = (xyk.feeBps / 100) + dlmmFeeTotal;
   const netSpread = grossSpread - estFee;
   // Confidence buffer: STX feed uncertainty as % of price.
   // stxPerBtc = btcUsd / stxUsd — latency between publishes creates noise.
@@ -390,7 +395,7 @@ function buildEntryCommands(oracle: OraclePrices, activeBinId: number, satsCappe
         pool_id: DLMM_POOL_ID,
         bins: JSON.stringify([
           {
-            activeBinOffset: -1,
+            activeBinOffset: 1,
             xAmount: "0",
             yAmount: String(satsCapped),
           },
