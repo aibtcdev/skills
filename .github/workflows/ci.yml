@@ -26,6 +26,15 @@ jobs:
       - name: TypeScript typecheck
         run: bun run typecheck
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install skills-ref
+        run: pip install skills-ref
+
       - name: Validate skill frontmatter
         run: bun run validate
 
