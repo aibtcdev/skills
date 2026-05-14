@@ -31,8 +31,8 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Install skills-ref
-        run: pip install skills-ref
+      - name: Install skills-ref (required by bun run validate for tier-1 spec checks)
+        run: pip install skills-ref==0.1.1
 
       - name: Validate skill frontmatter
         run: bun run validate
