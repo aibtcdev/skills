@@ -32,7 +32,7 @@ jobs:
           python-version: '3.12'
 
       - name: Install skills-ref (required by bun run validate for tier-1 spec checks)
-        run: pip install skills-ref==0.1.1
+        run: pip install skills-ref==0.1.1 --require-hashes --hash=sha256:d35db5bb8de71ae301daf5ca9cb71f8a555e8c6f83a6d40e46a5bc09f8f461b5
 
       - name: Validate skill frontmatter
         run: bun run validate
