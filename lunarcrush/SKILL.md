@@ -4,8 +4,8 @@ description: "Pay-per-call access to LunarCrush social and market intelligence (
 metadata:
   author: "joevezzani"
   author-agent: "Prime Spoke"
-  user-invocable: "false"
-  arguments: "oracle | score | health | meta"
+  user-invocable: "true"
+  arguments: "oracle | score | velocity | health | meta"
   entry: "lunarcrush/lunarcrush.ts"
   requires: "wallet"
   tags: "l2, read-only, requires-funds"
@@ -23,10 +23,11 @@ LunarCrush is the leading social intelligence platform for crypto and equities �
 |---|---|---|---|
 | `oracle` | mainnet (default) or testnet | $0.025 USD in STX | Premium combined: verdict + confidence + reasoning + vibe one-liner + structured signals. One paid call, both trading-model and chatbot audiences served. |
 | `score` | mainnet (default) or testnet | $0.005 USD in STX | Galaxy Score, AltRank, market cap rank, price, 24h change |
+| `velocity` | mainnet (default) or testnet | $0.005 USD in STX | 24h interactions, social volume, sentiment, percent_change_24h, momentum tier (accelerating/stable/cooling) |
 | `health` | n/a | free | Liveness probe |
 | `meta` | n/a | free | Live STX/USD price, full endpoint catalog with current microSTX amounts |
 
-Endpoints planned (not yet live): `altrank` (dedicated), `topic`, `social-velocity`, `sentiment`, `top-movers`, `whale-flow`. The full catalog is documented at the meta endpoint.
+Endpoints planned (not yet live): `altrank` (dedicated), `topic`, `sentiment`, `top-movers`, `whale-flow`. The full catalog is documented at the meta endpoint.
 
 ## Usage
 
@@ -115,6 +116,40 @@ Output (fields surfaced by the worker; `payment_receipt` is decoded from the `pa
 }
 ```
 
+### velocity
+
+Fetch social momentum signals — 24h interactions, social volume, sentiment, and a coarse momentum tier (`accelerating`, `stable`, or `cooling`) derived from `percent_change_24h`. Pays via x402.
+
+```
+bun run lunarcrush/lunarcrush.ts velocity --symbol BTC
+bun run lunarcrush/lunarcrush.ts velocity --symbol STX --network testnet
+```
+
+Options:
+- `--symbol` (required) — Crypto ticker symbol (e.g. `BTC`, `ETH`, `STX`).
+- `--network` (optional, default `mainnet`) — `mainnet` or `testnet`.
+
+Output:
+```json
+{
+  "symbol": "BTC",
+  "name": "Bitcoin",
+  "interactions_24h": 4823100,
+  "social_volume_24h": 18420,
+  "sentiment": 3.8,
+  "percent_change_24h": 1.40,
+  "momentum_tier": "stable",
+  "source": "lunarcrush",
+  "network": "mainnet",
+  "endpoint": "https://lunarcrush-x402-poc-prod.lunarcrush.workers.dev/social-velocity/btc",
+  "payment_receipt": { "success": true, "payer": "SP...", "transaction": "...", "network": "stacks:1" }
+}
+```
+
+Useful as a fast-twitch signal for trading agents that want to detect sentiment shifts before they show up in price.
+
+`momentum_tier` is bucketed deterministically from `percent_change_24h`: `accelerating` if > +5%, `cooling` if < −5%, `stable` otherwise. Same pattern as the `oracle` verdict tiers — inspectable without calling the Worker.
+
 ### health
 
 Liveness probe (free). Returns `{ ok: true, ts: ... }`.
@@ -161,6 +196,16 @@ Output:
 - Testnet (faucet STX): `https://lunarcrush-x402-poc.lunarcrush.workers.dev`
 
 Recipient wallet on Stacks mainnet: `SP3TH5S631RYN7Z485TY0KPFVX24R7RW7P25HVZ73` (Prime Spoke, on-chain identity registered with aibtc.news).
+
+## Companion: Bitflow × LunarCrush Sentiment Scanner
+
+A separate Worker bundles LunarCrush signals across the top Stacks-ecosystem tokens and cross-references against Bitflow XYK + HODLMM tradability, returning a single ranked opportunity list per call. Useful when an agent wants "what should I look at right now on Stacks" instead of fetching and ranking N individual symbols itself.
+
+- **HTML dashboard (free):** `https://bitflow-sentiment-scanner.lunarcrush.workers.dev/`
+- **Free preview (top 3):** `GET /scan/preview`
+- **Paid full ranking:** `GET /scan` — $0.01 USD in STX. Returns all 10 ranked tokens with composite scores, verdicts, Bitflow pool counts, and HODLMM availability.
+
+Same payment wallet as this skill; one funded agent can use both.
 
 ## Notes
 
