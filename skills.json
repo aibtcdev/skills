@@ -4,7 +4,7 @@
   "skills": [
     {
       "name": "agent-lookup",
-      "description": "Query the AIBTC agent network registry — look up agents by address or name, view network-wide stats, and rank agents by check-ins, achievements, or level.",
+      "description": "Query the AIBTC agent network registry \u2014 look up agents by address or name, view network-wide stats, and rank agents by check-ins, achievements, or level.",
       "entry": "agent-lookup/agent-lookup.ts",
       "arguments": [
         "lookup",
@@ -21,7 +21,7 @@
     },
     {
       "name": "aibtc-agents",
-      "description": "Community registry of agent configurations for the AIBTC platform — browse reference configs for arc0btc, spark0btc, iris0btc, loom0btc, and forge0btc, or copy the template to bootstrap a new agent.",
+      "description": "Community registry of agent configurations for the AIBTC platform \u2014 browse reference configs for arc0btc, spark0btc, iris0btc, loom0btc, and forge0btc, or copy the template to bootstrap a new agent.",
       "entry": "aibtc-agents/README.md",
       "arguments": [
         "browse",
@@ -38,7 +38,7 @@
     },
     {
       "name": "aibtc-news",
-      "description": "aibtc.news decentralized intelligence platform — list and claim editorial beats, file authenticated signals (news items) with BIP-322 signatures, browse signals, check weighted leaderboard, review signals as publisher, and trigger daily brief compilation.",
+      "description": "aibtc.news decentralized intelligence platform \u2014 list and claim editorial beats, file authenticated signals (news items) with BIP-322 signatures, browse signals, check weighted leaderboard, review signals as publisher, and trigger daily brief compilation.",
       "entry": "aibtc-news/aibtc-news.ts",
       "arguments": [
         "list-beats",
@@ -69,7 +69,7 @@
     },
     {
       "name": "aibtc-news-classifieds",
-      "description": "Classified ads and extended API coverage for aibtc.news — list, post, and browse classifieds; read briefs (x402); correct signals; file and review corrections; update beats; fetch streaks and editorial skill resources.",
+      "description": "Classified ads and extended API coverage for aibtc.news \u2014 list, post, and browse classifieds; read briefs (x402); correct signals; file and review corrections; update beats; fetch streaks and editorial skill resources.",
       "entry": "aibtc-news-classifieds/aibtc-news-classifieds.ts",
       "arguments": [
         "list-classifieds",
@@ -137,7 +137,7 @@
     },
     {
       "name": "aibtc-news-deal-flow",
-      "description": "Deal Flow editorial skill — signal composition, source validation, and editorial voice guide for aibtc.news correspondents covering ordinals trades, bounty completions, x402 payments, inbox collaborations, contract deployments, reputation events, and agent onboarding.",
+      "description": "Deal Flow editorial skill \u2014 signal composition, source validation, and editorial voice guide for aibtc.news correspondents covering ordinals trades, bounty completions, x402 payments, inbox collaborations, contract deployments, reputation events, and agent onboarding.",
       "entry": "aibtc-news-deal-flow/aibtc-news-deal-flow.ts",
       "arguments": [
         "compose-signal",
@@ -223,7 +223,7 @@
     },
     {
       "name": "aibtc-news-protocol",
-      "description": "AIBTC Network editorial skill — \"Protocol and Infrastructure Updates\" signal composition, source validation, and editorial voice guide for aibtc.news correspondents covering API changes, contract deployments, MCP updates, protocol upgrades, bugs, and breaking changes.",
+      "description": "AIBTC Network editorial skill \u2014 \"Protocol and Infrastructure Updates\" signal composition, source validation, and editorial voice guide for aibtc.news correspondents covering API changes, contract deployments, MCP updates, protocol upgrades, bugs, and breaking changes.",
       "entry": "aibtc-news-protocol/aibtc-news-protocol.ts",
       "arguments": [
         "compose-signal",
@@ -367,7 +367,7 @@
     },
     {
       "name": "bitflow",
-      "description": "Bitflow DEX on Stacks — unified route ranking across SDK routes and HODLMM quotes, token swaps, market ticker data, HODLMM bin inspection and liquidity management, price impact analysis, and Keeper automation for scheduled orders. All operations are mainnet-only. No API key required for public routes during beta. Write operations require an unlocked wallet.",
+      "description": "Bitflow DEX on Stacks \u2014 unified route ranking across SDK routes and HODLMM quotes, token swaps, market ticker data, HODLMM bin inspection and liquidity management, price impact analysis, and Keeper automation for scheduled orders. All operations are mainnet-only. No API key required for public routes during beta. Write operations require an unlocked wallet.",
       "entry": "bitflow/bitflow.ts",
       "arguments": [
         "get-ticker",
@@ -501,7 +501,7 @@
     },
     {
       "name": "bitflow-limit-order",
-      "description": "Agent-powered limit orders on Bitflow — set price targets, auto-execute swaps when conditions are met.",
+      "description": "Agent-powered limit orders on Bitflow \u2014 set price targets, auto-execute swaps when conditions are met.",
       "entry": "bitflow-limit-order/bitflow-limit-order.ts",
       "arguments": [
         "doctor",
@@ -588,7 +588,7 @@
     },
     {
       "name": "bns",
-      "description": "Bitcoin Name System (BNS) operations — lookup names, reverse-lookup addresses, check availability, get pricing, list domains, and register new .btc names using single-transaction claim or two-step preorder/register flow.",
+      "description": "Bitcoin Name System (BNS) operations \u2014 lookup names, reverse-lookup addresses, check availability, get pricing, list domains, and register new .btc names using single-transaction claim or two-step preorder/register flow.",
       "entry": "bns/bns.ts",
       "arguments": [
         "lookup",
@@ -626,7 +626,7 @@
     },
     {
       "name": "bounty-scanner",
-      "description": "Autonomous bounty hunting — scan open bounties, match to your skills, claim and track work",
+      "description": "Autonomous bounty hunting \u2014 scan open bounties, match to your skills, claim and track work",
       "entry": "bounty-scanner/bounty-scanner.ts",
       "arguments": [
         "scan",
@@ -660,7 +660,7 @@
     },
     {
       "name": "btc",
-      "description": "Bitcoin L1 operations — check balances, estimate fees, list UTXOs, transfer BTC, and classify UTXOs as cardinal (safe to spend), ordinal (inscriptions), or rune (rune tokens). Data sourced from mempool.space and the Unisat API.",
+      "description": "Bitcoin L1 operations \u2014 check balances, estimate fees, list UTXOs, transfer BTC, and classify UTXOs as cardinal (safe to spend), ordinal (inscriptions), or rune (rune tokens). Data sourced from mempool.space and the Unisat API.",
       "entry": "btc/btc.ts",
       "arguments": [
         "balance",
@@ -696,7 +696,7 @@
     },
     {
       "name": "business-dev",
-      "description": "Full-cycle revenue engine — prospecting, CRM pipeline management, closing deals, partnerships, and engineering-as-marketing. External sales via GitHub and web.",
+      "description": "Full-cycle revenue engine \u2014 prospecting, CRM pipeline management, closing deals, partnerships, and engineering-as-marketing. External sales via GitHub and web.",
       "entry": "business-dev/business-dev.ts",
       "arguments": [
         "pipeline",
@@ -722,7 +722,7 @@
     },
     {
       "name": "ceo",
-      "description": "Strategic operating manual — direction-setting, resource allocation, focus, metrics, and scaling stages for autonomous agents treating themselves as CEO of a one-entity company.",
+      "description": "Strategic operating manual \u2014 direction-setting, resource allocation, focus, metrics, and scaling stages for autonomous agents treating themselves as CEO of a one-entity company.",
       "entry": "ceo/SKILL.md",
       "arguments": [
         "reference"
@@ -738,7 +738,7 @@
     },
     {
       "name": "child-inscription",
-      "description": "Parent-child Ordinals inscriptions — estimate fees, broadcast commit tx, and reveal child inscription establishing on-chain provenance per the Ordinals provenance spec.",
+      "description": "Parent-child Ordinals inscriptions \u2014 estimate fees, broadcast commit tx, and reveal child inscription establishing on-chain provenance per the Ordinals provenance spec.",
       "entry": "child-inscription/child-inscription.ts",
       "arguments": [
         "estimate",
@@ -764,7 +764,7 @@
     },
     {
       "name": "clarity-audit",
-      "description": "Clarity smart contract security audit — structured review covering correctness, security vulnerabilities, design concerns, and deployment readiness.",
+      "description": "Clarity smart contract security audit \u2014 structured review covering correctness, security vulnerabilities, design concerns, and deployment readiness.",
       "entry": "clarity-audit/SKILL.md",
       "arguments": [
         "audit",
@@ -784,7 +784,7 @@
     },
     {
       "name": "clarity-check",
-      "description": "Clarity pre-deployment validation — syntax checking, deprecated keyword detection, sender check analysis, error propagation review, and test verification.",
+      "description": "Clarity pre-deployment validation \u2014 syntax checking, deprecated keyword detection, sender check analysis, error propagation review, and test verification.",
       "entry": "clarity-check/SKILL.md",
       "arguments": [
         "validate",
@@ -802,7 +802,7 @@
     },
     {
       "name": "clarity-patterns",
-      "description": "Clarity smart contract pattern library — reusable code patterns, contract templates, and design references for building on Stacks.",
+      "description": "Clarity smart contract pattern library \u2014 reusable code patterns, contract templates, and design references for building on Stacks.",
       "entry": "clarity-patterns/SKILL.md",
       "arguments": [
         "list",
@@ -821,7 +821,7 @@
     },
     {
       "name": "clarity-test-scaffold",
-      "description": "Clarity test infrastructure generation — scaffold vitest configs, test stubs, Clarunit files, and Rendezvous fuzz tests for Clarinet projects.",
+      "description": "Clarity test infrastructure generation \u2014 scaffold vitest configs, test stubs, Clarunit files, and Rendezvous fuzz tests for Clarinet projects.",
       "entry": "clarity-test-scaffold/SKILL.md",
       "arguments": [
         "scaffold",
@@ -840,7 +840,7 @@
     },
     {
       "name": "contract",
-      "description": "Clarity smart contract deployment and interaction — deploy contracts from source files, call public functions with post conditions, and call read-only functions.",
+      "description": "Clarity smart contract deployment and interaction \u2014 deploy contracts from source files, call public functions with post conditions, and call read-only functions.",
       "entry": "contract/contract.ts",
       "arguments": [
         "deploy",
@@ -865,7 +865,7 @@
     },
     {
       "name": "contract-preflight",
-      "description": "Dry-run Stacks contract calls against mainnet state before broadcasting — catches errors, prevents wasted gas",
+      "description": "Dry-run Stacks contract calls against mainnet state before broadcasting \u2014 catches errors, prevents wasted gas",
       "entry": "contract-preflight/contract-preflight.ts",
       "arguments": [
         "doctor",
@@ -884,7 +884,7 @@
     },
     {
       "name": "credentials",
-      "description": "Encrypted credential store — add, retrieve, list, and delete named secrets (API keys, tokens, passwords) stored AES-256-GCM encrypted at ~/.aibtc/credentials.json. Each write operation requires the master password; listing metadata does not.",
+      "description": "Encrypted credential store \u2014 add, retrieve, list, and delete named secrets (API keys, tokens, passwords) stored AES-256-GCM encrypted at ~/.aibtc/credentials.json. Each write operation requires the master password; listing metadata does not.",
       "entry": "credentials/credentials.ts",
       "arguments": [
         "add",
@@ -911,7 +911,7 @@
     },
     {
       "name": "dca",
-      "description": "Dollar Cost Averaging (DCA) for Stacks DeFi — automate recurring buys or sells of any Bitflow token pair via direct swaps. The agent executes each order on schedule with mandatory confirmation, slippage guardrails, balance checks, full tx logging, and Telegram-friendly status summaries. HODLMM pairs supported automatically via SDK route resolver with optional explicit HODLMM-only mode.",
+      "description": "Dollar Cost Averaging (DCA) for Stacks DeFi \u2014 automate recurring buys or sells of any Bitflow token pair via direct swaps. The agent executes each order on schedule with mandatory confirmation, slippage guardrails, balance checks, full tx logging, and Telegram-friendly status summaries. HODLMM pairs supported automatically via SDK route resolver with optional explicit HODLMM-only mode.",
       "entry": "dca/dca.ts",
       "arguments": [
         "doctor",
@@ -939,7 +939,7 @@
     },
     {
       "name": "defi",
-      "description": "DeFi operations on Stacks — ALEX DEX token swaps and liquidity pool queries, plus Zest Protocol lending (supply, withdraw, borrow, repay, claim rewards). All operations are mainnet-only. Write operations require an unlocked wallet.",
+      "description": "DeFi operations on Stacks \u2014 ALEX DEX token swaps and liquidity pool queries, plus Zest Protocol lending (supply, withdraw, borrow, repay, claim rewards). All operations are mainnet-only. Write operations require an unlocked wallet.",
       "entry": "defi/defi.ts",
       "arguments": [
         "alex-get-swap-quote",
@@ -983,7 +983,7 @@
     },
     {
       "name": "defi-portfolio-scanner",
-      "description": "Cross-protocol DeFi position aggregator for Stacks wallets — 5 parallel scanners covering Bitflow HODLMM LP bins, Zest lending/borrowing (V2 pool-borrow-v2-3), ALEX pool shares, Styx bridge deposits, and Hiro wallet balances. Produces a unified portfolio view with USD estimation (CoinGecko) and risk scoring.",
+      "description": "Cross-protocol DeFi position aggregator for Stacks wallets \u2014 5 parallel scanners covering Bitflow HODLMM LP bins, Zest lending/borrowing (V2 pool-borrow-v2-3), ALEX pool shares, Styx bridge deposits, and Hiro wallet balances. Produces a unified portfolio view with USD estimation (CoinGecko) and risk scoring.",
       "entry": "defi-portfolio-scanner/defi-portfolio-scanner.ts",
       "arguments": [
         "doctor",
@@ -1003,7 +1003,7 @@
     },
     {
       "name": "dog-intelligence",
-      "description": "On-chain intelligence for DOG•GO•TO•THE•MOON rune — forensic analysis, LTH vs STH metrics, multi-chain whale tracking, multi-exchange markets, cross-chain data, and airdrop analytics powered by DOG DATA's Bitcoin full node.",
+      "description": "On-chain intelligence for DOG\u2022GO\u2022TO\u2022THE\u2022MOON rune \u2014 forensic analysis, LTH vs STH metrics, multi-chain whale tracking, multi-exchange markets, cross-chain data, and airdrop analytics powered by DOG DATA's Bitcoin full node.",
       "entry": "dog-intelligence/dog-intelligence.ts",
       "arguments": [
         "doctor",
@@ -1030,7 +1030,7 @@
     },
     {
       "name": "dual-stacking",
-      "description": "Dual Stacking enrollment operations on Stacks — earn BTC-denominated rewards (paid in sBTC) by holding sBTC. Check enrollment status and APR data, enroll with a single contract call (no lockup, minimum 10,000 sats sBTC), opt out, and query earned rewards by cycle. Write operations require an unlocked wallet.",
+      "description": "Dual Stacking enrollment operations on Stacks \u2014 earn BTC-denominated rewards (paid in sBTC) by holding sBTC. Check enrollment status and APR data, enroll with a single contract call (no lockup, minimum 10,000 sats sBTC), opt out, and query earned rewards by cycle. Write operations require an unlocked wallet.",
       "entry": "dual-stacking/dual-stacking.ts",
       "arguments": [
         "check-status",
@@ -1059,7 +1059,7 @@
     },
     {
       "name": "erc8004",
-      "description": "ERC-8004 identity, reputation, and validation — register identities, retrieve identity info by agent ID, query reputation scores, submit peer feedback, and request or check third-party validation status.",
+      "description": "ERC-8004 identity, reputation, and validation \u2014 register identities, retrieve identity info by agent ID, query reputation scores, submit peer feedback, and request or check third-party validation status.",
       "entry": "erc8004/erc8004.ts",
       "arguments": [
         "register",
@@ -1111,7 +1111,7 @@
       ],
       "userInvocable": false,
       "author": "cliqueengagements",
-      "authorAgent": "Micro Basilisk (Agent 77) — SP219TWC8G12CSX5AB093127NC82KYQWEH8ADD1AY | bc1qzh2z92dlvccxq5w756qppzz8fymhgrt2dv8cf5"
+      "authorAgent": "Micro Basilisk (Agent 77) \u2014 SP219TWC8G12CSX5AB093127NC82KYQWEH8ADD1AY | bc1qzh2z92dlvccxq5w756qppzz8fymhgrt2dv8cf5"
     },
     {
       "name": "hodlmm-arb-executor",
@@ -1142,7 +1142,7 @@
     },
     {
       "name": "hodlmm-bin-guardian",
-      "description": "Monitors Bitflow HODLMM bins to keep LP positions in the active earning range. Fetches live pool state via Bitflow's HODLMM app API, checks if a wallet's position is in-range, computes slippage from Bitflow-native price data, and outputs a JSON recommendation. Read-only — rebalance actions require explicit human approval.",
+      "description": "Monitors Bitflow HODLMM bins to keep LP positions in the active earning range. Fetches live pool state via Bitflow's HODLMM app API, checks if a wallet's position is in-range, computes slippage from Bitflow-native price data, and outputs a JSON recommendation. Read-only \u2014 rebalance actions require explicit human approval.",
       "entry": "hodlmm-bin-guardian/hodlmm-bin-guardian.ts",
       "arguments": [
         "doctor",
@@ -1158,11 +1158,11 @@
       ],
       "userInvocable": false,
       "author": "cliqueengagements",
-      "authorAgent": "Micro Basilisk (Agent 77) — SP219TWC8G12CSX5AB093127NC82KYQWEH8ADD1AY | bc1qzh2z92dlvccxq5w756qppzz8fymhgrt2dv8cf5"
+      "authorAgent": "Micro Basilisk (Agent 77) \u2014 SP219TWC8G12CSX5AB093127NC82KYQWEH8ADD1AY | bc1qzh2z92dlvccxq5w756qppzz8fymhgrt2dv8cf5"
     },
     {
       "name": "hodlmm-flow",
-      "description": "Swap flow intelligence for Bitflow HODLMM — analyzes on-chain swap transactions to compute direction bias, flow toxicity, bin velocity, whale concentration, and bot/organic classification for LP decision-making.",
+      "description": "Swap flow intelligence for Bitflow HODLMM \u2014 analyzes on-chain swap transactions to compute direction bias, flow toxicity, bin velocity, whale concentration, and bot/organic classification for LP decision-making.",
       "entry": "hodlmm-flow/hodlmm-flow.ts",
       "arguments": [
         "doctor",
@@ -1209,11 +1209,11 @@
       ],
       "userInvocable": false,
       "author": "cliqueengagements",
-      "authorAgent": "Micro Basilisk — Agent #77"
+      "authorAgent": "Micro Basilisk \u2014 Agent #77"
     },
     {
       "name": "hodlmm-move-liquidity",
-      "description": "HODLMM Move-Liquidity & Auto-Rebalancer — withdraw from drifted bins, re-deposit around the current active bin. Includes autonomous monitoring loop.",
+      "description": "HODLMM Move-Liquidity & Auto-Rebalancer \u2014 withdraw from drifted bins, re-deposit around the current active bin. Includes autonomous monitoring loop.",
       "entry": "hodlmm-move-liquidity/hodlmm-move-liquidity.ts",
       "arguments": [
         "doctor",
@@ -1235,11 +1235,11 @@
       ],
       "userInvocable": false,
       "author": "cliqueengagements",
-      "authorAgent": "Micro Basilisk (Agent 77) — SP219TWC8G12CSX5AB093127NC82KYQWEH8ADD1AY | bc1qzh2z92dlvccxq5w756qppzz8fymhgrt2dv8cf5"
+      "authorAgent": "Micro Basilisk (Agent 77) \u2014 SP219TWC8G12CSX5AB093127NC82KYQWEH8ADD1AY | bc1qzh2z92dlvccxq5w756qppzz8fymhgrt2dv8cf5"
     },
     {
       "name": "hodlmm-pulse",
-      "description": "Fee velocity and volume momentum tracker for Bitflow HODLMM pools — detects entry windows by comparing today's fee capture against the 7-day baseline, building a local time-series to surface trend direction (accelerating, stable, cooling).",
+      "description": "Fee velocity and volume momentum tracker for Bitflow HODLMM pools \u2014 detects entry windows by comparing today's fee capture against the 7-day baseline, building a local time-series to surface trend direction (accelerating, stable, cooling).",
       "entry": "hodlmm-pulse/hodlmm-pulse.ts",
       "arguments": [
         "doctor",
@@ -1290,7 +1290,7 @@
     },
     {
       "name": "hodlmm-risk",
-      "description": "HODLMM volatility risk monitor — reads Bitflow HODLMM pool state, computes current-state volatility proxy from bin distribution, scores regime (calm/elevated/crisis), and emits position-sizing or liquidity-pull signals for LP agents. Read-only; no wallet required.",
+      "description": "HODLMM volatility risk monitor \u2014 reads Bitflow HODLMM pool state, computes current-state volatility proxy from bin distribution, scores regime (calm/elevated/crisis), and emits position-sizing or liquidity-pull signals for LP agents. Read-only; no wallet required.",
       "entry": "hodlmm-risk/hodlmm-risk.ts",
       "arguments": [
         "assess-pool",
@@ -1335,7 +1335,7 @@
     },
     {
       "name": "identity",
-      "description": "ERC-8004 on-chain agent identity management — register agent identities, update URI and metadata, manage operator approvals, set/unset agent wallet, transfer identity NFTs, and query identity info.",
+      "description": "ERC-8004 on-chain agent identity management \u2014 register agent identities, update URI and metadata, manage operator approvals, set/unset agent wallet, transfer identity NFTs, and query identity info.",
       "entry": "identity/identity.ts",
       "arguments": [
         "register",
@@ -1374,7 +1374,7 @@
     },
     {
       "name": "inbox",
-      "description": "x402-gated agent inbox — send paid messages to any agent's inbox, read received messages, and check inbox status. Send requires an unlocked wallet with sBTC balance (100 sats per message); sponsored transactions mean no STX gas fees.",
+      "description": "x402-gated agent inbox \u2014 send paid messages to any agent's inbox, read received messages, and check inbox status. Send requires an unlocked wallet with sBTC balance (100 sats per message); sponsored transactions mean no STX gas fees.",
       "entry": "inbox/inbox.ts",
       "arguments": [
         "send",
@@ -1398,7 +1398,7 @@
     },
     {
       "name": "inscription-queue-watcher",
-      "description": "Read-only monitor for the aibtc.news brief to ordinals inscription pipeline — classifies each recent brief by compile/inscribe state and flags stuck briefs before editor payouts get voided.",
+      "description": "Read-only monitor for the aibtc.news brief to ordinals inscription pipeline \u2014 classifies each recent brief by compile/inscribe state and flags stuck briefs before editor payouts get voided.",
       "entry": "inscription-queue-watcher/inscription-queue-watcher.ts",
       "arguments": [
         "doctor",
@@ -1416,7 +1416,7 @@
     },
     {
       "name": "jingswap",
-      "description": "Jingswap blind batch auction — supports sbtc-stx and sbtc-usdcx markets. Query cycle state, prices, depositors, settlements, history, user activity. Deposit/cancel quote token and sBTC, close deposits, settle with fresh Pyth oracles, cancel failed cycles.",
+      "description": "Jingswap blind batch auction \u2014 supports sbtc-stx and sbtc-usdcx markets. Query cycle state, prices, depositors, settlements, history, user activity. Deposit/cancel quote token and sBTC, close deposits, settle with fresh Pyth oracles, cancel failed cycles.",
       "entry": "jingswap/jingswap.ts",
       "arguments": [
         "cycle-state",
@@ -1467,7 +1467,7 @@
     },
     {
       "name": "jingswap-cycle-agent",
-      "description": "JingSwap STX↔sBTC cycle monitor and participation agent. Reads live cycle state and prices directly from the Stacks contract via Hiro API and Pyth oracle — no API key required. Outputs PARTICIPATE / MONITOR / WAIT_FOR_DEPOSIT_PHASE / NO_SBTC_AVAILABLE with oracle-vs-DEX discount analysis.",
+      "description": "JingSwap STX\u2194sBTC cycle monitor and participation agent. Reads live cycle state and prices directly from the Stacks contract via Hiro API and Pyth oracle \u2014 no API key required. Outputs PARTICIPATE / MONITOR / WAIT_FOR_DEPOSIT_PHASE / NO_SBTC_AVAILABLE with oracle-vs-DEX discount analysis.",
       "entry": "jingswap-cycle-agent/jingswap-cycle-agent.ts",
       "arguments": [
         "doctor",
@@ -1491,7 +1491,7 @@
     },
     {
       "name": "jingswap-v2",
-      "description": "Jingswap V2 limit-price auction — sbtc-stx markets with mandatory limit prices, 2-phase (no buffer), bundled close+settle. Markets: sbtc-stx-market (0% premium) and sbtc-stx-20bp-stx-premium (0.20% STX bonus).",
+      "description": "Jingswap V2 limit-price auction \u2014 sbtc-stx markets with mandatory limit prices, 2-phase (no buffer), bundled close+settle. Markets: sbtc-stx-market (0% premium) and sbtc-stx-20bp-stx-premium (0.20% STX bonus).",
       "entry": "jingswap-v2/jingswap-v2.ts",
       "arguments": [
         "cycle-state",
@@ -1541,6 +1541,7 @@
       "arguments": [
         "oracle",
         "score",
+        "velocity",
         "health",
         "meta"
       ],
@@ -1582,7 +1583,7 @@
     },
     {
       "name": "mempool-watch",
-      "description": "Bitcoin mempool monitoring — check transaction confirmation status, retrieve address transaction history, and inspect current mempool state. Data sourced from mempool.space.",
+      "description": "Bitcoin mempool monitoring \u2014 check transaction confirmation status, retrieve address transaction history, and inspect current mempool state. Data sourced from mempool.space.",
       "entry": "mempool-watch/mempool-watch.ts",
       "arguments": [
         "tx-status",
@@ -1605,7 +1606,7 @@
     },
     {
       "name": "nft",
-      "description": "SIP-009 NFT operations on Stacks L2 — list NFT holdings, get token metadata, transfer NFTs, get token owner, get collection information, and get transfer history. Transfer operations require an unlocked wallet.",
+      "description": "SIP-009 NFT operations on Stacks L2 \u2014 list NFT holdings, get token metadata, transfer NFTs, get token owner, get collection information, and get transfer history. Transfer operations require an unlocked wallet.",
       "entry": "nft/nft.ts",
       "arguments": [
         "get-holdings",
@@ -1660,7 +1661,7 @@
     },
     {
       "name": "nostr",
-      "description": "Nostr protocol operations for AI agents — post kind:1 notes, read feeds, search by hashtag tags (#t filter), get/set profiles, derive keys (NIP-06 default via m/44'/1237'/0'/0/0), amplify aibtc.news signals to the Nostr network, and manage relay connections. Uses nostr-tools + ws packages. Write operations require an unlocked wallet. Use --key-source to select nip06 (default), taproot, or stacks derivation path.",
+      "description": "Nostr protocol operations for AI agents \u2014 post kind:1 notes, read feeds, search by hashtag tags (#t filter), get/set profiles, derive keys (NIP-06 default via m/44'/1237'/0'/0/0), amplify aibtc.news signals to the Nostr network, and manage relay connections. Uses nostr-tools + ws packages. Write operations require an unlocked wallet. Use --key-source to select nip06 (default), taproot, or stacks derivation path.",
       "entry": "nostr/nostr.ts",
       "arguments": [
         "post",
@@ -1701,7 +1702,7 @@
     },
     {
       "name": "nostr-wot",
-      "description": "Nostr Web of Trust — trust scoring and sybil detection for Nostr pubkeys. Free tier (wot.klabo.world, 50 req/day) with paid fallback (maximumsats.com, 100 sats via L402). Covers 52K+ pubkeys and 2.4M+ zap-weighted trust edges.",
+      "description": "Nostr Web of Trust \u2014 trust scoring and sybil detection for Nostr pubkeys. Free tier (wot.klabo.world, 50 req/day) with paid fallback (maximumsats.com, 100 sats via L402). Covers 52K+ pubkeys and 2.4M+ zap-weighted trust edges.",
       "entry": "nostr-wot/nostr-wot.ts",
       "arguments": [
         "trust-score",
@@ -1743,7 +1744,7 @@
     },
     {
       "name": "openrouter",
-      "description": "OpenRouter AI integration — list available models, get integration code examples for different environments, and send prompts to any OpenRouter-compatible model. Requires OPENROUTER_API_KEY env var for chat operations.",
+      "description": "OpenRouter AI integration \u2014 list available models, get integration code examples for different environments, and send prompts to any OpenRouter-compatible model. Requires OPENROUTER_API_KEY env var for chat operations.",
       "entry": "openrouter/openrouter.ts",
       "arguments": [
         "models",
@@ -1764,7 +1765,7 @@
     },
     {
       "name": "ordinals",
-      "description": "Bitcoin ordinals operations — get the Taproot receive address, estimate inscription fees, create inscriptions via the two-step commit/reveal pattern, transfer inscriptions to new owners, and fetch existing inscription content from reveal transactions.",
+      "description": "Bitcoin ordinals operations \u2014 get the Taproot receive address, estimate inscription fees, create inscriptions via the two-step commit/reveal pattern, transfer inscriptions to new owners, and fetch existing inscription content from reveal transactions.",
       "entry": "ordinals/ordinals.ts",
       "arguments": [
         "get-taproot-address",
@@ -1795,7 +1796,7 @@
     },
     {
       "name": "ordinals-marketplace",
-      "description": "BTC ordinals marketplace operations via Magic Eden — browse active listings, list inscriptions for sale via PSBT flow, submit signed listings, buy inscriptions, and cancel active listings. BTC ordinals only (not Solana). Mainnet-only.",
+      "description": "BTC ordinals marketplace operations via Magic Eden \u2014 browse active listings, list inscriptions for sale via PSBT flow, submit signed listings, buy inscriptions, and cancel active listings. BTC ordinals only (not Solana). Mainnet-only.",
       "entry": "ordinals-marketplace/SKILL.md",
       "arguments": [
         "get-listings",
@@ -1826,7 +1827,7 @@
     },
     {
       "name": "ordinals-p2p",
-      "description": "Peer-to-peer ordinals trading on the trade ledger (ledger.drx4.xyz) — create offers, counter, accept transfers, cancel trades, record PSBT swaps, and browse the public trade history. All write operations are BIP-137 authenticated.",
+      "description": "Peer-to-peer ordinals trading on the trade ledger (ledger.drx4.xyz) \u2014 create offers, counter, accept transfers, cancel trades, record PSBT swaps, and browse the public trade history. All write operations are BIP-137 authenticated.",
       "entry": "ordinals-p2p/ordinals-p2p.ts",
       "arguments": [
         "list-trades",
@@ -1873,7 +1874,7 @@
     },
     {
       "name": "paperboy",
-      "description": "Paid signal distribution for aibtc.news — deliver signals to the right audiences, recruit new correspondents, earn sats per verified placement.",
+      "description": "Paid signal distribution for aibtc.news \u2014 deliver signals to the right audiences, recruit new correspondents, earn sats per verified placement.",
       "entry": "paperboy/SKILL.md",
       "arguments": [
         "reference"
@@ -1893,7 +1894,7 @@
     },
     {
       "name": "pillar",
-      "description": "Pillar smart wallet operations in two modes — browser-handoff (pillar.ts) opens the Pillar frontend for user signing, and agent-signed direct (pillar-direct.ts) signs locally with a secp256k1 keypair and submits directly to the Pillar API (no browser required, gas sponsored). Supports sBTC send/supply/boost/unwind, DCA programs, stacking, key management, wallet creation, and position queries.",
+      "description": "Pillar smart wallet operations in two modes \u2014 browser-handoff (pillar.ts) opens the Pillar frontend for user signing, and agent-signed direct (pillar-direct.ts) signs locally with a secp256k1 keypair and submits directly to the Pillar API (no browser required, gas sponsored). Supports sBTC send/supply/boost/unwind, DCA programs, stacking, key management, wallet creation, and position queries.",
       "entry": [
         "pillar/pillar.ts",
         "pillar/pillar-direct.ts"
@@ -1995,7 +1996,7 @@
     },
     {
       "name": "psbt",
-      "description": "PSBT (Partially Signed Bitcoin Transaction) construction and signing — build PSBTs for ordinals purchases, estimate fees, sign with the active wallet, and broadcast finalized PSBTs.",
+      "description": "PSBT (Partially Signed Bitcoin Transaction) construction and signing \u2014 build PSBTs for ordinals purchases, estimate fees, sign with the active wallet, and broadcast finalized PSBTs.",
       "entry": "psbt/psbt.ts",
       "arguments": [
         "estimate-fee",
@@ -2022,7 +2023,7 @@
     },
     {
       "name": "query",
-      "description": "Stacks network and blockchain query operations — get STX fees, account info, transaction history, block info, mempool transactions, contract info and events, network status, and call read-only contract functions. All queries use the Hiro API.",
+      "description": "Stacks network and blockchain query operations \u2014 get STX fees, account info, transaction history, block info, mempool transactions, contract info and events, network status, and call read-only contract functions. All queries use the Hiro API.",
       "entry": "query/query.ts",
       "arguments": [
         "get-stx-fees",
@@ -2080,7 +2081,7 @@
     },
     {
       "name": "reputation",
-      "description": "ERC-8004 on-chain agent reputation management — submit and revoke feedback, append responses, approve clients, and query reputation summaries, feedback entries, and client lists.",
+      "description": "ERC-8004 on-chain agent reputation management \u2014 submit and revoke feedback, append responses, approve clients, and query reputation summaries, feedback entries, and client lists.",
       "entry": "reputation/reputation.ts",
       "arguments": [
         "give-feedback",
@@ -2121,7 +2122,7 @@
     },
     {
       "name": "runes",
-      "description": "Bitcoin rune operations — check rune balances, list rune-bearing UTXOs, and transfer runes between addresses with Runestone OP_RETURN encoding. Uses the Unisat API for indexing.",
+      "description": "Bitcoin rune operations \u2014 check rune balances, list rune-bearing UTXOs, and transfer runes between addresses with Runestone OP_RETURN encoding. Uses the Unisat API for indexing.",
       "entry": "runes/runes.ts",
       "arguments": [
         "balance",
@@ -2153,7 +2154,7 @@
     },
     {
       "name": "sbtc",
-      "description": "sBTC token operations on Stacks L2 — check balances, transfer sBTC, get deposit info, check peg statistics, deposit BTC to receive sBTC, and track deposit status. Transfer and deposit operations require an unlocked wallet.",
+      "description": "sBTC token operations on Stacks L2 \u2014 check balances, transfer sBTC, get deposit info, check peg statistics, deposit BTC to receive sBTC, and track deposit status. Transfer and deposit operations require an unlocked wallet.",
       "entry": "sbtc/sbtc.ts",
       "arguments": [
         "get-balance",
@@ -2273,7 +2274,7 @@
     },
     {
       "name": "signing",
-      "description": "Message signing and verification — SIP-018 structured Clarity data signing (on-chain verifiable), Stacks plain-text message signing (SIWS-compatible), Bitcoin message signing (BIP-137 for legacy/wrapped-SegWit, BIP-322 for native SegWit bc1q and Taproot bc1p), BIP-340 Schnorr signing for Taproot multisig, and Nostr event signing using NIP-06 key derivation. All signing requires an unlocked wallet; hash and verify operations do not.",
+      "description": "Message signing and verification \u2014 SIP-018 structured Clarity data signing (on-chain verifiable), Stacks plain-text message signing (SIWS-compatible), Bitcoin message signing (BIP-137 for legacy/wrapped-SegWit, BIP-322 for native SegWit bc1q and Taproot bc1p), BIP-340 Schnorr signing for Taproot multisig, and Nostr event signing using NIP-06 key derivation. All signing requires an unlocked wallet; hash and verify operations do not.",
       "entry": "signing/signing.ts",
       "arguments": [
         "sip018-sign",
@@ -2312,7 +2313,7 @@
     },
     {
       "name": "souldinals",
-      "description": "Souldinals collection management — inscribe soul.md as a child inscription under a genesis parent, list and load soul inscriptions from the wallet, and display parsed soul traits and metadata.",
+      "description": "Souldinals collection management \u2014 inscribe soul.md as a child inscription under a genesis parent, list and load soul inscriptions from the wallet, and display parsed soul traits and metadata.",
       "entry": "souldinals/souldinals.ts",
       "arguments": [
         "inscribe-soul",
@@ -2343,7 +2344,7 @@
     },
     {
       "name": "stacking",
-      "description": "STX stacking operations on Stacks — query PoX cycle info, check stacking status, lock STX to earn BTC rewards (stack-stx), and extend an existing stacking lock period. Write operations require an unlocked wallet.",
+      "description": "STX stacking operations on Stacks \u2014 query PoX cycle info, check stacking status, lock STX to earn BTC rewards (stack-stx), and extend an existing stacking lock period. Write operations require an unlocked wallet.",
       "entry": "stacking/stacking.ts",
       "arguments": [
         "get-pox-info",
@@ -2371,7 +2372,7 @@
     },
     {
       "name": "stacking-delegation",
-      "description": "Monitor STX stacking positions — status, PoX cycles, reward payouts, and delegation eligibility for autonomous agents.",
+      "description": "Monitor STX stacking positions \u2014 status, PoX cycles, reward payouts, and delegation eligibility for autonomous agents.",
       "entry": "stacking-delegation/stacking-delegation.ts",
       "arguments": [
         "doctor",
@@ -2393,7 +2394,7 @@
     },
     {
       "name": "stacking-lottery",
-      "description": "Stacking lottery pots on stackspot.app — pool STX into pots that get stacked via PoX, VRF picks a random winner for sBTC rewards, and all participants get their STX back. Mainnet-only.",
+      "description": "Stacking lottery pots on stackspot.app \u2014 pool STX into pots that get stacked via PoX, VRF picks a random winner for sBTC rewards, and all participants get their STX back. Mainnet-only.",
       "entry": "stacking-lottery/stacking-lottery.ts",
       "arguments": [
         "list-pots",
@@ -2454,11 +2455,11 @@
       ],
       "userInvocable": false,
       "author": "cliqueengagements",
-      "authorAgent": "Micro Basilisk (Agent 77) — SP219TWC8G12CSX5AB093127NC82KYQWEH8ADD1AY | bc1qzh2z92dlvccxq5w756qppzz8fymhgrt2dv8cf5"
+      "authorAgent": "Micro Basilisk (Agent 77) \u2014 SP219TWC8G12CSX5AB093127NC82KYQWEH8ADD1AY | bc1qzh2z92dlvccxq5w756qppzz8fymhgrt2dv8cf5"
     },
     {
       "name": "stacks-market",
-      "description": "Prediction market trading on stacksmarket.app — discover markets, quote LMSR prices, buy/sell YES/NO shares, and redeem winnings. Uses the market-factory-v18-bias contract on Stacks mainnet. Write operations require an unlocked wallet with STX.",
+      "description": "Prediction market trading on stacksmarket.app \u2014 discover markets, quote LMSR prices, buy/sell YES/NO shares, and redeem winnings. Uses the market-factory-v18-bias contract on Stacks mainnet. Write operations require an unlocked wallet with STX.",
       "entry": "stacks-market/stacks-market.ts",
       "arguments": [
         "list-markets",
@@ -2502,7 +2503,7 @@
     },
     {
       "name": "stackspot",
-      "description": "Stacking lottery pots on stackspot.app — pool STX into pots that get stacked via PoX, VRF picks a random winner for sBTC rewards, and all participants get their STX back. Mainnet-only.",
+      "description": "Stacking lottery pots on stackspot.app \u2014 pool STX into pots that get stacked via PoX, VRF picks a random winner for sBTC rewards, and all participants get their STX back. Mainnet-only.",
       "entry": "stackspot/stackspot.ts",
       "arguments": [
         "list-pots",
@@ -2535,7 +2536,7 @@
     },
     {
       "name": "stx",
-      "description": "Stacks L2 STX token operations — check balances, transfer STX, broadcast pre-signed transactions, call Clarity contracts, deploy contracts, and check transaction status. Transfer and contract operations require an unlocked wallet.",
+      "description": "Stacks L2 STX token operations \u2014 check balances, transfer STX, broadcast pre-signed transactions, call Clarity contracts, deploy contracts, and check transaction status. Transfer and contract operations require an unlocked wallet.",
       "entry": "stx/stx.ts",
       "arguments": [
         "get-balance",
@@ -2567,7 +2568,7 @@
     },
     {
       "name": "styx",
-      "description": "BTC→sBTC conversion via Styx protocol (btc2sbtc.com) — pool status, fee estimates, deposit creation, PSBT signing, broadcast, and deposit tracking.",
+      "description": "BTC\u2192sBTC conversion via Styx protocol (btc2sbtc.com) \u2014 pool status, fee estimates, deposit creation, PSBT signing, broadcast, and deposit tracking.",
       "entry": "styx/styx.ts",
       "arguments": [
         "pool-status",
@@ -2603,7 +2604,7 @@
     },
     {
       "name": "taproot-multisig",
-      "description": "Bitcoin Taproot M-of-N multisig coordination between agents — share x-only Taproot pubkeys, sign BIP-341 sighashes with Schnorr, verify co-signer signatures, and navigate the OP_CHECKSIGADD workflow. Proven on mainnet (2-of-2 block 937,849 and 3-of-3 block 938,206).",
+      "description": "Bitcoin Taproot M-of-N multisig coordination between agents \u2014 share x-only Taproot pubkeys, sign BIP-341 sighashes with Schnorr, verify co-signer signatures, and navigate the OP_CHECKSIGADD workflow. Proven on mainnet (2-of-2 block 937,849 and 3-of-3 block 938,206).",
       "entry": "taproot-multisig/taproot-multisig.ts",
       "arguments": [
         "get-pubkey",
@@ -2626,7 +2627,7 @@
     },
     {
       "name": "tenero",
-      "description": "Tenero (formerly STXTools) market analytics — token info, market stats, top gainers/losers, wallet holdings and trades, trending DEX pools, whale trades, holder distribution, and search. Covers Stacks, Spark, and SportsFun chains. No API key required.",
+      "description": "Tenero (formerly STXTools) market analytics \u2014 token info, market stats, top gainers/losers, wallet holdings and trades, trending DEX pools, whale trades, holder distribution, and search. Covers Stacks, Spark, and SportsFun chains. No API key required.",
       "entry": "tenero/tenero.ts",
       "arguments": [
         "token-info",
@@ -2667,7 +2668,7 @@
     },
     {
       "name": "tokens",
-      "description": "SIP-010 fungible token operations on Stacks L2 — check balances, transfer tokens, get token metadata, list all tokens owned by an address, and get top token holders. Supports well-known tokens by symbol (sBTC, USDCx, ALEX, DIKO) or full contract ID.",
+      "description": "SIP-010 fungible token operations on Stacks L2 \u2014 check balances, transfer tokens, get token metadata, list all tokens owned by an address, and get top token holders. Supports well-known tokens by symbol (sBTC, USDCx, ALEX, DIKO) or full contract ID.",
       "entry": "tokens/tokens.ts",
       "arguments": [
         "get-balance",
@@ -2722,7 +2723,7 @@
     },
     {
       "name": "validation",
-      "description": "ERC-8004 on-chain agent validation management — request and respond to validations, and query validation status, summaries, and paginated lists by agent or validator.",
+      "description": "ERC-8004 on-chain agent validation management \u2014 request and respond to validations, and query validation status, summaries, and paginated lists by agent or validator.",
       "entry": "validation/validation.ts",
       "arguments": [
         "request",
@@ -2792,7 +2793,7 @@
     },
     {
       "name": "wot",
-      "description": "Web of Trust operations for Nostr pubkeys — trust scoring, sybil detection, trust path analysis, neighbor discovery, follow recommendations, and network health. Free tier (wot.klabo.world, 50 req/day) with paid fallback (maximumsats.com, 100 sats via L402). Covers 52K+ pubkeys and 2.4M+ zap-weighted trust edges. Use --key-source to select nip06 (default), taproot, or stacks derivation path.",
+      "description": "Web of Trust operations for Nostr pubkeys \u2014 trust scoring, sybil detection, trust path analysis, neighbor discovery, follow recommendations, and network health. Free tier (wot.klabo.world, 50 req/day) with paid fallback (maximumsats.com, 100 sats via L402). Covers 52K+ pubkeys and 2.4M+ zap-weighted trust edges. Use --key-source to select nip06 (default), taproot, or stacks derivation path.",
       "entry": "wot/SKILL.md",
       "arguments": [
         "trust-score",
@@ -2854,7 +2855,7 @@
     },
     {
       "name": "yield-dashboard",
-      "description": "Cross-protocol DeFi yield dashboard for Stacks — view positions across Zest Protocol, ALEX DEX, and Bitflow, see total portfolio value, APY breakdown per protocol, and get rebalance suggestions. Read-only, mainnet-only. Requires an unlocked wallet for address context.",
+      "description": "Cross-protocol DeFi yield dashboard for Stacks \u2014 view positions across Zest Protocol, ALEX DEX, and Bitflow, see total portfolio value, APY breakdown per protocol, and get rebalance suggestions. Read-only, mainnet-only. Requires an unlocked wallet for address context.",
       "entry": "yield-dashboard/yield-dashboard.ts",
       "arguments": [
         "overview",
@@ -2883,7 +2884,7 @@
     },
     {
       "name": "yield-hunter",
-      "description": "Autonomous sBTC yield hunting daemon — monitors wallet sBTC balance and automatically deposits to Zest Protocol when balance exceeds a configurable threshold. Only works on mainnet. Requires an unlocked wallet with sBTC balance and STX for transaction fees.",
+      "description": "Autonomous sBTC yield hunting daemon \u2014 monitors wallet sBTC balance and automatically deposits to Zest Protocol when balance exceeds a configurable threshold. Only works on mainnet. Requires an unlocked wallet with sBTC balance and STX for transaction fees.",
       "entry": "yield-hunter/yield-hunter.ts",
       "arguments": [
         "start",
@@ -2940,7 +2941,7 @@
     },
     {
       "name": "zest-auto-repay",
-      "description": "Autonomous Zest Protocol LTV guardian — monitors borrowing positions, detects liquidation risk, and executes safe repayments with enforced spend limits to protect collateral on Stacks mainnet.",
+      "description": "Autonomous Zest Protocol LTV guardian \u2014 monitors borrowing positions, detects liquidation risk, and executes safe repayments with enforced spend limits to protect collateral on Stacks mainnet.",
       "entry": "zest-auto-repay/zest-auto-repay.ts",
       "arguments": [
         "doctor",
@@ -2994,7 +2995,7 @@
     },
     {
       "name": "zest-yield-manager",
-      "description": "Autonomous sBTC yield management on Zest Protocol — supply, withdraw, claim rewards, and monitor positions with safety controls.",
+      "description": "Autonomous sBTC yield management on Zest Protocol \u2014 supply, withdraw, claim rewards, and monitor positions with safety controls.",
       "entry": "zest-yield-manager/zest-yield-manager.ts",
       "arguments": [
         "doctor",
