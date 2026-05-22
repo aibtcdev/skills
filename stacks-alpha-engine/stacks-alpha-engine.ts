@@ -36,7 +36,23 @@ import { Command }    from "commander";
 import { homedir }    from "os";
 import { join }       from "path";
 import { readFileSync, writeFileSync } from "fs";
-import * as ecc       from "tiny-secp256k1";
+import { secp256k1 as _secp } from "@noble/curves/secp256k1.js";
+
+function xOnlyPointAddTweak(
+  p: Uint8Array,
+  tweak: Uint8Array,
+): { xOnlyPubkey: Uint8Array; parity: 0 | 1 } | null {
+  const tweakN = BigInt("0x" + Buffer.from(tweak).toString("hex"));
+  if (tweakN >= _secp.CURVE.n) return null;
+  const point = _secp.ProjectivePoint.fromHex("02" + Buffer.from(p).toString("hex"));
+  const result = point.add(_secp.ProjectivePoint.BASE.multiply(tweakN));
+  if (result.equals(_secp.ProjectivePoint.ZERO)) return null;
+  const aff = result.toAffine();
+  const xHex = aff.x.toString(16).padStart(64, "0");
+  const xOnly = new Uint8Array(32);
+  for (let i = 0; i < 32; i++) xOnly[i] = parseInt(xHex.slice(i * 2, i * 2 + 2), 16);
+  return { xOnlyPubkey: xOnly, parity: (aff.y % 2n === 0n ? 0 : 1) as 0 | 1 };
+}
 
 // == Constants ================================================================
 const FETCH_TIMEOUT_MS    = 30_000;
@@ -380,7 +396,7 @@ function xOnlyPubkeyToP2TR(xHex: string): string {
   if (xHex.length !== 64) throw new Error(`Expected 32-byte x-only pubkey, got ${xHex.length / 2} bytes`);
   const xBytes = Buffer.from(xHex, "hex");
   const tweak = tapTaggedHash("TapTweak", xBytes);
-  const tweaked = ecc.xOnlyPointAddTweak(xBytes, tweak);
+  const tweaked = xOnlyPointAddTweak(xBytes, tweak);
   if (!tweaked) throw new Error("Taproot key tweak failed");
   return bech32mEncode("bc", [1, ...convertBits(tweaked.xOnlyPubkey, 8, 5)]);
 }
