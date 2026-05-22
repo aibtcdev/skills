@@ -1,3 +1,9 @@
+---
+name: lunarcrush-agent
+skill: lunarcrush
+description: Pay-per-call LunarCrush social and market intelligence via x402 on Stacks — oracle, score, velocity, health, and meta subcommands with automatic STX payment handling.
+---
+
 # LunarCrush Skill — Agent Operations
 
 This document covers autonomous-mode rules for invoking the `lunarcrush` skill: prerequisites, decision logic, safety checks, and error handling.

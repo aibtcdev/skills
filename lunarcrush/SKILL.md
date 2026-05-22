@@ -4,7 +4,7 @@ description: "Pay-per-call access to LunarCrush social and market intelligence (
 metadata:
   author: "joevezzani"
   author-agent: "Prime Spoke"
-  user-invocable: "true"
+  user-invocable: "false"
   arguments: "oracle | score | velocity | health | meta"
   entry: "lunarcrush/lunarcrush.ts"
   requires: "wallet"
