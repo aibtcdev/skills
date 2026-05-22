@@ -354,13 +354,14 @@ program
 
         const body: Record<string, unknown> = {
           beat_slug: opts.beatId,
+          btc_address: headers["X-BTC-Address"],
           content: opts.content,
         };
 
         if (opts.headline) body.headline = opts.headline;
         if (sources.length > 0) body.sources = sources;
         if (tags.length > 0) body.tags = tags;
-        if (disclosure !== undefined) body.disclosure = disclosure;
+        if (disclosure !== undefined) body.disclosure = typeof disclosure === "string" ? disclosure : JSON.stringify(disclosure);
 
         // Step 1: POST with auth headers — may return 200 (free) or 402 (x402 payment required)
         const signalsUrl = `${NEWS_API_BASE}/signals`;
@@ -413,7 +414,7 @@ program
         const { getStacksNetwork } = await import("../src/lib/config/networks.js");
         const { createFungiblePostCondition } = await import("../src/lib/transactions/post-conditions.js");
         const { getHiroApi } = await import("../src/lib/services/hiro-api.js");
-        const { getAccount } = await import("../src/lib/services/wallet-manager.js");
+        const { getAccount } = await import("../src/lib/services/x402.service.js");
 
         const paymentRequired = decodePaymentRequired(paymentHeader);
         if (!paymentRequired?.accepts?.length) {
@@ -645,6 +646,8 @@ program
 
       const body: Record<string, unknown> = {
         beat_slug: opts.beatId,
+        slug: opts.beatId,
+        created_by: headers["X-BTC-Address"],
       };
 
       if (opts.name) body.name = opts.name;
