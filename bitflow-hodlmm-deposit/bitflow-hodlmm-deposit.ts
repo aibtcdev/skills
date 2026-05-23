@@ -502,6 +502,10 @@ async function getUserBins(wallet: string, poolId: string): Promise<Array<{ binI
     // when a wallet has no existing LP positions in the pool. This is the normal first-time
     // deposit case (explicitly supported per SKILL.md) — not an error. Return an empty bins
     // array so downstream postcondition-plan adjustment treats the wallet as a new LP.
+    // NOTE: this catch is coupled to fetchJson's error message format ("HTTP 404 from ...").
+    // If fetchJson's error format changes, update the startsWith check below accordingly —
+    // otherwise the catch silently fails (404 propagates instead of returning []), which is
+    // safe (no data loss) but the fix stops working with no diagnostic signal.
     if (
       error instanceof Error &&
       error.message.startsWith("HTTP 404 from") &&
