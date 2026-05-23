@@ -492,9 +492,25 @@ async function getBins(poolId: string): Promise<BinsResponse> {
 }
 
 async function getUserBins(wallet: string, poolId: string): Promise<Array<{ binId: number; userLiquidity: bigint; price?: string | number }>> {
-  const response = await fetchJson<UserBinsResponse>(
-    `${BITFLOW_API}/api/app/v1/users/${wallet}/positions/${poolId}/bins?fresh=true`
-  );
+  let response: UserBinsResponse;
+  try {
+    response = await fetchJson<UserBinsResponse>(
+      `${BITFLOW_API}/api/app/v1/users/${wallet}/positions/${poolId}/bins?fresh=true`
+    );
+  } catch (error) {
+    // BFF returns HTTP 404 with detail "Pool {pool} not found or user {addr} has no pool bins"
+    // when a wallet has no existing LP positions in the pool. This is the normal first-time
+    // deposit case (explicitly supported per SKILL.md) — not an error. Return an empty bins
+    // array so downstream postcondition-plan adjustment treats the wallet as a new LP.
+    if (
+      error instanceof Error &&
+      error.message.startsWith("HTTP 404 from") &&
+      /has no pool bins/i.test(error.message)
+    ) {
+      return [];
+    }
+    throw error;
+  }
   const bins = Array.isArray(response.bins) ? response.bins : [];
   return bins
     .map((bin) => ({
