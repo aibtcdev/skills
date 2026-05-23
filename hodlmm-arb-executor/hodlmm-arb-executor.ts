@@ -311,11 +311,14 @@ async function fetchDlmmBins(): Promise<DlmmData> {
 
     const poolData = pools.pools?.find(p => p.pool_id === DLMM_POOL_ID);
     if (!poolData) {
-      // Pool missing from /pools?amm_type=dlmm — fees default to 0, understating arb cost.
-      console.warn(`[hodlmm-arb-executor] ${DLMM_POOL_ID} not found in DLMM pools API; yFeeBps defaulting to 0`);
+      // Pool missing from /pools?amm_type=dlmm — fall back to conservative static rather than
+      // zeroing the DLMM cost leg, which would overstate arb profitability.
+      console.warn(`[hodlmm-arb-executor] ${DLMM_POOL_ID} not found in DLMM pools API; using fallback fee`);
     }
-    const xFeeBps = poolData?.x_total_fee_bps ? Number(poolData.x_total_fee_bps) : 0;
-    const yFeeBps = poolData?.y_total_fee_bps ? Number(poolData.y_total_fee_bps) : 0;
+    // FALLBACK_DLMM_FEE_BPS: wider than any active dlmm_6 fee; keeps GO/NO-GO on the safe side.
+    const FALLBACK_DLMM_FEE_BPS = 50;
+    const xFeeBps = poolData?.x_total_fee_bps ? Number(poolData.x_total_fee_bps) : FALLBACK_DLMM_FEE_BPS;
+    const yFeeBps = poolData?.y_total_fee_bps ? Number(poolData.y_total_fee_bps) : FALLBACK_DLMM_FEE_BPS;
 
     return {
       stxPerBtc: round(stxPerBtc, 2),
@@ -349,7 +352,10 @@ function analyzeSpread(oracle: OraclePrices, xyk: XykReserves, dlmm: DlmmData): 
 
   const grossSpread = Math.abs(((xyk.stxPerBtc - dlmm.stxPerBtc) / dlmm.stxPerBtc) * 100);
   // XYK fee is a fixed protocol parameter (30 bps). Only DLMM fees are variable.
-  const dlmmFeeTotal = dlmm.yFeeBps / 100;
+  // Use the higher of x/y DLMM fees as a direction-agnostic conservative bound.
+  // For dlmm_6 today xFeeBps == yFeeBps (symmetric pool), so this is a no-op in practice
+  // but guards against asymmetric-fee pools if more come online.
+  const dlmmFeeTotal = Math.max(dlmm.xFeeBps, dlmm.yFeeBps) / 100;
   const estFee = (FEE_BPS.xyk / 100) + dlmmFeeTotal;
   const netSpread = grossSpread - estFee;
   // Confidence buffer: STX feed uncertainty as % of price.

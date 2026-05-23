@@ -13,6 +13,7 @@ import {
   makeContractCall,
   broadcastTransaction,
   PostConditionMode,
+  Pc,
   contractPrincipalCV,
   intCV,
   listCV,
@@ -1215,6 +1216,16 @@ export class BitflowService {
 
     const totalMinX = params.positions.reduce((sum, position) => sum + BigInt(position.minXAmount), 0n);
     const totalMinY = params.positions.reduce((sum, position) => sum + BigInt(position.minYAmount), 0n);
+    const totalLpAmount = params.positions.reduce((sum, position) => sum + BigInt(position.amount), 0n);
+
+    // LP token debit: sender burns exactly totalLpAmount of pool LP tokens.
+    // Pool contract is the LP token issuer; token name follows SIP-010 convention "lp-token".
+    const lpTokenFt = `${poolAddress}.${poolName}` as `${string}.${string}`;
+    const postConditions = [
+      Pc.principal(params.account.address)
+        .willSendEq(totalLpAmount)
+        .ft(lpTokenFt, "lp-token"),
+    ];
 
     const transaction = await makeContractCall({
       contractAddress: routerAddress,
@@ -1229,8 +1240,8 @@ export class BitflowService {
       ],
       senderKey: params.account.privateKey,
       network,
-      postConditions: [],
-      postConditionMode: PostConditionMode.Allow,
+      postConditions,
+      postConditionMode: PostConditionMode.Deny,
       ...(params.fee !== undefined && { fee: params.fee }),
     });
 
