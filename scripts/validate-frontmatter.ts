@@ -10,9 +10,10 @@ const repoRoot = dirname(scriptsDir);
 // CLI flags
 const skipSpec = process.argv.includes("--skip-spec");
 
-// Find the skills-ref binary: prefer local venv, fall back to PATH
+// Find the agentskills binary: prefer local venv, fall back to PATH
+// Note: skills-ref PyPI package >= 0.1.1 installs the CLI as `agentskills` (renamed from `skills-ref`)
 async function findSkillsRef(): Promise<string | null> {
-  const localBin = join(repoRoot, ".venv-skills-ref/bin/skills-ref");
+  const localBin = join(repoRoot, ".venv-skills-ref/bin/agentskills");
   try {
     const stat = await Bun.file(localBin).stat();
     if (stat.size > 0) return localBin;
@@ -20,8 +21,8 @@ async function findSkillsRef(): Promise<string | null> {
     // not found locally
   }
   // Fall back to PATH (cross-platform)
-  const pathResult = Bun.which("skills-ref");
-  if (pathResult) return "skills-ref";
+  const pathResult = Bun.which("agentskills");
+  if (pathResult) return "agentskills";
   return null;
 }
 
@@ -145,7 +146,7 @@ if (!skipSpec) {
   skillsRefBin = await findSkillsRef();
   if (skillsRefBin === null) {
     process.stderr.write(
-      "WARNING: skills-ref not found. Skipping tier-1 spec validation. Install with: pip install skills-ref\n"
+      "WARNING: agentskills not found. Skipping tier-1 spec validation. Install with: pip install skills-ref\n"
     );
   }
 }
@@ -153,7 +154,7 @@ if (!skipSpec) {
 // Print active tiers
 const tier1Active = !skipSpec && skillsRefBin !== null;
 console.log(
-  `Validation tiers: ${tier1Active ? "[tier-1: skills-ref]" : "[tier-1: SKIPPED]"} [tier-2: Zod]`
+  `Validation tiers: ${tier1Active ? "[tier-1: agentskills]" : "[tier-1: SKIPPED]"} [tier-2: Zod]`
 );
 console.log("");
 
