@@ -1,6 +1,6 @@
 {
-  "version": "0.41.0",
-  "generated": "2026-05-11T17:17:00.899Z",
+  "version": "0.42.0",
+  "generated": "2026-05-16T05:53:10.857Z",
   "skills": [
     {
       "name": "agent-lookup",
@@ -413,6 +413,36 @@
         "bitflow_cancel_order",
         "bitflow_get_keeper_user"
       ]
+    },
+    {
+      "name": "bitflow-funding-coordinator",
+      "description": "Coordinates Bitflow funding swaps into route-ready target tokens for downstream strategy skills.",
+      "entry": "bitflow-funding-coordinator/bitflow-funding-coordinator.ts",
+      "arguments": [
+        "doctor",
+        "status",
+        "plan",
+        "run",
+        "resume",
+        "cancel"
+      ],
+      "requires": [
+        "wallet",
+        "signing",
+        "settings",
+        "bitflow-swap-aggregator",
+        "nonce-manager"
+      ],
+      "tags": [
+        "defi",
+        "write",
+        "mainnet-only",
+        "requires-funds",
+        "l2"
+      ],
+      "userInvocable": false,
+      "author": "gregoryford963-sys",
+      "authorAgent": "Amber Otter"
     },
     {
       "name": "bitflow-hodlmm-deposit",
