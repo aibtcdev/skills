@@ -1126,8 +1126,14 @@ function contextData(context: Context): JsonMap {
       pendingDepth: context.pendingDepth,
       postConditionMode: "deny",
       activeBinTolerance: {
-        observedActiveBinId: context.bins.active_bin_id,
-        routerExpectedBinId: routerExpectedBinId(context.bins.active_bin_id),
+        // BFF reports the active bin in ABSOLUTE coordinates [0, 1000] (center = HODLMM_CENTER_BIN_ID).
+        // The on-chain pool/router use RELATIVE coordinates [MIN_BIN_ID -500, MAX_BIN_ID 500] (center = 0).
+        // The two always differ by HODLMM_CENTER_BIN_ID (500) BY DESIGN — this gap is the center
+        // offset, not active-bin drift. The router's ERR_ACTIVE_BIN_TOLERANCE assert compares its own
+        // on-chain get-active-bin-id against onChainExpectedBinId (both relative), so a synced pool
+        // yields delta 0 and passes even at maxDeviation 0.
+        bffActiveBinId: context.bins.active_bin_id,
+        onChainExpectedBinId: routerExpectedBinId(context.bins.active_bin_id),
         maxDeviation: context.selection.activeBinMaxDeviation,
       },
       postconditions: [
