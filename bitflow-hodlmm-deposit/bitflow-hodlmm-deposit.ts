@@ -492,9 +492,29 @@ async function getBins(poolId: string): Promise<BinsResponse> {
 }
 
 async function getUserBins(wallet: string, poolId: string): Promise<Array<{ binId: number; userLiquidity: bigint; price?: string | number }>> {
-  const response = await fetchJson<UserBinsResponse>(
-    `${BITFLOW_API}/api/app/v1/users/${wallet}/positions/${poolId}/bins?fresh=true`
-  );
+  let response: UserBinsResponse;
+  try {
+    response = await fetchJson<UserBinsResponse>(
+      `${BITFLOW_API}/api/app/v1/users/${wallet}/positions/${poolId}/bins?fresh=true`
+    );
+  } catch (error) {
+    // BFF returns HTTP 404 with detail "Pool {pool} not found or user {addr} has no pool bins"
+    // when a wallet has no existing LP positions in the pool. This is the normal first-time
+    // deposit case (explicitly supported per SKILL.md) — not an error. Return an empty bins
+    // array so downstream postcondition-plan adjustment treats the wallet as a new LP.
+    // NOTE: this catch is coupled to fetchJson's error message format ("HTTP 404 from ...").
+    // If fetchJson's error format changes, update the startsWith check below accordingly —
+    // otherwise the catch silently fails (404 propagates instead of returning []), which is
+    // safe (no data loss) but the fix stops working with no diagnostic signal.
+    if (
+      error instanceof Error &&
+      error.message.startsWith("HTTP 404 from") &&
+      /has no pool bins/i.test(error.message)
+    ) {
+      return [];
+    }
+    throw error;
+  }
   const bins = Array.isArray(response.bins) ? response.bins : [];
   return bins
     .map((bin) => ({
@@ -1106,8 +1126,14 @@ function contextData(context: Context): JsonMap {
       pendingDepth: context.pendingDepth,
       postConditionMode: "deny",
       activeBinTolerance: {
-        observedActiveBinId: context.bins.active_bin_id,
-        routerExpectedBinId: routerExpectedBinId(context.bins.active_bin_id),
+        // BFF reports the active bin in ABSOLUTE coordinates [0, 1000] (center = HODLMM_CENTER_BIN_ID).
+        // The on-chain pool/router use RELATIVE coordinates [MIN_BIN_ID -500, MAX_BIN_ID 500] (center = 0).
+        // The two always differ by HODLMM_CENTER_BIN_ID (500) BY DESIGN — this gap is the center
+        // offset, not active-bin drift. The router's ERR_ACTIVE_BIN_TOLERANCE assert compares its own
+        // on-chain get-active-bin-id against onChainExpectedBinId (both relative), so a synced pool
+        // yields delta 0 and passes even at maxDeviation 0.
+        bffActiveBinId: context.bins.active_bin_id,
+        onChainExpectedBinId: routerExpectedBinId(context.bins.active_bin_id),
         maxDeviation: context.selection.activeBinMaxDeviation,
       },
       postconditions: [
