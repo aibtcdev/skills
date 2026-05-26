@@ -4,7 +4,7 @@
   "description": "Claude Code skills for Bitcoin/Stacks blockchain operations — flat SKILL.md + colocated TypeScript CLI scripts.",
   "type": "module",
   "scripts": {
-    "build": "bun build src/lib/index.ts --outdir dist",
+    "build": "bun build src/lib/index.ts --outdir dist --target bun",
     "typecheck": "tsc --noEmit",
     "manifest": "bun run scripts/generate-manifest.ts",
     "validate": "bun run scripts/validate-frontmatter.ts",
