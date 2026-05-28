@@ -69,9 +69,10 @@ const MOCK_POOL_DETAIL = {
   },
 };
 
+const originalFetch = globalThis.fetch;
+
 afterEach(() => {
-  // Reset to real fetch after each test
-  globalThis.fetch = fetch;
+  globalThis.fetch = originalFetch;
 });
 
 test("analyzePool returns partial result with hiro_rate_limited when fetch throws 429", async () => {
