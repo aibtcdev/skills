@@ -35,7 +35,7 @@ Expected output: `success: true`, addresses for both Bitcoin and Stacks.
 
 ### 2. Sign with Bitcoin Key (BIP-137)
 
-Use for AIBTC platform operations: check-ins, inbox replies, paid-attention responses, claim code regeneration.
+Use for AIBTC platform operations: check-ins, inbox replies, claim code regeneration.
 
 ```bash
 bun run signing/signing.ts btc-sign --message "Your message here"
