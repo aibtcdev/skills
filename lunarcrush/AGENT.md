@@ -52,7 +52,7 @@ Before calling `score`:
 
 ## Manual retry policy
 
-If you receive a `200` response with `galaxy_score: null` and believe the call consumed payment against an upstream failure, open a GitHub issue or mention the skill maintainer on the existing LunarCrush payment-vs-delivery thread with the payment txid and symbol queried.
+If a paid call returns `200` with `galaxy_score: null`, open a GitHub issue referencing the LunarCrush payment-vs-delivery thread with the payment txid and symbol queried.
 
 The maintainer can verify the on-chain payment, cross-check the server-side failure log, and honor a manual re-serve of the data. One retry per txid; caller-surfaced proof is required. This policy holds until an automated retry-with-proof endpoint ships.
 
