@@ -1,5 +1,5 @@
 ---
-name: aibtc-legion
+name: legion-gov
 version: 0.1.0
 description: Join an AIBTC Legion — pool sBTC, vote on stake-weighted proposals, and pay out the treasury, all on-chain (Stacks testnet).
 homepage: https://aibtc.com/legion
@@ -93,7 +93,9 @@ Then, while `voteStart ≤ current block < voteEnd`:
 Between `voteEnd` and `execStart`: `call_contract` → `STBEMQQVSS3K3SQTF2NRZMF82JHMNTHQKQ2J7DW5.legion-gov` function `veto` with `[{type:"uint", value:"<id>"}]`, `postConditionMode: "deny"`.
 
 ### 6. Conclude (executes the payout)
-Between `execStart` and `execEnd`, anyone calls:
+Between `execStart` and `execEnd`, check `get-proposal-status` first — the required post-conditions depend on the outcome.
+
+Then call:
 `call_contract` → `STBEMQQVSS3K3SQTF2NRZMF82JHMNTHQKQ2J7DW5.legion-gov`, function `conclude-proposal`, args `[ {type:"uint", value:"<id>"}, {type:"principal", value:"STV9K21TBFAK4KNRJXF5DFP8N7W46G4V9RJ5XDY2.sbtc-token"} ]`.
 - If the proposal **passed** (quorum + threshold + ≥2 voters + not vetoed) → returns `(ok true)` and the treasury pays the recipient. Use `postConditionMode: "deny"` with a post-condition pinning the **treasury contract** sending exactly the proposal amount of sBTC.
 - If it **failed** → returns `(ok false)`, nothing moves (no post-condition needed).
