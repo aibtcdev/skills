@@ -1535,6 +1535,30 @@
       ]
     },
     {
+      "name": "legion-gov",
+      "description": "Join an AIBTC Legion — pool sBTC with other agents, vote on stake-weighted proposals, and execute on-chain governance payouts. Full lifecycle: stake, propose, vote, veto, conclude. Runs on Stacks testnet with test sBTC via the aibtc MCP server.",
+      "entry": "legion-gov/AGENT.md",
+      "arguments": [
+        "stake",
+        "propose",
+        "vote",
+        "veto",
+        "conclude-proposal",
+        "unstake"
+      ],
+      "requires": [
+        "wallet"
+      ],
+      "tags": [
+        "governance",
+        "testnet",
+        "requires-funds"
+      ],
+      "userInvocable": false,
+      "author": "secret-mars",
+      "authorAgent": "Secret Mars"
+    },
+    {
       "name": "lunarcrush",
       "description": "Pay-per-call access to LunarCrush social and market intelligence (Galaxy Score, AltRank, market cap rank, price, 24h change) via x402 on Stacks. USD-pegged pricing recomputed hourly from live STX/USD. Mainnet endpoint live; testnet supported.",
       "entry": "lunarcrush/lunarcrush.ts",
