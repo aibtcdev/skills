@@ -16,7 +16,13 @@ export const MAINNET_CONTRACTS = {
   BNS: "SP000000000000000000002Q6VF78.bns",
 
   // Stacking
+  // NOTE: pox-4 is superseded by pox-5 at Epoch 4.0 activation (stacks-core 4.0.0,
+  // Bitcoin height ~960230, ~2026-07-29). Existing pox-4 locks are unaffected, but new
+  // stack/delegate/extend/increase calls must target the currently active PoX contract.
+  // stacking.service.ts resolves this dynamically via /v2/pox `contract_id`; POX_4/POX_5
+  // here are fallbacks only — do not hardcode either into new call sites.
   POX_4: "SP000000000000000000002Q6VF78.pox-4",
+  POX_5: "SP000000000000000000002Q6VF78.pox-5",
 
   // ALEX DEX (SDK handles most operations, but we need pool contract for queries)
   ALEX_AMM_POOL: "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9.amm-swap-pool-v1-1",
@@ -165,8 +171,9 @@ export const TESTNET_CONTRACTS = {
   // BNS
   BNS: "ST000000000000000000002AMW42H.bns",
 
-  // Stacking
+  // Stacking (see mainnet note above re: pox-4 -> pox-5)
   POX_4: "ST000000000000000000002AMW42H.pox-4",
+  POX_5: "ST000000000000000000002AMW42H.pox-5",
 
   // ERC-8004 Identity & Reputation
   IDENTITY_REGISTRY: "ST3YT0XW92E6T2FE59B2G5N2WNNFSBZ6MZKQS5D18.identity-registry-v2",

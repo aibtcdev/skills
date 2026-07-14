@@ -39,13 +39,32 @@ export class StackingService {
   }
 
   /**
+   * Resolve the currently active PoX contract from the node (/v2/pox `contract_id`)
+   * rather than a hardcoded version. This is what makes stack/delegate/extend/increase
+   * calls survive PoX version transitions (e.g. pox-4 -> pox-5 at Epoch 4.0) without a
+   * code change. Falls back to the last-known POX_4 constant if the node call fails.
+   */
+  private async getActivePoxContract(): Promise<string> {
+    try {
+      const poxInfo = await this.hiro.getPoxInfo();
+      if (poxInfo.contract_id) {
+        return poxInfo.contract_id;
+      }
+    } catch {
+      // fall through to static fallback
+    }
+    return this.contracts.POX_4;
+  }
+
+  /**
    * Get stacking status for an address
    * Note: Returns whether the address is stacking, but detailed amounts require proper CV parsing
    */
   async getStackingStatus(address: string): Promise<StackingStatus> {
     try {
+      const poxContract = await this.getActivePoxContract();
       const result = await this.hiro.callReadOnlyFunction(
-        this.contracts.POX_4,
+        poxContract,
         "get-stacker-info",
         [{ type: "principal", value: address } as unknown as ClarityValue],
         address
@@ -87,7 +106,7 @@ export class StackingService {
     startBurnHeight: number,
     lockPeriod: number
   ): Promise<TransferResult> {
-    const { address: contractAddress, name: contractName } = parseContractId(this.contracts.POX_4);
+    const { address: contractAddress, name: contractName } = parseContractId(await this.getActivePoxContract());
 
     const functionArgs: ClarityValue[] = [
       uintCV(amount),
@@ -123,7 +142,7 @@ export class StackingService {
     extendCount: number,
     poxAddress: { version: number; hashbytes: string }
   ): Promise<TransferResult> {
-    const { address: contractAddress, name: contractName } = parseContractId(this.contracts.POX_4);
+    const { address: contractAddress, name: contractName } = parseContractId(await this.getActivePoxContract());
 
     const functionArgs: ClarityValue[] = [
       uintCV(extendCount),
@@ -150,7 +169,7 @@ export class StackingService {
     account: Account,
     increaseAmount: bigint
   ): Promise<TransferResult> {
-    const { address: contractAddress, name: contractName } = parseContractId(this.contracts.POX_4);
+    const { address: contractAddress, name: contractName } = parseContractId(await this.getActivePoxContract());
 
     const functionArgs: ClarityValue[] = [uintCV(increaseAmount)];
 
@@ -180,7 +199,7 @@ export class StackingService {
     untilBurnHeight?: number,
     poxAddress?: { version: number; hashbytes: string }
   ): Promise<TransferResult> {
-    const { address: contractAddress, name: contractName } = parseContractId(this.contracts.POX_4);
+    const { address: contractAddress, name: contractName } = parseContractId(await this.getActivePoxContract());
 
     const functionArgs: ClarityValue[] = [
       uintCV(amount),
@@ -208,7 +227,7 @@ export class StackingService {
    * Revoke delegation
    */
   async revokeDelegation(account: Account): Promise<TransferResult> {
-    const { address: contractAddress, name: contractName } = parseContractId(this.contracts.POX_4);
+    const { address: contractAddress, name: contractName } = parseContractId(await this.getActivePoxContract());
 
     // No assets moved from sender (revokes delegation permission)
     return callContract(account, {
