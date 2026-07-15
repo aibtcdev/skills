@@ -883,7 +883,11 @@ export class BitflowService {
   async getUnifiedRouteQuotes(
     tokenXId: string,
     tokenYId: string,
-    amount: number
+    amount: number,
+    // Fractional slippage tolerance (e.g. 0.01 = 1%), matching the quotes-plane
+    // response-field semantics. 2026-07-15 field audit F-6: previously hardcoded
+    // to `3` (ambiguous scale) regardless of the user's --slippage-tolerance.
+    slippageTolerance: number = 0.01
   ): Promise<UnifiedBitflowRouteQuote[]> {
     this.ensureMainnet();
     const sdk = this.ensureSdk();
@@ -933,7 +937,7 @@ export class BitflowService {
               output_token: hodlmmTokenYContract,
               amount_in: hodlmmAmountIn,
               amm_strategy: "best",
-              slippage_tolerance: 3,
+              slippage_tolerance: slippageTolerance,
             }),
           }
         );
@@ -1241,7 +1245,7 @@ export class BitflowService {
   ): Promise<UnifiedBitflowRouteQuote[]> {
     this.ensureMainnet();
     if (amount !== undefined) {
-      return this.getUnifiedRouteQuotes(tokenXId, tokenYId, amount);
+      return this.getUnifiedRouteQuotes(tokenXId, tokenYId, amount, slippageTolerance);
     }
 
     const sdk = this.ensureSdk();
@@ -1306,7 +1310,8 @@ export class BitflowService {
   async getSwapQuote(
     tokenXId: string,
     tokenYId: string,
-    amount: number
+    amount: number,
+    slippageTolerance: number = 0.01
   ): Promise<BitflowSwapQuote> {
     const rankedRoutes = await this.getUnifiedRouteQuotes(tokenXId, tokenYId, amount);
     const bestRoute = rankedRoutes[0];
@@ -1561,10 +1566,11 @@ export class BitflowService {
     tokenYId: string,
     amountIn: number,
     slippageTolerance: number = 0.01,
-    fee?: bigint
+    fee?: bigint,
+    allowUnprotectedHodlmmSwap: boolean = false
   ): Promise<TransferResult> {
     this.ensureMainnet();
-    const quote = await this.getSwapQuote(tokenXId, tokenYId, amountIn);
+    const quote = await this.getSwapQuote(tokenXId, tokenYId, amountIn, slippageTolerance);
     const executableRoute = quote.bestExecutableRoute;
 
     if (!executableRoute) {
@@ -1572,6 +1578,27 @@ export class BitflowService {
     }
 
     if (executableRoute.source === "hodlmm") {
+      // 2026-07-15 field audit F-1 (CRITICAL): this path calls dlmm-core-v-1-1
+      // swap-x-for-y / swap-y-for-x, whose signature has NO minimum-output
+      // parameter (contract source :1277-1281), fills at most the single active
+      // bin per call (:1320, :1331), and is broadcast in Allow mode with no
+      // post-conditions — zero on-chain protection. The Bitflow wiki's own
+      // security guidance: "route through dlmm-swap-router, not dlmm-core
+      // directly"; post-conditions are the ONLY slippage/fund guard on the core
+      // swap path. Observed live 2026-07-14: a garbage quote (implied $107k/BTC
+      // vs $64.9k market) would have executed unprotected.
+      // Interim guard until this path targets dlmm-swap-router-v-1-2
+      // swap-*-simple-range-multi (max-steps <= 230) with a real min-out:
+      // refuse by default; require an explicit opt-in for supervised use only.
+      if (!allowUnprotectedHodlmmSwap) {
+        throw new Error(
+          "REFUSED: best route is a direct HODLMM core swap, which cannot carry a minimum-output bound " +
+          "(no min-out parameter; single-bin fills; Allow mode). This path is unsafe for unattended use. " +
+          "Use an SDK-routed pair instead, or re-run with --allow-unprotected-hodlmm-swap for supervised, " +
+          "small-size use after verifying the quote against an independent price. " +
+          `Quoted route: ${executableRoute.label} out=${executableRoute.amountOutHuman}.`
+        );
+      }
       return this.executeHodlmmSwap(account, executableRoute, fee);
     }
 
