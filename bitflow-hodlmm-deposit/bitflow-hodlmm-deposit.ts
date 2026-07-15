@@ -252,6 +252,7 @@ interface Context {
   poolInterface: ContractInterface;
   xAsset: TokenAsset;
   yAsset: TokenAsset;
+  ownedNftBinIds: Set<number>;
 }
 
 interface SharedOptions {
@@ -528,6 +529,34 @@ async function getUserBins(wallet: string, poolId: string): Promise<Array<{ binI
 
 async function getBalances(wallet: string): Promise<HiroBalancesResponse> {
   return fetchJson<HiroBalancesResponse>(`${HIRO_API}/extended/v1/address/${wallet}/balances`);
+}
+
+// 2026-07-15 field audit F-7: the pool's tag-pool-token-id burns AND re-mints the
+// bin's position NFT on every pool-mint/pool-burn IF the wallet already owns it —
+// a sender asset movement that needs an NFT post-condition in Deny mode. For a
+// first-time bin only a mint occurs, so a declared "will send NFT" PC there aborts
+// the tx. Crucially, NFT ownership PERSISTS AT ZERO LIQUIDITY (tag re-mints on the
+// final burn too), so `userLiquidity > 0` under-detects: re-entering a previously
+// fully-withdrawn bin still moves the NFT and would abort in Deny mode without a
+// PC. Read actual NFT holdings instead.
+async function getOwnedPositionNftBinIds(wallet: string, poolContract: string): Promise<Set<number>> {
+  const owned = new Set<number>();
+  const assetId = `${poolContract}::${DLP_TOKEN_ID_ASSET_NAME}`;
+  let offset = 0;
+  const limit = 200;
+  for (;;) {
+    const page = await fetchJson<{ total?: number; results?: Array<{ value?: { repr?: string } }> }>(
+      `${HIRO_API}/extended/v1/tokens/nft/holdings?principal=${wallet}&asset_identifiers=${encodeURIComponent(assetId)}&limit=${limit}&offset=${offset}`
+    );
+    const results = Array.isArray(page.results) ? page.results : [];
+    for (const item of results) {
+      const match = /\(token-id u(\d+)\)/.exec(item.value?.repr ?? "");
+      if (match) owned.add(Number(match[1]));
+    }
+    offset += results.length;
+    if (results.length < limit || offset >= (page.total ?? 0)) break;
+  }
+  return owned;
 }
 
 async function getPendingTransactions(wallet: string): Promise<HiroMempoolResponse> {
@@ -929,8 +958,12 @@ function buildPostConditions(context: Context) {
     }
   }
 
+  // F-7: key the per-bin NFT PC on actual NFT OWNERSHIP (Hiro NFT holdings),
+  // not on userLiquidity > 0 — the position NFT persists at zero liquidity, so
+  // re-entering a previously fully-withdrawn bin still burns+re-mints the NFT
+  // and needs the PC in Deny mode.
   for (const bin of context.selectedBins) {
-    if (bin.hasExistingPosition) {
+    if (bin.hasExistingPosition || context.ownedNftBinIds.has(bin.binId)) {
       postConditions.push(Pc.principal(context.wallet)
         .willSendAsset()
         .nft(
@@ -967,12 +1000,13 @@ async function collectContext(opts: SharedOptions, requirePlan = true): Promise<
     getContract(HODLMM_LIQUIDITY_ROUTER),
   ]);
 
-  const [poolContract, routerInterface, poolInterface, xInterface, yInterface] = await Promise.all([
+  const [poolContract, routerInterface, poolInterface, xInterface, yInterface, ownedNftBinIds] = await Promise.all([
     getContract(pool.poolContract),
     getContractInterface(HODLMM_LIQUIDITY_ROUTER),
     getContractInterface(pool.poolContract),
     getContractInterface(pool.tokenX.contract),
     getContractInterface(pool.tokenY.contract),
+    getOwnedPositionNftBinIds(wallet, pool.poolContract),
   ]);
 
   if (!pool.status) {
@@ -1087,6 +1121,7 @@ async function collectContext(opts: SharedOptions, requirePlan = true): Promise<
     poolInterface,
     xAsset,
     yAsset,
+    ownedNftBinIds,
   };
 }
 
