@@ -232,3 +232,7 @@ All outputs are strict JSON to stdout.
 Winner of AIBTC x Bitflow Skills Pay the Bills competition.
 Original author: @cliqueengagements
 Competition PR: https://github.com/BitflowFinance/bff-skills/pull/39
+
+## PINNED detection (2026-07-15 field audit F-5)
+
+When the pool's active bin is at the grid edge (unsigned 0 or 1000) AND pool-vs-market divergence exceeds the slippage cap, the guardian emits a distinct `PINNED` action (plus `at_grid_edge` / `pinned` data fields) instead of an unpassable slippage HOLD. While pinned, pool price is frozen by contract design and the divergence is structural — do not rebalance or blind-swap; route to the exit/withdraw path (withdraw minimums remain enforceable) or escalate. There is no official pinned signal in the Bitflow API; this is derived from contract behavior. Observed live on dlmm_3 (2026-07-13): 1.4–4.8% structural divergence for ~36h that deadlocked slippage-gated automation.

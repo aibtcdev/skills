@@ -361,9 +361,23 @@ async function runGuardian(wallet?: string, poolId?: string): Promise<{
 
   const canRebalance = refusals.length === 0;
 
+  // ── Grid-edge / pinning detection (2026-07-15 field audit F-5) ──────────────
+  // The DLMM active bin cannot move past the grid edge (dlmm-core: it only
+  // decrements while bin-id > MIN_BIN_ID, mirrored at MAX). At the edge the
+  // pool price freezes while the market keeps moving, so pool-vs-market
+  // "slippage" becomes STRUCTURAL — the slippage gate can never clear
+  // (observed live: 1.4–4.8% divergence for ~36h on dlmm_3, 2026-07-13, while
+  // the pool sat at unsigned bin 0). There is no official pinned signal
+  // anywhere in the Bitflow API surface; this detection is derived.
+  // Unsigned grid: 0 = raw −500 floor, 1000 = raw +500 ceiling.
+  const atGridEdge = active_bin_id <= 0 || active_bin_id >= 1000;
+  const pinned     = atGridEdge && !slippageResult.ok;
+
   let action: string;
   if (inRange === null) {
     action = `CHECK — ${positionNote}`;
+  } else if (pinned && !inRange) {
+    action = `PINNED — pool is at the grid edge (active bin ${active_bin_id}) with structural pool-vs-market divergence ${slippageResult.pct.toFixed(2)}%. The slippage gate cannot clear while pinned. Do NOT rebalance or blind-swap; route to the exit/withdraw path (withdraw minimums remain enforceable while pinned) or escalate to a human.`;
   } else if (inRange) {
     action = `HOLD — position in range at active bin ${active_bin_id}. APR (24h): ${apr24h.toFixed(2)}%.`;
   } else if (!canRebalance) {
@@ -378,6 +392,8 @@ async function runGuardian(wallet?: string, poolId?: string): Promise<{
     data: {
       in_range:             inRange,
       active_bin:           active_bin_id,
+      at_grid_edge:         atGridEdge,
+      pinned:               pinned,
       user_bin_range:       userBinRange,
       can_rebalance:        canRebalance,
       refusal_reasons:      refusals.length > 0 ? refusals : null,
