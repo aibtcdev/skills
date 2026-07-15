@@ -375,15 +375,56 @@ async function executeMove(
   } = await import("@stacks/transactions" as string);
   const { STACKS_MAINNET } = await import("@stacks/network" as string);
 
+  // ── u5001 prevention gate (2026-07-15 field audit F-8) ────────────────────
+  // dlmm-core move-liquidity enforces side-asserts against the LIVE active bin
+  // at execution (contract :1970-1971): X-bearing funds may only land at/above
+  // it (err u1020), Y-bearing only at/below (err u1021). A plan built against
+  // a stale active bin violates these on-chain; the router's batch fold then
+  // MASKS the true error as u5001 (ERR_NO_RESULT_DATA — every later fold
+  // element overwrites the real code) and the fee is burned. Confirmed live
+  // 2026-07-14 on dlmm_1 (0.1 STX burned; dry-run did not catch it).
+  // Re-read the active bin immediately before signing and refuse on any drift
+  // or side-illegality.
+  const freshBins = await fetchPoolBins(pool.pool_id);
+  const freshActive = freshBins.active_bin_id;
+  if (freshActive !== activeBin) {
+    throw new Error(
+      `STALE_ACTIVE_BIN: plan was built for active bin ${activeBin} but the live active bin is ${freshActive}. ` +
+      `Re-plan against fresh state (u5001-class abort prevented; no fee spent).`
+    );
+  }
+  const activeSignedFresh = freshActive - CENTER_BIN_ID;
+  for (const m of moves) {
+    const toSigned = activeSignedFresh + m.activeBinOffset;
+    const fromSigned = m.fromBinId;
+    // From-bin side determines what the withdrawn funds contain:
+    // above active = X only, below = Y only, equal = mixed (both constraints).
+    const carriesX = fromSigned >= activeSignedFresh;
+    const carriesY = fromSigned <= activeSignedFresh;
+    if (carriesX && toSigned < activeSignedFresh) {
+      throw new Error(
+        `ILLEGAL_MOVE_GEOMETRY: X-bearing funds from bin ${fromSigned} cannot land below the active bin ` +
+        `(${toSigned} < ${activeSignedFresh}; would abort u1020, masked as u5001). Use withdraw->swap->redeposit instead.`
+      );
+    }
+    if (carriesY && toSigned > activeSignedFresh) {
+      throw new Error(
+        `ILLEGAL_MOVE_GEOMETRY: Y-bearing funds from bin ${fromSigned} cannot land above the active bin ` +
+        `(${toSigned} > ${activeSignedFresh}; would abort u1021, masked as u5001). Use withdraw->swap->redeposit instead.`
+      );
+    }
+  }
+
   const [poolAddr, poolName] = pool.pool_contract.split(".");
   const [xAddr, xName] = pool.token_x.split(".");
   const [yAddr, yName] = pool.token_y.split(".");
 
-  // Route to move-liquidity-multi (absolute to-bin-id, list length 220) instead of
-  // move-relative-liquidity-multi (relative offset, list length 208). Our positions
-  // routinely carry 209–221 bins after prior rebalances; the relative variant's
-  // 208-cap overflows Clarity parse → BadFunctionArgument. The non-relative variant
-  // fits our size exactly and takes absolute signed bin IDs (bin - CENTER_BIN_ID).
+  // Routes to move-liquidity-multi (absolute signed bin IDs = bin - CENTER_BIN_ID).
+  // CORRECTION (2026-07-15 field audit F-8): the earlier rationale here — relative-
+  // variant list cap 208 vs 220 — is contradicted by dlmm-liquidity-router-v-1-1
+  // source: ALL batch entrypoints take (list 350 ...), and move-relative-liquidity-
+  // multi exists. The absolute variant remains a valid choice (explicit destinations
+  // are easier to legality-check pre-flight, see the u5001 gate above).
   const activeSigned = activeBin - CENTER_BIN_ID;
   const moveList = moves.map((m) => {
     const amt = BigInt(m.amount);
@@ -398,6 +439,14 @@ async function executeMove(
     // the value-conservation work regardless of min-dlp=1n.
     // Follow-up (v2): price-aware min-dlp = 95% × (price_from / price_to) × amount
     // to keep per-bin slippage protection while surviving cross-bin conversions.
+    // PRIORITIZED FOLLOW-UP (2026-07-15 field audit F-2 CRITICAL): min-dlp = 1
+    // is the weakest value that passes contract validation ((> min-dlp u0)) and
+    // bounds NOTHING. The correct price-aware bound is computable from direct
+    // contract reads (withdrawn x/y pro-rata from from-bin, V = bin-price(to)*x
+    // + y*1e8, expected DLP = V*shares_to/V_bin_to funded / sqrti(V) empty;
+    // min-dlp = 95% of expected). Deny-mode sender PCs are ALSO expressible for
+    // this strict entrypoint and should be added. Until then, output protection
+    // rests on the caller's off-chain gates and the u5001 legality gate above.
     const minDlp = 1n;
     const maxFee = amt * 5n / 100n;
     return tupleCV({
