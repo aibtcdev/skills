@@ -159,9 +159,11 @@ All outputs are strict JSON to stdout.
 | Field | Type | Description |
 |---|---|---|
 | `status` | `"success" \| "error"` | Overall result |
-| `action` | `string` | `HOLD`, `REBALANCE`, or `CHECK` with reason |
+| `action` | `string` | `HOLD`, `REBALANCE`, `PINNED`, or `CHECK` with reason |
 | `data.in_range` | `boolean \| null` | `null` if no wallet provided |
 | `data.active_bin` | `number` | Pool's current active bin ID |
+| `data.at_grid_edge` | `boolean` | Active bin at the grid edge (unsigned 0 or 1000); only true when the bins read verifiably carried the active bin |
+| `data.pinned` | `boolean` | At grid edge AND slippage gate failing — structural divergence; see PINNED |
 | `data.user_bin_range` | `{min,max,count,bins} \| null` | User's liquidity bin range |
 | `data.can_rebalance` | `boolean` | Whether all safety gates pass |
 | `data.refusal_reasons` | `string[] \| null` | Why REBALANCE is blocked |

@@ -41,10 +41,12 @@ Always return strict JSON:
 ```json
 {
   "status": "success | error",
-  "action": "HOLD | REBALANCE | CHECK | <error description>",
+  "action": "HOLD | REBALANCE | PINNED | CHECK | <error description>",
   "data": {
     "in_range": "boolean | null",
     "active_bin": "number",
+    "at_grid_edge": "boolean — active bin at unsigned grid edge (0 or 1000), only when the read verifiably carried it",
+    "pinned": "boolean — at_grid_edge AND slippage gate failing; pool price is frozen by contract design and divergence is structural",
     "user_bin_range": "{ min, max, count, bins } | null",
     "can_rebalance": "boolean",
     "refusal_reasons": "string[] | null",
@@ -70,3 +72,7 @@ Always return strict JSON:
   "error": "null | { code, message, next }"
 }
 ```
+
+## PINNED (added 2026-07-15)
+
+`PINNED` fires when the pool's active bin sits at the grid edge AND the slippage gate is failing — the divergence is structural (pool price frozen by contract design), so the slippage gate can never clear on its own. Do **not** rebalance or blind-swap while pinned; route to the exit/withdraw path (withdraw minimums remain enforceable) or escalate to a human. Guarded against degraded API reads: a bins response missing the active bin or its price cannot produce PINNED.

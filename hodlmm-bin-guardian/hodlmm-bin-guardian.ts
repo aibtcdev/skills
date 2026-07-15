@@ -370,7 +370,14 @@ async function runGuardian(wallet?: string, poolId?: string): Promise<{
   // the pool sat at unsigned bin 0). There is no official pinned signal
   // anywhere in the Bitflow API surface; this detection is derived.
   // Unsigned grid: 0 = raw −500 floor, 1000 = raw +500 ceiling.
-  const atGridEdge = active_bin_id <= 0 || active_bin_id >= 1000;
+  // Degraded-read guard (reviewer catch): active_bin_id defaults to 0 when the
+  // bins response is missing the field, and a missing bin price makes pool
+  // price 0 => 100% fake "divergence" — which would manufacture a confident
+  // false PINNED (an action recommendation) out of a bad read. Only trust the
+  // edge test when the response actually carries the active bin and a price
+  // for it.
+  const activeBinReadOk = priceByBinId.has(active_bin_id) && (priceByBinId.get(active_bin_id) ?? 0) > 0;
+  const atGridEdge = activeBinReadOk && (active_bin_id <= 0 || active_bin_id >= 1000);
   const pinned     = atGridEdge && !slippageResult.ok;
 
   let action: string;
@@ -427,7 +434,7 @@ const program = new Command();
 program
   .name("hodlmm-bin-guardian")
   .description("Monitor Bitflow HODLMM bins and output LP health status")
-  .version("2.1.0");
+  .version("2.2.0");
 
 program
   .command("doctor")
