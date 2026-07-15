@@ -1241,7 +1241,8 @@ export class BitflowService {
   async getAllRoutes(
     tokenXId: string,
     tokenYId: string,
-    amount?: number
+    amount?: number,
+    slippageTolerance: number = 0.01
   ): Promise<UnifiedBitflowRouteQuote[]> {
     this.ensureMainnet();
     if (amount !== undefined) {
@@ -1313,7 +1314,7 @@ export class BitflowService {
     amount: number,
     slippageTolerance: number = 0.01
   ): Promise<BitflowSwapQuote> {
-    const rankedRoutes = await this.getUnifiedRouteQuotes(tokenXId, tokenYId, amount);
+    const rankedRoutes = await this.getUnifiedRouteQuotes(tokenXId, tokenYId, amount, slippageTolerance);
     const bestRoute = rankedRoutes[0];
     let bestExecutableRoute = rankedRoutes.find((route) => route.executable);
 
