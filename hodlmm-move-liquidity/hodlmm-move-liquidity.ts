@@ -4,7 +4,7 @@
  *
  * When the active bin drifts away from your LP position, this skill moves
  * liquidity from old bins to bins centered on the current active bin.
- * One atomic transaction via move-relative-liquidity-multi.
+ * One atomic transaction via move-liquidity-multi (absolute signed bin IDs).
  *
  * Commands:
  *   doctor        — check APIs, wallet, pool access
@@ -375,7 +375,7 @@ async function executeMove(
   } = await import("@stacks/transactions" as string);
   const { STACKS_MAINNET } = await import("@stacks/network" as string);
 
-  // ── u5001 prevention gate (2026-07-15 field audit F-8) ────────────────────
+  // ── u5001 risk-reduction gate (2026-07-15 field audit F-8) ─────────────────
   // dlmm-core move-liquidity enforces side-asserts against the LIVE active bin
   // at execution (contract :1970-1971): X-bearing funds may only land at/above
   // it (err u1020), Y-bearing only at/below (err u1021). A plan built against
@@ -386,11 +386,16 @@ async function executeMove(
   // Re-read the active bin immediately before signing and refuse on any drift
   // or side-illegality.
   const freshBins = await fetchPoolBins(pool.pool_id);
+  if (!freshBins.bins.length) {
+    throw new Error(
+      "DEGRADED_BINS_READ: fresh pool-bins read returned no bins — cannot verify the live active bin. Refusing to sign against unverifiable state."
+    );
+  }
   const freshActive = freshBins.active_bin_id;
   if (freshActive !== activeBin) {
     throw new Error(
       `STALE_ACTIVE_BIN: plan was built for active bin ${activeBin} but the live active bin is ${freshActive}. ` +
-      `Re-plan against fresh state (u5001-class abort prevented; no fee spent).`
+      `Re-plan against fresh state (u5001-class abort risk avoided pre-broadcast; no fee spent). Note the check reads the indexer and the tx still sits in the mempool until anchored — this narrows the drift window, it cannot eliminate it.`
     );
   }
   const activeSignedFresh = freshActive - CENTER_BIN_ID;
@@ -420,11 +425,18 @@ async function executeMove(
   const [yAddr, yName] = pool.token_y.split(".");
 
   // Routes to move-liquidity-multi (absolute signed bin IDs = bin - CENTER_BIN_ID).
-  // CORRECTION (2026-07-15 field audit F-8): the earlier rationale here — relative-
-  // variant list cap 208 vs 220 — is contradicted by dlmm-liquidity-router-v-1-1
-  // source: ALL batch entrypoints take (list 350 ...), and move-relative-liquidity-
-  // multi exists. The absolute variant remains a valid choice (explicit destinations
-  // are easier to legality-check pre-flight, see the u5001 gate above).
+  // List caps verified against the DEPLOYED router via /v2/contracts/source
+  // (2026-07-15): move-liquidity-multi takes (list 220 ...), the relative
+  // variant (list 208 ...) — the deployed contract is authoritative and
+  // DIFFERS from the GitHub repo source (which shows 350s); an earlier
+  // draft of this comment trusted the repo and was wrong. So the 208-cap
+  // overflow rationale for large positions stands, and the absolute variant
+  // additionally allows explicit-destination legality checks pre-flight (see
+  // the u5001 gate above). Trade-off, stated honestly: move-relative-
+  // liquidity-multi computes to-bin-id from the live active bin ON-CHAIN,
+  // making it structurally more TOCTOU-robust on the destination side; we
+  // accept that risk in exchange for pre-flight checkability + the 220 cap,
+  // with the staleness gate above narrowing (not eliminating) the window.
   const activeSigned = activeBin - CENTER_BIN_ID;
   const moveList = moves.map((m) => {
     const amt = BigInt(m.amount);
@@ -439,9 +451,11 @@ async function executeMove(
     // the value-conservation work regardless of min-dlp=1n.
     // Follow-up (v2): price-aware min-dlp = 95% × (price_from / price_to) × amount
     // to keep per-bin slippage protection while surviving cross-bin conversions.
-    // PRIORITIZED FOLLOW-UP (2026-07-15 field audit F-2 CRITICAL): min-dlp = 1
-    // is the weakest value that passes contract validation ((> min-dlp u0)) and
-    // bounds NOTHING. The correct price-aware bound is computable from direct
+    // PRIORITIZED FOLLOW-UP (2026-07-15 field audit F-2 CRITICAL): the contract
+    // enforces BOTH (> min-dlp u0) (u1027) AND (>= dlp-post-fees min-dlp)
+    // (u1024) — min-dlp IS enforced against minted DLP, but min-dlp = 1 makes
+    // that enforced bound VACUOUS (any nonzero mint passes). The correct
+    // price-aware bound is computable from direct
     // contract reads (withdrawn x/y pro-rata from from-bin, V = bin-price(to)*x
     // + y*1e8, expected DLP = V*shares_to/V_bin_to funded / sqrti(V) empty;
     // min-dlp = 95% of expected). Deny-mode sender PCs are ALSO expressible for
