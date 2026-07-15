@@ -9,6 +9,17 @@ const SKILL_NAME = "defi-portfolio-scanner";
 const REQUEST_TIMEOUT = 10_000; // 10 seconds per protocol
 const HIRO_TIMEOUT = 15_000;
 
+// Zest LTV liquidation-risk thresholds, as FRACTIONS in [0, 1] (display
+// multiplies by 100). NOTE (2026-07-15 field audit F-13): no scanner code path
+// currently populates ZestPosition.ltv with a number — both construction sites
+// set null — so this risk block is DORMANT until the Zest reserve-data parser
+// computes a real fractional LTV. The threshold scale below is corrected now so
+// the flags work the moment ltv is populated; population is tracked separately
+// (requires verifying the on-chain get-user-reserve-data value scale against a
+// live position).
+const ZEST_LTV_CRITICAL = 0.85;
+const ZEST_LTV_WARNING  = 0.70;
+
 const ENDPOINTS = {
   bitflowPools: "https://bff.bitflowapis.finance/api/app/v1/pools",
   zestContract: {
@@ -731,18 +742,14 @@ function computeRiskScore(scanData: ScanData): {
   // 3. Zest LTV risk
   for (const pos of protocols.zest.positions) {
     if (pos.ltv !== null) {
-      // Scale contract (2026-07-15 field audit F-13): ltv is a FRACTION in
-      // [0, 1] — the display below multiplies by 100. The previous thresholds
-      // compared raw ltv > 85 / > 70, which a fractional value can never
-      // exceed, so the liquidation-risk flags could never fire.
-      if (pos.ltv > 0.85) {
+      if (pos.ltv > ZEST_LTV_CRITICAL) {
         score += 30;
         factors.push({
           factor: "zest-ltv-critical",
           severity: "critical",
           detail: `Zest position ${pos.asset} has LTV ${(pos.ltv * 100).toFixed(1)}% — liquidation risk imminent.`,
         });
-      } else if (pos.ltv > 0.70) {
+      } else if (pos.ltv > ZEST_LTV_WARNING) {
         score += 15;
         factors.push({
           factor: "zest-ltv-warning",
