@@ -17,6 +17,12 @@ export const MAINNET_CONTRACTS = {
 
   // Stacking
   POX_4: "SP000000000000000000002Q6VF78.pox-4",
+  // Epoch 4.0 hard fork (stacks-core 4.0.1): pox-5 replaces pox-4 at the same
+  // boot-contract address, following the pox-2/pox-3/pox-4 deployment pattern.
+  // Prefer resolving the active PoX contract dynamically via
+  // StackingService.getActivePoxContract() (reads /v2/pox contract_id);
+  // this is the static fallback if that lookup fails.
+  POX_5: "SP000000000000000000002Q6VF78.pox-5",
 
   // ALEX DEX (SDK handles most operations, but we need pool contract for queries)
   ALEX_AMM_POOL: "SP3K8BC0PPEVCV7NZ6QSRWPQ2JE9E5B6N3PA0KBR9.amm-swap-pool-v1-1",
@@ -167,6 +173,7 @@ export const TESTNET_CONTRACTS = {
 
   // Stacking
   POX_4: "ST000000000000000000002AMW42H.pox-4",
+  POX_5: "ST000000000000000000002AMW42H.pox-5",
 
   // ERC-8004 Identity & Reputation
   IDENTITY_REGISTRY: "ST3YT0XW92E6T2FE59B2G5N2WNNFSBZ6MZKQS5D18.identity-registry-v2",
