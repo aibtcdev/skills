@@ -550,11 +550,20 @@ async function getOwnedPositionNftBinIds(wallet: string, poolContract: string): 
     );
     const results = Array.isArray(page.results) ? page.results : [];
     for (const item of results) {
+      // repr shape verified against live Hiro data 2026-07-15 for dlmm pool
+      // NFTs: "(tuple (owner 'SP...) (token-id u5))". If the shape ever
+      // changes, the loud warning below prevents silently regressing to the
+      // old under-detection behavior.
       const match = /\(token-id u(\d+)\)/.exec(item.value?.repr ?? "");
       if (match) owned.add(Number(match[1]));
     }
     offset += results.length;
     if (results.length < limit || offset >= (page.total ?? 0)) break;
+  }
+  if (owned.size === 0 && offset > 0) {
+    console.error(
+      `WARNING: ${offset} ${assetId} holdings returned but no token-ids parsed — repr shape may have changed; NFT PC detection degraded to liquidity-only.`
+    );
   }
   return owned;
 }
@@ -1149,7 +1158,7 @@ function contextData(context: Context): JsonMap {
     },
     activeBin: context.bins.active_bin_id,
     selection: context.selection,
-    selectedBins: context.selectedBins.map(binData),
+    selectedBins: context.selectedBins.map((bin) => binData(bin, context.ownedNftBinIds)),
     skippedBins: context.skippedBins,
     totals: context.totals,
     tokens: {
@@ -1175,7 +1184,7 @@ function contextData(context: Context): JsonMap {
         context.totals.xAmount > 0n ? `wallet sends <= ${context.totals.xAmount} ${context.xAsset.symbol}` : null,
         context.totals.yAmount > 0n ? `wallet sends <= ${context.totals.yAmount} ${context.yAsset.symbol}` : null,
         ...context.selectedBins
-          .filter((bin) => bin.hasExistingPosition)
+          .filter((bin) => bin.hasExistingPosition || context.ownedNftBinIds.has(bin.binId))
           .map((bin) => `wallet sends existing ${context.pool.poolContract}::${DLP_TOKEN_ID_ASSET_NAME} token-id ${bin.binId}`),
       ].filter(Boolean),
       dlpNote: "Minimum DLP and max liquidity fee bounds are enforced by router arguments.",
@@ -1184,7 +1193,7 @@ function contextData(context: Context): JsonMap {
   };
 }
 
-function binData(bin: DepositCandidate) {
+function binData(bin: DepositCandidate, ownedNftBinIds?: Set<number>) {
   return {
     index: bin.index,
     binId: bin.binId,
@@ -1200,6 +1209,7 @@ function binData(bin: DepositCandidate) {
     maxXLiquidityFee: bin.maxXLiquidityFee,
     maxYLiquidityFee: bin.maxYLiquidityFee,
     hasExistingPosition: bin.hasExistingPosition,
+    willAttachNftPc: bin.hasExistingPosition || (ownedNftBinIds?.has(bin.binId) ?? false),
   };
 }
 
