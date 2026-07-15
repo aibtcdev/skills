@@ -884,9 +884,10 @@ export class BitflowService {
     tokenXId: string,
     tokenYId: string,
     amount: number,
-    // Fractional slippage tolerance (e.g. 0.01 = 1%), matching the quotes-plane
-    // response-field semantics. 2026-07-15 field audit F-6: previously hardcoded
-    // to `3` (ambiguous scale) regardless of the user's --slippage-tolerance.
+    // Fractional slippage tolerance (e.g. 0.01 = 1%), the SDK-wide convention.
+    // NOTE: the quotes-plane HTTP request field is in PERCENT — converted at the
+    // request boundary below. 2026-07-15 field audit F-6: previously hardcoded
+    // to `3` (= 3%) regardless of the user's --slippage-tolerance.
     slippageTolerance: number = 0.01
   ): Promise<UnifiedBitflowRouteQuote[]> {
     this.ensureMainnet();
@@ -937,7 +938,11 @@ export class BitflowService {
               output_token: hodlmmTokenYContract,
               amount_in: hodlmmAmountIn,
               amm_strategy: "best",
-              slippage_tolerance: slippageTolerance,
+              // The quotes-plane REQUEST field is in PERCENT (live-probed
+              // 2026-07-15: 3 => min_out/out = 0.9701 i.e. 3%; 0.01 => ~0%
+              // buffer). Our internal convention is fractional (0.01 = 1%),
+              // matching the SDK — convert at this boundary only.
+              slippage_tolerance: slippageTolerance * 100,
             }),
           }
         );
@@ -1592,15 +1597,30 @@ export class BitflowService {
       // swap-*-simple-range-multi (max-steps <= 230) with a real min-out:
       // refuse by default; require an explicit opt-in for supervised use only.
       if (!allowUnprotectedHodlmmSwap) {
-        throw new Error(
-          "REFUSED: best route is a direct HODLMM core swap, which cannot carry a minimum-output bound " +
-          "(no min-out parameter; single-bin fills; Allow mode). This path is unsafe for unattended use. " +
-          "Use an SDK-routed pair instead, or re-run with --allow-unprotected-hodlmm-swap for supervised, " +
-          "small-size use after verifying the quote against an independent price. " +
-          `Quoted route: ${executableRoute.label} out=${executableRoute.amountOutHuman}.`
+        // If a protected SDK route exists for the same pair, fall back to it
+        // with a warning instead of hard-failing (reviewer UX suggestion) —
+        // the caller gets a slightly worse quote but Deny-mode post-conditions.
+        const sdkFallback = quote.rankedRoutes?.find(
+          (route) => route.source === "sdk" && route.executable
         );
+        if (sdkFallback) {
+          console.error(
+            `WARNING: best route is an unprotected HODLMM core swap (out=${executableRoute.amountOutHuman}); ` +
+            `falling back to the protected SDK route (out=${sdkFallback.amountOutHuman}). ` +
+            `Pass --allow-unprotected-hodlmm-swap to take the HODLMM route anyway (supervised use only).`
+          );
+        } else {
+          throw new Error(
+            "REFUSED: best route is a direct HODLMM core swap, which cannot carry a minimum-output bound " +
+            "(no min-out parameter; single-bin fills; Allow mode), and no protected SDK route exists for " +
+            "this pair. Re-run with --allow-unprotected-hodlmm-swap for supervised, small-size use after " +
+            "verifying the quote against an independent price. " +
+            `Quoted route: ${executableRoute.label} out=${executableRoute.amountOutHuman}.`
+          );
+        }
+      } else {
+        return this.executeHodlmmSwap(account, executableRoute, fee);
       }
-      return this.executeHodlmmSwap(account, executableRoute, fee);
     }
 
     const sdk = this.ensureSdk();
