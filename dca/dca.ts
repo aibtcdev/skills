@@ -373,7 +373,11 @@ async function executeDirectSwap(opts: {
     network,
     senderKey: opts.stxPrivateKey,
     anchorMode: AnchorMode.Any,
-    fee: 5000n,
+    // 2026-07-15 field audit F-14: an underpriced hardcoded fee is a
+    // stuck-head-nonce seed (one stuck tx stalls every later tx from the
+    // signer). Configurable via DCA_FEE_USTX; default raised to match
+    // field-tested contract-call fees.
+    fee: BigInt(process.env.DCA_FEE_USTX ?? "50000"),
   });
 
   const broadcastRes = await broadcastTransaction({ transaction: tx, network });

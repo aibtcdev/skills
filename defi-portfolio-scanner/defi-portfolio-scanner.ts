@@ -731,14 +731,18 @@ function computeRiskScore(scanData: ScanData): {
   // 3. Zest LTV risk
   for (const pos of protocols.zest.positions) {
     if (pos.ltv !== null) {
-      if (pos.ltv > 85) {
+      // Scale contract (2026-07-15 field audit F-13): ltv is a FRACTION in
+      // [0, 1] — the display below multiplies by 100. The previous thresholds
+      // compared raw ltv > 85 / > 70, which a fractional value can never
+      // exceed, so the liquidation-risk flags could never fire.
+      if (pos.ltv > 0.85) {
         score += 30;
         factors.push({
           factor: "zest-ltv-critical",
           severity: "critical",
           detail: `Zest position ${pos.asset} has LTV ${(pos.ltv * 100).toFixed(1)}% — liquidation risk imminent.`,
         });
-      } else if (pos.ltv > 70) {
+      } else if (pos.ltv > 0.70) {
         score += 15;
         factors.push({
           factor: "zest-ltv-warning",
