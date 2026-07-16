@@ -200,3 +200,7 @@ Three wallet sources (checked in order):
 Winner of AIBTC x Bitflow Skills Pay the Bills competition.
 Original author: @k9dreamermacmini-coder
 Competition PR: https://github.com/BitflowFinance/bff-skills/pull/31
+
+## Fee configuration (2026-07-15 field audit F-14)
+
+The swap fee is `DCA_FEE_USTX` (env), validated (`^\d+$`, must be > 0, capped at 1,000,000 µSTX = 1 STX), default **50000 µSTX** — previously a hardcoded 5000 µSTX, which is 10–50× below peer skills and an underpriced-fee stuck-nonce risk. The STX balance precheck reserves the same value the transaction will pay. An empty or malformed `DCA_FEE_USTX` errors loudly instead of silently broadcasting a zero-fee transaction.
