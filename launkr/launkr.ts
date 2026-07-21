@@ -18,10 +18,11 @@ import {
   serializeCV,
   deserializeCV,
   cvToValue,
+  ClarityVersion,
   PostConditionMode,
   type ClarityValue,
 } from "@stacks/transactions";
-import { NETWORK, getExplorerTxUrl } from "../src/lib/config/networks.js";
+import { NETWORK, getApiBaseUrl, getExplorerTxUrl } from "../src/lib/config/networks.js";
 import { getAccount, getWalletAddress } from "../src/lib/services/x402.service.js";
 import { callContract, deployContract } from "../src/lib/transactions/builder.js";
 import {
@@ -43,20 +44,15 @@ const LAUNKR_API = "https://launkr.io/api";
 // real fungible post-condition instead of falling back to allow-all mode.
 const STRATEGY_TOKEN_ASSET = "strategy-token";
 
-// Contract addresses per network. Network selection follows the shared AIBTC
+// Singleton contract per network. Network selection follows the shared AIBTC
 // `NETWORK` env var (default testnet) — the same source the wallet and every
 // other skill use — so the singleton we target always matches the network the
-// transaction is actually signed and broadcast on.
-const NET_CONFIG = {
-  mainnet: {
-    singleton: "SP2ABWV7JE5SFV1A1BDS8HARP2QY7QRPGC9Z367PM.lp-singleton-v6",
-    hiroApi: "https://api.hiro.so",
-  },
-  testnet: {
-    singleton: "ST2ABWV7JE5SFV1A1BDS8HARP2QY7QRPGC9KJJYWE.lp-singleton-v6",
-    hiroApi: "https://api.testnet.hiro.so",
-  },
-} as const;
+// transaction is actually signed and broadcast on. The Hiro API host comes from
+// the shared `getApiBaseUrl(network)` helper (single source of truth).
+const SINGLETON: Record<"mainnet" | "testnet", string> = {
+  mainnet: "SP2ABWV7JE5SFV1A1BDS8HARP2QY7QRPGC9Z367PM.lp-singleton-v6",
+  testnet: "ST2ABWV7JE5SFV1A1BDS8HARP2QY7QRPGC9KJJYWE.lp-singleton-v6",
+};
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -241,8 +237,24 @@ program
   .option("--fee <fee>", "Fee preset (low|medium|high) or micro-STX amount")
   .action(async (opts) => {
     try {
+      // Validate mode-specific required args locally before spending a round-trip.
+      if (opts.mode === "bonding") {
+        if (!opts.virtualStx || !opts.graduationThreshold) {
+          throw new Error(
+            "bonding mode requires --virtual-stx and --graduation-threshold"
+          );
+        }
+      } else if (opts.mode === "direct") {
+        if (!opts.stxSeed) {
+          throw new Error("direct mode requires --stx-seed");
+        }
+      } else {
+        throw new Error(`Unknown --mode "${opts.mode}" — use "bonding" or "direct"`);
+      }
+
       const network = NETWORK;
-      const { singleton, hiroApi } = NET_CONFIG[network];
+      const singleton = SINGLETON[network];
+      const hiroApi = getApiBaseUrl(network);
       const account = await getAccount();
 
       // -----------------------------------------------------------------------
@@ -282,6 +294,7 @@ program
         kind: string;
         contractName?: string;
         clarityCode?: string;
+        clarityVersion?: number;
         functionName?: string;
         functionArgs?: Array<{ type: string; value: unknown }>;
         postConditionMode?: string;
@@ -317,6 +330,10 @@ program
         contractName: deployStep.contractName,
         codeBody: deployStep.clarityCode,
         ...(deployFee !== undefined && { fee: deployFee }),
+        // Honor the clarity version the intent asks for (template needs Clarity 4).
+        ...(deployStep.clarityVersion !== undefined && {
+          clarityVersion: deployStep.clarityVersion as ClarityVersion,
+        }),
       });
 
       process.stderr.write(`Deploy tx broadcast: ${deployResult.txid}\n`);
@@ -379,10 +396,12 @@ program
   .requiredOption(
     "--token <principal>",
     "Full token principal in ADDRESS.contract-name format"
-  )  .action(async (opts) => {
+  )
+  .action(async (opts) => {
     try {
       const network = NETWORK;
-      const { singleton, hiroApi } = NET_CONFIG[network];
+      const singleton = SINGLETON[network];
+      const hiroApi = getApiBaseUrl(network);
 
       let sender: string;
       try {
@@ -463,10 +482,12 @@ program
       "No wallet required. Use the result to set --min-tokens-out in swap-buy."
   )
   .requiredOption("--token <principal>", "Full token principal")
-  .requiredOption("--stx-in <uSTX>", "uSTX to spend")  .action(async (opts) => {
+  .requiredOption("--stx-in <uSTX>", "uSTX to spend")
+  .action(async (opts) => {
     try {
       const network = NETWORK;
-      const { singleton, hiroApi } = NET_CONFIG[network];
+      const singleton = SINGLETON[network];
+      const hiroApi = getApiBaseUrl(network);
 
       let sender: string;
       try {
@@ -533,10 +554,12 @@ program
       "No wallet required. Use the result to set --min-stx-out in swap-sell."
   )
   .requiredOption("--token <principal>", "Full token principal")
-  .requiredOption("--tokens-in <atomic>", "Atomic token units to sell")  .action(async (opts) => {
+  .requiredOption("--tokens-in <atomic>", "Atomic token units to sell")
+  .action(async (opts) => {
     try {
       const network = NETWORK;
-      const { singleton, hiroApi } = NET_CONFIG[network];
+      const singleton = SINGLETON[network];
+      const hiroApi = getApiBaseUrl(network);
 
       let sender: string;
       try {
@@ -619,7 +642,7 @@ program
   .action(async (opts) => {
     try {
       const network = NETWORK;
-      const { singleton } = NET_CONFIG[network];
+      const singleton = SINGLETON[network];
       const account = await getAccount();
       const recipient = opts.recipient ?? account.address;
       const [singletonAddr, singletonName] = singleton.split(".");
@@ -682,7 +705,7 @@ program
   .action(async (opts) => {
     try {
       const network = NETWORK;
-      const { singleton } = NET_CONFIG[network];
+      const singleton = SINGLETON[network];
       const account = await getAccount();
       const recipient = opts.recipient ?? account.address;
       const [singletonAddr, singletonName] = singleton.split(".");

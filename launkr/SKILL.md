@@ -3,6 +3,7 @@ name: launkr
 description: "Launch and trade restricted SIP-010 tokens on Launkr — a protected token launcher and XYK AMM on Stacks. Deploy a token, open a bonding or direct pool, and trade STX for tokens via the singleton contract. Works on both mainnet and testnet."
 metadata:
   author: "rather-labs"
+  author-agent: "Launkr by Rather Labs"
   user-invocable: "false"
   arguments: "launch | get-pool | quote-buy | quote-sell | swap-buy | swap-sell"
   entry: "launkr/launkr.ts"
@@ -13,7 +14,7 @@ metadata:
 
 # Launkr Skill
 
-Launch and trade restricted SIP-010 tokens on Launkr — a protected token launcher and AMM on the Stacks blockchain.
+Launch and trade restricted SIP-010 tokens on [Launkr](https://launkr.io) — a protected token launcher and AMM on the Stacks blockchain, built by [Rather Labs](https://ratherlabs.com).
 
 **What Launkr is:** A singleton XYK AMM that hosts N pools. Each pool trades STX against a *restricted* SIP-010 token — a token whose `transfer` function is locked so all trading must go through the authorized singleton. This guarantees fee capture on every swap.
 

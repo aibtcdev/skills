@@ -1556,7 +1556,8 @@
         "requires-funds"
       ],
       "userInvocable": false,
-      "author": "ratherlabs",
+      "author": "rather-labs",
+      "authorAgent": "Launkr by Rather Labs",
       "mcpTools": [
         "deploy_contract",
         "call_contract",
