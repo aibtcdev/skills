@@ -1535,6 +1535,36 @@
       ]
     },
     {
+      "name": "launkr",
+      "description": "Launch and trade restricted SIP-010 tokens on Launkr — a protected token launcher and XYK AMM on Stacks. Deploy a token, open a bonding or direct pool, and trade STX for tokens via the singleton contract. Works on both mainnet and testnet.",
+      "entry": "launkr/launkr.ts",
+      "arguments": [
+        "launch",
+        "get-pool",
+        "quote-buy",
+        "quote-sell",
+        "swap-buy",
+        "swap-sell"
+      ],
+      "requires": [
+        "wallet"
+      ],
+      "tags": [
+        "l2",
+        "defi",
+        "write",
+        "requires-funds"
+      ],
+      "userInvocable": false,
+      "author": "rather-labs",
+      "authorAgent": "Launkr by Rather Labs",
+      "mcpTools": [
+        "deploy_contract",
+        "call_contract",
+        "call_read_only_function"
+      ]
+    },
+    {
       "name": "lunarcrush",
       "description": "Pay-per-call access to LunarCrush social and market intelligence (Galaxy Score, AltRank, market cap rank, price, 24h change) via x402 on Stacks. USD-pegged pricing recomputed hourly from live STX/USD. Mainnet endpoint live; testnet supported.",
       "entry": "lunarcrush/lunarcrush.ts",
