@@ -4,6 +4,7 @@ import {
   makeContractDeploy,
   broadcastTransaction,
   ClarityValue,
+  ClarityVersion,
   PostConditionMode,
   PostCondition,
 } from "@stacks/transactions";
@@ -69,6 +70,8 @@ export interface ContractDeployOptions {
   fee?: bigint;
   /** Optional explicit nonce. If omitted, auto-fetched from network. */
   nonce?: bigint;
+  /** Optional Clarity version for the deploy. If omitted, Stacks.js picks the default. */
+  clarityVersion?: ClarityVersion;
 }
 
 /**
@@ -168,6 +171,7 @@ export async function deployContract(
     network: networkName,
     ...(options.fee !== undefined && { fee: options.fee }),
     ...(options.nonce !== undefined && { nonce: options.nonce }),
+    ...(options.clarityVersion !== undefined && { clarityVersion: options.clarityVersion }),
   });
 
   const broadcastResponse = await broadcastTransaction({
