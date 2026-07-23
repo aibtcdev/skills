@@ -7,6 +7,8 @@
  */
 
 import { Command } from "commander";
+import { tmpdir } from "os";
+import { join } from "path";
 import {
   contractPrincipalCV,
   standardPrincipalCV,
@@ -21,7 +23,7 @@ import {
   PostConditionMode,
   type ClarityValue,
 } from "@stacks/transactions";
-import { NETWORK, getApiBaseUrl, getExplorerTxUrl } from "../src/lib/config/networks.js";
+import { NETWORK, getExplorerTxUrl } from "../src/lib/config/networks.js";
 import { getAccount, getWalletAddress } from "../src/lib/services/x402.service.js";
 import { callContract, deployContract } from "../src/lib/transactions/builder.js";
 import {
@@ -37,25 +39,38 @@ import { printJson, handleError } from "../src/lib/utils/cli.js";
 
 const LAUNKR_API = "https://launkr.io/api";
 
-// Every Launkr token is a byte-identical copy of restricted-token-template-v6,
-// which declares `(define-fungible-token strategy-token)`. The SIP-010 asset
-// name is therefore the same constant for every token, so sells can scope a
-// real fungible post-condition instead of falling back to allow-all mode.
-const STRATEGY_TOKEN_ASSET = "strategy-token";
+// Every token deployed from Launkr's byte-frozen template defines the exact
+// same fungible-token asset name internally — only the contract address
+// varies. Verified against the deployed template source (mainnet + testnet):
+// `(define-fungible-token strategy-token)`. Do not confuse this with the
+// token's display name/symbol, which is unrelated and set at initialize().
+const LAUNKR_FT_ASSET_NAME = "strategy-token";
 
-// Singleton contract per network. Network selection follows the shared AIBTC
-// `NETWORK` env var (default testnet) — the same source the wallet and every
-// other skill use — so the singleton we target always matches the network the
-// transaction is actually signed and broadcast on. The Hiro API host comes from
-// the shared `getApiBaseUrl(network)` helper (single source of truth).
-const SINGLETON: Record<"mainnet" | "testnet", string> = {
-  mainnet: "SP2ABWV7JE5SFV1A1BDS8HARP2QY7QRPGC9Z367PM.lp-singleton-v6",
-  testnet: "ST2ABWV7JE5SFV1A1BDS8HARP2QY7QRPGC9KJJYWE.lp-singleton-v6",
-};
+const NET_CONFIG = {
+  mainnet: {
+    singleton: "SP2ABWV7JE5SFV1A1BDS8HARP2QY7QRPGC9Z367PM.lp-singleton-v6",
+    hiroApi: "https://api.hiro.so",
+    chainParam: "mainnet",
+  },
+  testnet: {
+    singleton: "ST2ABWV7JE5SFV1A1BDS8HARP2QY7QRPGC9KJJYWE.lp-singleton-v6",
+    hiroApi: "https://api.testnet.hiro.so",
+    chainParam: "testnet",
+  },
+} as const;
+
+type LaunkrNetwork = keyof typeof NET_CONFIG;
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/** Resolve the Launkr network from CLI option or AIBTC NETWORK config. */
+function resolveNetwork(opt?: string): LaunkrNetwork {
+  const n = (opt ?? NETWORK ?? "mainnet").toLowerCase();
+  if (n === "mainnet" || n === "testnet") return n as LaunkrNetwork;
+  throw new Error(`Unknown network "${n}" — use "mainnet" or "testnet"`);
+}
 
 /** Parse a Stacks principal string ("SP..." or "SP....contract") into a ClarityValue. */
 function parsePrincipalCV(principal: string): ClarityValue {
@@ -67,6 +82,16 @@ function parsePrincipalCV(principal: string): ClarityValue {
 /**
  * Parse a typed arg descriptor from the Launkr /api/launch response into a ClarityValue.
  * Supported types: principal, uint, string-ascii, string-utf8, optional-utf8, optional-ascii.
+ *
+ * FIX (verified on testnet, 2026-07): passing a bare `noneCV()` for an
+ * optional argument reliably gets the transaction rejected on broadcast with
+ * `BadFunctionArgument` against the @stacks/transactions version this repo's
+ * builder.js resolves — even though the local Clarity encoding looks
+ * structurally correct. Root cause not fully confirmed (suspected dependency
+ * version mismatch). Workaround that reliably works: always send an explicit
+ * `Some`, using an empty string as the placeholder when no value is given.
+ * Revert to `noneCV()` once the underlying library issue is fixed and
+ * re-verified end-to-end.
  */
 function parseLaunkrArg(arg: { type: string; value: unknown }): ClarityValue {
   switch (arg.type) {
@@ -79,11 +104,65 @@ function parseLaunkrArg(arg: { type: string; value: unknown }): ClarityValue {
     case "string-utf8":
       return stringUtf8CV(String(arg.value));
     case "optional-utf8":
-      return arg.value == null ? noneCV() : someCV(stringUtf8CV(String(arg.value)));
+      return arg.value == null
+        ? someCV(stringUtf8CV(""))
+        : someCV(stringUtf8CV(String(arg.value)));
     case "optional-ascii":
-      return arg.value == null ? noneCV() : someCV(stringAsciiCV(String(arg.value)));
+      return arg.value == null
+        ? someCV(stringAsciiCV(""))
+        : someCV(stringAsciiCV(String(arg.value)));
     default:
       throw new Error(`Unsupported Launkr arg type: "${arg.type}"`);
+  }
+}
+
+/**
+ * FIX (arc0btc review, PR #414): the Launkr API builds the pool-creation
+ * functionArgs server-side from our request, but we never cross-checked
+ * that what comes back actually matches what we asked for. A buggy or
+ * compromised API response could silently swap `fee-receiver` to a
+ * different address, or change `supply`, and we'd deploy + create the pool
+ * without ever noticing — routing future swap fees to an address we don't
+ * control. Fail loudly, before spending any gas, if these don't match.
+ *
+ * Positional args differ by mode:
+ *   bonding: token, name, symbol, decimals, supply, uri, virtual-stx, graduation-threshold, fee-receiver
+ *   direct:  token, name, symbol, decimals, supply, uri, stx-seed, fee-receiver
+ * `supply` is always index 4; `fee-receiver` is always the last arg.
+ */
+function validatePoolStepMatchesRequest(
+  poolStep: { functionArgs?: Array<{ type: string; value: unknown }> },
+  requested: { supply: string; feeReceiver: string; name: string; symbol: string }
+): void {
+  const args = poolStep.functionArgs;
+  if (!args || args.length < 8) {
+    throw new Error("Launkr API returned an unexpected number of pool-creation args");
+  }
+
+  const nameArg = String(args[1]?.value);
+  const symbolArg = String(args[2]?.value);
+  const supplyArg = String(args[4]?.value);
+  const feeReceiverArg = String(args[args.length - 1]?.value);
+
+  const mismatches: string[] = [];
+  if (nameArg !== requested.name) {
+    mismatches.push(`name: requested "${requested.name}", API returned "${nameArg}"`);
+  }
+  if (symbolArg !== requested.symbol) {
+    mismatches.push(`symbol: requested "${requested.symbol}", API returned "${symbolArg}"`);
+  }
+  if (supplyArg !== requested.supply) {
+    mismatches.push(`supply: requested ${requested.supply}, API returned ${supplyArg}`);
+  }
+  if (feeReceiverArg !== requested.feeReceiver) {
+    mismatches.push(`fee-receiver: requested ${requested.feeReceiver}, API returned ${feeReceiverArg}`);
+  }
+
+  if (mismatches.length > 0) {
+    throw new Error(
+      `Refusing to proceed — Launkr API's pool-creation args don't match what was requested:\n` +
+        mismatches.map((m) => `  - ${m}`).join("\n")
+    );
   }
 }
 
@@ -101,16 +180,9 @@ async function callReadOnly(
   const [contractAddr, contractName] = singletonId.split(".");
   const url = `${hiroApi}/v2/contracts/call-read/${contractAddr}/${contractName}/${fnName}`;
 
-  // @stacks/transactions v7 `serializeCV` returns a hex string already; older
-  // versions returned bytes. Handle both so we never double-encode the hex.
-  const hexArgs = args.map((cv) => {
-    const serialized = serializeCV(cv);
-    const hex =
-      typeof serialized === "string"
-        ? serialized
-        : Buffer.from(serialized as Uint8Array).toString("hex");
-    return `0x${hex}`;
-  });
+  const hexArgs = args.map(
+    (cv) => `0x${Buffer.from(serializeCV(cv)).toString("hex")}`
+  );
 
   const resp = await fetch(url, {
     method: "POST",
@@ -127,41 +199,14 @@ async function callReadOnly(
 }
 
 /**
- * Recursively flatten the `{ type, value }` tree that @stacks/transactions v7
- * `cvToValue` produces into plain JS values:
- *   - leaves (uint/int/bool/principal/buffer) → their scalar value
- *   - optional/response wrappers → their unwrapped inner value (none → null)
- *   - tuples → a plain object of unwrapped fields
- */
-function unwrapCV(node: unknown): unknown {
-  if (node == null || typeof node !== "object") return node;
-  const o = node as Record<string, unknown>;
-  if (!("type" in o) || !("value" in o)) return node;
-
-  const v = o.value;
-  if (v == null) return null; // none / empty optional
-  if (typeof v === "object") {
-    const vo = v as Record<string, unknown>;
-    // A nested { type, value } means an optional/response wrapper — descend.
-    if ("type" in vo && "value" in vo) return unwrapCV(vo);
-    // Otherwise it's a tuple: a map of field → { type, value }.
-    const out: Record<string, unknown> = {};
-    for (const k of Object.keys(vo)) out[k] = unwrapCV(vo[k]);
-    return out;
-  }
-  return v; // scalar leaf
-}
-
-/**
- * Decode a hex-encoded Clarity value returned by Hiro's call-read endpoint into
- * a flat JS value (scalars, or a plain object for tuples). Returns the raw hex
- * on failure.
+ * Decode a hex-encoded Clarity value returned by Hiro's call-read endpoint.
+ * Returns a JS-friendly plain value via cvToValue, or the raw hex on failure.
  */
 function decodeCV(hexResult: string): unknown {
   try {
     const bytes = Buffer.from(hexResult.replace(/^0x/, ""), "hex");
     const cv = deserializeCV(bytes);
-    return unwrapCV(cvToValue(cv, true));
+    return cvToValue(cv, true); // true = convert bigints to strings
   } catch {
     return hexResult;
   }
@@ -267,27 +312,15 @@ program
     "[direct] Real STX to seed the pool in uSTX (min 100000000 = 100 STX)"
   )
   .option("--uri <uri>", "Optional token metadata URI")
+  .option(
+    "--network <network>",
+    "Target network: mainnet or testnet (default: AIBTC NETWORK env)"
+  )
   .option("--fee <fee>", "Fee preset (low|medium|high) or micro-STX amount")
   .action(async (opts) => {
     try {
-      // Validate mode-specific required args locally before spending a round-trip.
-      if (opts.mode === "bonding") {
-        if (!opts.virtualStx || !opts.graduationThreshold) {
-          throw new Error(
-            "bonding mode requires --virtual-stx and --graduation-threshold"
-          );
-        }
-      } else if (opts.mode === "direct") {
-        if (!opts.stxSeed) {
-          throw new Error("direct mode requires --stx-seed");
-        }
-      } else {
-        throw new Error(`Unknown --mode "${opts.mode}" — use "bonding" or "direct"`);
-      }
-
-      const network = NETWORK;
-      const singleton = SINGLETON[network];
-      const hiroApi = getApiBaseUrl(network);
+      const network = resolveNetwork(opts.network);
+      const { singleton, hiroApi, chainParam } = NET_CONFIG[network];
       const account = await getAccount();
 
       // -----------------------------------------------------------------------
@@ -350,22 +383,40 @@ program
         throw new Error("Launkr API returned an unexpected intent shape (missing step 2)");
       }
 
+      // FIX (arc0btc review, PR #414): verify the API's pool-creation args
+      // actually match what we asked for — before spending any gas at all.
+      validatePoolStepMatchesRequest(poolStep, {
+        name: opts.name,
+        symbol: opts.symbol,
+        supply: opts.supply,
+        feeReceiver: opts.feeReceiver,
+      });
+
       // -----------------------------------------------------------------------
       // Step 2 — Deploy the token contract (byte-for-byte copy of template)
       // -----------------------------------------------------------------------
+      const tmpPath = join(
+        tmpdir(),
+        `${deployStep.contractName}-${Date.now()}.clar`
+      );
+      await Bun.write(tmpPath, deployStep.clarityCode);
       process.stderr.write(
         `Deploying token contract "${deployStep.contractName}" on ${network}...\n`
       );
 
-      const deployFee = await resolveFee(opts.fee, network, "smart_contract");
-      // The template needs Clarity 4 (it uses `contract-hash?`). We rely on the
-      // shared deployContract's default, which is Clarity 4 in the pinned
-      // @stacks/transactions — no explicit version needed.
+      const deployFee = await resolveFee(opts.fee, NETWORK, "smart_contract");
       const deployResult = await deployContract(account, {
         contractName: deployStep.contractName,
         codeBody: deployStep.clarityCode,
         ...(deployFee !== undefined && { fee: deployFee }),
       });
+
+      // Clean up temp file
+      try {
+        await Bun.file(tmpPath).exists();
+        const { unlinkSync } = await import("fs");
+        unlinkSync(tmpPath);
+      } catch {}
 
       process.stderr.write(`Deploy tx broadcast: ${deployResult.txid}\n`);
 
@@ -378,7 +429,7 @@ program
       // Step 4 — Create the pool
       // -----------------------------------------------------------------------
       const clarityArgs = poolStep.functionArgs.map(parseLaunkrArg);
-      const poolFee = await resolveFee(opts.fee, network, "contract_call");
+      const poolFee = await resolveFee(opts.fee, NETWORK, "contract_call");
       const [singletonAddr, singletonName] = singleton.split(".");
 
       // Direct mode: post-condition guards the STX seed pulled from the caller.
@@ -406,8 +457,9 @@ program
         deployTxid: deployResult.txid,
         poolTxid: poolResult.txid,
         network,
-        explorerUrl: getExplorerTxUrl(poolResult.txid, network),
+        explorerUrl: getExplorerTxUrl(poolResult.txid, NETWORK),
         launkrUrl: `https://launkr.io/token/${intent.tokenPrincipal}`,
+        chainExplorerUrl: `https://explorer.hiro.so/txid/${poolResult.txid}?chain=${chainParam}`,
       });
     } catch (error) {
       handleError(error);
@@ -428,11 +480,11 @@ program
     "--token <principal>",
     "Full token principal in ADDRESS.contract-name format"
   )
+  .option("--network <network>", "mainnet or testnet")
   .action(async (opts) => {
     try {
-      const network = NETWORK;
-      const singleton = SINGLETON[network];
-      const hiroApi = getApiBaseUrl(network);
+      const network = resolveNetwork(opts.network);
+      const { singleton, hiroApi } = NET_CONFIG[network];
 
       let sender: string;
       try {
@@ -457,11 +509,17 @@ program
         throw new Error(`get-pool failed: ${result.cause ?? result.result}`);
       }
 
-      // get-pool returns (optional {tuple}); decodeCV flattens `some {tuple}`
-      // to a plain object and `none` to null.
-      const pool = decodeCV(result.result ?? "");
+      const decoded = decodeCV(result.result ?? "");
 
-      if (pool == null || typeof pool !== "object") {
+      // cvToValue returns the ok wrapper — unwrap it
+      const pool =
+        decoded != null &&
+        typeof decoded === "object" &&
+        "value" in (decoded as Record<string, unknown>)
+          ? (decoded as Record<string, unknown>)["value"]
+          : decoded;
+
+      if (pool == null || pool === false) {
         printJson({ found: false, token: opts.token, network });
         return;
       }
@@ -507,11 +565,11 @@ program
   )
   .requiredOption("--token <principal>", "Full token principal")
   .requiredOption("--stx-in <uSTX>", "uSTX to spend")
+  .option("--network <network>", "mainnet or testnet")
   .action(async (opts) => {
     try {
-      const network = NETWORK;
-      const singleton = SINGLETON[network];
-      const hiroApi = getApiBaseUrl(network);
+      const network = resolveNetwork(opts.network);
+      const { singleton, hiroApi } = NET_CONFIG[network];
 
       let sender: string;
       try {
@@ -535,10 +593,22 @@ program
         throw new Error(`quote-buy failed: ${result.cause ?? result.result}`);
       }
 
-      // quote-buy returns (optional uint): decodeCV flattens `some uN` to the
-      // uint string and `none` (pool missing / zero input) to null.
+      // Result shape: (ok (some uN)) → decoded as { value: { value: "N" } }
+      // or (ok none) → decoded as { value: null }
       const decoded = decodeCV(result.result ?? "");
-      const tokensOut = decoded == null ? null : String(decoded);
+      const inner =
+        decoded != null &&
+        typeof decoded === "object" &&
+        "value" in (decoded as Record<string, unknown>)
+          ? (decoded as Record<string, unknown>)["value"]
+          : decoded;
+
+      const tokensOut =
+        inner != null && typeof inner === "object" && "value" in (inner as Record<string, unknown>)
+          ? String((inner as Record<string, unknown>)["value"])
+          : inner != null
+          ? String(inner)
+          : null;
 
       printJson({
         token: opts.token,
@@ -567,11 +637,11 @@ program
   )
   .requiredOption("--token <principal>", "Full token principal")
   .requiredOption("--tokens-in <atomic>", "Atomic token units to sell")
+  .option("--network <network>", "mainnet or testnet")
   .action(async (opts) => {
     try {
-      const network = NETWORK;
-      const singleton = SINGLETON[network];
-      const hiroApi = getApiBaseUrl(network);
+      const network = resolveNetwork(opts.network);
+      const { singleton, hiroApi } = NET_CONFIG[network];
 
       let sender: string;
       try {
@@ -595,10 +665,20 @@ program
         throw new Error(`quote-sell failed: ${result.cause ?? result.result}`);
       }
 
-      // quote-sell returns (optional uint): decodeCV flattens `some uN` to the
-      // uint string and `none` (pool missing / zero input) to null.
       const decoded = decodeCV(result.result ?? "");
-      const stxOut = decoded == null ? null : String(decoded);
+      const inner =
+        decoded != null &&
+        typeof decoded === "object" &&
+        "value" in (decoded as Record<string, unknown>)
+          ? (decoded as Record<string, unknown>)["value"]
+          : decoded;
+
+      const stxOut =
+        inner != null && typeof inner === "object" && "value" in (inner as Record<string, unknown>)
+          ? String((inner as Record<string, unknown>)["value"])
+          : inner != null
+          ? String(inner)
+          : null;
 
       printJson({
         token: opts.token,
@@ -640,15 +720,17 @@ program
   .option(
     "--recipient <address>",
     "Address to receive tokens (default: wallet address)"
-  )  .option("--fee <fee>", "Fee preset (low|medium|high) or micro-STX amount")
+  )
+  .option("--network <network>", "mainnet or testnet")
+  .option("--fee <fee>", "Fee preset (low|medium|high) or micro-STX amount")
   .action(async (opts) => {
     try {
-      const network = NETWORK;
-      const singleton = SINGLETON[network];
+      const network = resolveNetwork(opts.network);
+      const { singleton, chainParam } = NET_CONFIG[network];
       const account = await getAccount();
       const recipient = opts.recipient ?? account.address;
       const [singletonAddr, singletonName] = singleton.split(".");
-      const resolvedFee = await resolveFee(opts.fee, network, "contract_call");
+      const resolvedFee = await resolveFee(opts.fee, NETWORK, "contract_call");
 
       const result = await callContract(account, {
         contractAddress: singletonAddr,
@@ -677,7 +759,8 @@ program
         minTokensOut: opts.minTokensOut,
         recipient,
         network,
-        explorerUrl: getExplorerTxUrl(result.txid, network),
+        explorerUrl: getExplorerTxUrl(result.txid, NETWORK),
+        chainExplorerUrl: `https://explorer.hiro.so/txid/${result.txid}?chain=${chainParam}`,
       });
     } catch (error) {
       handleError(error);
@@ -693,8 +776,7 @@ program
   .description(
     "Sell tokens for STX via swap-exact-tokens-for-stx on the Launkr singleton. " +
       "Run quote-sell first and apply a slippage tolerance (1–2%) to --min-stx-out. " +
-      "Requires an unlocked wallet. Scopes a fungible post-condition on the tokens " +
-      "sold (asset name `strategy-token`) on top of the on-chain min-stx-out guard."
+      "Requires an unlocked wallet."
   )
   .requiredOption("--token <principal>", "Full token principal")
   .requiredOption("--tokens-in <atomic>", "Atomic token units to sell")
@@ -703,15 +785,17 @@ program
     "Minimum STX to receive — slippage guard (use quote-sell first)"
   )
   .option("--deadline <block>", "Max Stacks block height (default: no deadline)", "4294967295")
-  .option("--recipient <address>", "Address to receive STX (default: wallet address)")  .option("--fee <fee>", "Fee preset (low|medium|high) or micro-STX amount")
+  .option("--recipient <address>", "Address to receive STX (default: wallet address)")
+  .option("--network <network>", "mainnet or testnet")
+  .option("--fee <fee>", "Fee preset (low|medium|high) or micro-STX amount")
   .action(async (opts) => {
     try {
-      const network = NETWORK;
-      const singleton = SINGLETON[network];
+      const network = resolveNetwork(opts.network);
+      const { singleton, chainParam } = NET_CONFIG[network];
       const account = await getAccount();
       const recipient = opts.recipient ?? account.address;
       const [singletonAddr, singletonName] = singleton.split(".");
-      const resolvedFee = await resolveFee(opts.fee, network, "contract_call");
+      const resolvedFee = await resolveFee(opts.fee, NETWORK, "contract_call");
 
       const result = await callContract(account, {
         contractAddress: singletonAddr,
@@ -724,16 +808,17 @@ program
           uintCV(BigInt(opts.deadline)),
           parsePrincipalCV(recipient),
         ],
+        // FIX: the FT asset name is NOT per-token-variable — every Launkr
+        // token uses the identical internal asset name `strategy-token`
+        // (verified against the deployed byte-frozen template source, both
+        // mainnet and testnet). Only the contract address varies. This lets
+        // us scope a precise post-condition instead of using Allow mode.
         postConditionMode: PostConditionMode.Deny,
-        // Guard: caller sends exactly tokensIn of the restricted token. Its asset
-        // name is always `strategy-token` (byte-frozen template), so we can scope
-        // a real FT post-condition. The STX the singleton pays back is covered by
-        // its own Clarity-4 as-contract? allowance — no tx-level PC needed for it.
         postConditions: [
           createFungiblePostCondition(
             account.address,
             opts.token,
-            STRATEGY_TOKEN_ASSET,
+            LAUNKR_FT_ASSET_NAME,
             "eq",
             BigInt(opts.tokensIn)
           ),
@@ -749,7 +834,8 @@ program
         minStxOut: opts.minStxOut,
         recipient,
         network,
-        explorerUrl: getExplorerTxUrl(result.txid, network),
+        explorerUrl: getExplorerTxUrl(result.txid, NETWORK),
+        chainExplorerUrl: `https://explorer.hiro.so/txid/${result.txid}?chain=${chainParam}`,
       });
     } catch (error) {
       handleError(error);
