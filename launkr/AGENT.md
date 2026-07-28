@@ -1,9 +1,3 @@
----
-name: launkr-agent
-skill: launkr
-description: "Launch and trade restricted SIP-010 tokens on Launkr — a protected token launcher and XYK AMM on Stacks. Deploy a token, open a bonding or direct pool, and trade STX for tokens."
----
-
 # Launkr — Autonomous Operation Rules
 
 Rules for an agent using the Launkr skill (`launkr.ts`) without a human
@@ -17,10 +11,9 @@ this file is about *how to behave*, not the API shape.
    redeploy). Never hardcode an address from memory or from an old run.
 2. **Know which network you're on.** Testnet and mainnet contracts are
    structurally identical but financially very different — testnet STX is
-   free from a faucet, mainnet STX is real money. The skill follows the
-   `NETWORK` env var (default `testnet`) — the same one the wallet loads
-   against — so set `NETWORK=mainnet` deliberately rather than assuming a
-   default. There is no per-command `--network` flag.
+   free from a faucet, mainnet STX is real money. Every `launkr.ts` command
+   accepts an explicit `--network mainnet|testnet` flag; pass it explicitly
+   rather than relying on the `NETWORK` env var default.
 3. **This is an early-stage mainnet deployment.** Redeployed 2026-07-16.
    Start with small amounts (floor-minimum supply, minimum virtual-stx) on
    any new integration before scaling up, even though the contract has
@@ -35,11 +28,15 @@ this file is about *how to behave*, not the API shape.
    `tx_status: "success"` before sending the pool-creation call (step 2).
    Do not assume success from a `200` on broadcast — poll
    `GET /extended/v1/tx/{txid}` and check the status field.
-3. The optional `uri` argument is a genuine Clarity optional. When you don't
-   pass `--uri`, the `/api/launch` intent carries `uri: null` and `launkr.ts`
-   encodes it as `(none)` — that is valid for `(optional (string-utf8 256))`
-   and broadcasts fine. Do not substitute a `Some("")` or any placeholder
-   string.
+3. **Never pass a bare `none`/`null` for the optional `uri` argument.** This
+   is not a style preference — a real `noneCV()` reliably gets the
+   transaction rejected on broadcast with `BadFunctionArgument` (verified
+   on both testnet and mainnet). Use the `Some("")` workaround instead —
+   `launkr.ts` does this for you automatically if you don't supply `--uri`.
+   Understand the tradeoff before relying on this: the token's on-chain
+   `uri` field ends up permanently set to an empty string, not `none` — see
+   `SKILL.md` for the full explanation. If your use case genuinely needs
+   `none` preserved on-chain, this skill isn't ready for that yet.
 4. For **direct mode**, confirm you actually hold ≥ `stxSeed` uSTX before
    attempting the call — it pulls real STX from your balance at creation
    time, guarded by an exact STX post-condition. Insufficient balance fails
@@ -48,6 +45,12 @@ this file is about *how to behave*, not the API shape.
    at the floor minimums, unless the goal is specifically a cheap test
    token — floor values create a very "top-heavy" curve (large price impact
    per STX traded).
+6. **Trust but verify the Launkr API's response.** `launkr.ts` cross-checks
+   `name`, `symbol`, `supply`, and `fee-receiver` in the returned
+   pool-creation args against what you requested, and aborts before
+   deploying if anything doesn't match — this exists because the hash gate
+   protects the token's *bytes*, not the pool-creation *arguments*. Don't
+   remove or bypass this check.
 
 ## Trading (quote / swap)
 
@@ -59,13 +62,12 @@ this file is about *how to behave*, not the API shape.
 2. Treat a `none` result from `quote-buy`/`quote-sell` as "do not proceed" —
    it means the pool doesn't exist or your input amount is zero, not "any
    amount is fine."
-3. `swap-sell` scopes this for you: it broadcasts in `Deny` mode with a
-   fungible post-condition equal to `--tokens-in` on the token sold (asset
-   name is always `strategy-token`, since every token is a byte-identical
-   copy of the template — see `SKILL.md`). Don't switch it back to
-   `PostConditionMode.Allow`: allow-mode on a live wallet means an unexpected
-   contract bug could move more of your balance than intended, with nothing
-   to catch it.
+3. For sells, scope a real fungible-token post-condition (asset name is
+   always `strategy-token` — see `SKILL.md`) rather than broadcasting with
+   `PostConditionMode.Allow`. `launkr.ts`'s `swap-sell` already does this;
+   don't switch it back to `Allow` — an unexpected contract bug or a future
+   template change could otherwise move more than you intended, with
+   nothing to catch it.
 4. Set a `deadline` when the surrounding context is time-sensitive (e.g.
    part of a multi-step flow where a stale price is a real risk). Only fall
    back to `0xffffffff` (no deadline) for one-off manual actions.
@@ -94,3 +96,8 @@ this file is about *how to behave*, not the API shape.
   pool-creation call against an unconfirmed (or failed) token deploy will
   fail outright, and diagnosing "why" after the fact costs more time than
   the wait would have.
+- Don't assume documentation and code agree without checking — if you're
+  editing either `SKILL.md`/`AGENT.md` or `launkr.ts`, update both together
+  and re-verify end-to-end before pushing. This exact gap (docs describing
+  `none` while the code sends `Some("")`) is what blocked this skill's
+  first merge attempt.
