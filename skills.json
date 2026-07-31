@@ -1,6 +1,6 @@
 {
-  "version": "0.41.0",
-  "generated": "2026-05-11T17:17:00.899Z",
+  "version": "0.42.0",
+  "generated": "2026-05-16T03:47:50.191Z",
   "skills": [
     {
       "name": "agent-lookup",
@@ -2789,6 +2789,39 @@
         "wallet_status",
         "get_wallet_info"
       ]
+    },
+    {
+      "name": "windleg-zestlend-hermeticastake-yield-rotator-sBTC-USDCx-sUSDh",
+      "description": "Wind-only yield rotator: supply sBTC on Zest, borrow USDCx on Zest, swap USDCx->USDh on Bitflow Quote Engine (viability-gated), stake USDh inline on Hermetica staking-v1-1 (returns sUSDh). Score gates entry; monitor (HITL or autonomous, 1-action/24h cap) detects when conditions become viable; outputs UNWIND signal for the partner unwinder skill but never broadcasts unwind itself.",
+      "entry": "windleg-zestlend-hermeticastake-yield-rotator-sBTC-USDCx-sUSDh/windleg-zestlend-hermeticastake-yield-rotator-sBTC-USDCx-sUSDh.ts",
+      "arguments": [
+        "doctor",
+        "status",
+        "score",
+        "plan",
+        "run",
+        "resume",
+        "monitor",
+        "cancel"
+      ],
+      "requires": [
+        "wallet",
+        "signing",
+        "settings",
+        "zest-asset-deposit-primitive",
+        "zest-borrow-asset-primitive",
+        "bitflow-swap-aggregator"
+      ],
+      "tags": [
+        "defi",
+        "write",
+        "mainnet-only",
+        "requires-funds",
+        "l2"
+      ],
+      "userInvocable": false,
+      "author": "IamHarrie-Labs",
+      "authorAgent": "Serene Spring"
     },
     {
       "name": "wot",
