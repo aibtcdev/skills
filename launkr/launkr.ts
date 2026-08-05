@@ -85,15 +85,19 @@ function parsePrincipalCV(principal: string): ClarityValue {
  * Parse a typed arg descriptor from the Launkr /api/launch response into a ClarityValue.
  * Supported types: principal, uint, string-ascii, string-utf8, optional-utf8, optional-ascii.
  *
- * FIX (verified on testnet, 2026-07): passing a bare `noneCV()` for an
- * optional argument reliably gets the transaction rejected on broadcast with
- * `BadFunctionArgument` against the @stacks/transactions version this repo's
- * builder.js resolves — even though the local Clarity encoding looks
- * structurally correct. Root cause not fully confirmed (suspected dependency
- * version mismatch). Workaround that reliably works: always send an explicit
- * `Some`, using an empty string as the placeholder when no value is given.
- * Revert to `noneCV()` once the underlying library issue is fixed and
- * re-verified end-to-end.
+ * RESOLVED (2026-08-05, biwasxyz review question #3): an earlier version of
+ * this function substituted `someCV(stringUtf8CV(""))` for a null optional
+ * value, worked around a `BadFunctionArgument` broadcast rejection seen
+ * against a *different* environment (the published `@aibtc/mcp-server` npm
+ * package's own dependency resolution). Verified directly against this
+ * repo's exact pinned `@stacks/transactions@7.3.1` — via both a standalone
+ * script and this repo's own `callContract` — that a bare `noneCV()`
+ * broadcasts and confirms successfully here (testnet txids
+ * `6ee46234adfd545bb55d7396835fa730a4184324ac3ad1bf47b0406305234d8e` and
+ * `9403bd6670eea9fb5f6812b937bdcd1604adb2d79da019c66583ae13fe38fbc6`, both
+ * `(ok true)`). The bug was real but environment-specific, not a Stacks or
+ * Clarity issue — reverted to sending a proper `none` rather than a
+ * permanent empty-string placeholder.
  */
 function parseLaunkrArg(arg: { type: string; value: unknown }): ClarityValue {
   switch (arg.type) {
@@ -106,13 +110,9 @@ function parseLaunkrArg(arg: { type: string; value: unknown }): ClarityValue {
     case "string-utf8":
       return stringUtf8CV(String(arg.value));
     case "optional-utf8":
-      return arg.value == null
-        ? someCV(stringUtf8CV(""))
-        : someCV(stringUtf8CV(String(arg.value)));
+      return arg.value == null ? noneCV() : someCV(stringUtf8CV(String(arg.value)));
     case "optional-ascii":
-      return arg.value == null
-        ? someCV(stringAsciiCV(""))
-        : someCV(stringAsciiCV(String(arg.value)));
+      return arg.value == null ? noneCV() : someCV(stringAsciiCV(String(arg.value)));
     default:
       throw new Error(`Unsupported Launkr arg type: "${arg.type}"`);
   }

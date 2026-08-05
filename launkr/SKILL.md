@@ -142,24 +142,19 @@ post-condition** (`eq`, amount = stxSeed) since it pulls real STX from the
 caller at creation. Bonding mode pulls no STX at creation — its
 post-conditions array is empty.
 
-> **Gotcha — fixed in `launkr.ts`, real on-chain implication:** passing
-> `null`/`noneCV()` for the optional `uri` argument gets the transaction
-> **rejected on broadcast** with `BadFunctionArgument`, even though the
-> local Clarity encoding looks structurally valid. Root cause not fully
-> confirmed (suspected dependency version mismatch in the resolved
-> `@stacks/transactions`). Workaround, verified working end-to-end on both
-> testnet and mainnet: wrap it as an explicit `Some` instead of `None`,
-> e.g. `{"type": "some", "value": {"type": "string-utf8", "value": ""}}`
-> when no real URI is given. `launkr.ts`'s `parseLaunkrArg` does this
-> automatically — never pass a bare `none`/`null` for this argument.
->
-> **This is a real behavioral change, not just broadcast plumbing:** a
-> token launched without `--uri` gets its on-chain `uri` field permanently
-> set to `Some("")` (an empty string), not `None`. Anything reading token
-> metadata (indexers, wallets, `get-token-uri`) will see an empty string
-> rather than "no URI set." This is a deliberate, verified tradeoff to get
-> a working broadcast — if you need `None` to be preserved, hold off on
-> using this skill until the root cause is fixed upstream and re-verified.
+> **Resolved (2026-08-05):** an earlier version of `launkr.ts` sent an
+> explicit `Some("")` instead of `none` for an omitted `uri`, working
+> around a `BadFunctionArgument` broadcast rejection. That rejection turned
+> out to be specific to a *different* environment (the published
+> `@aibtc/mcp-server` npm package's own dependency resolution) rather than
+> a Stacks/Clarity issue — a bare `noneCV()` broadcasts and confirms fine
+> against this repo's own pinned `@stacks/transactions@7.3.1`, verified
+> both with a standalone script and this repo's own `callContract`
+> (testnet txids `6ee46234adfd545bb55d7396835fa730a4184324ac3ad1bf47b0406305234d8e`
+> and `9403bd6670eea9fb5f6812b937bdcd1604adb2d79da019c66583ae13fe38fbc6`,
+> both `(ok true)`). `parseLaunkrArg` sends a proper `none` again — a token
+> launched without `--uri` correctly has `none` on-chain, not an empty
+> string.
 
 ## 2. Quote a trade (free, read-only, no gas)
 
@@ -238,10 +233,12 @@ fees split 0.9%/0.1% as documented. (This particular swap was broadcast in
 **Mainnet (2026-07-16), against the redeployed contracts above:** Deployed
 `SP1YNEJRV1AJHGVSF2EMDWP58NF2XBNPYG0R94ZWW.lft` (LFT), bonding mode, 100M
 supply (min floor), 500 virtual STX / 2000 STX graduation threshold, `uri`
-omitted (using the `Some("")` fix). Both the deploy and `create-pool-bonding`
-confirmed successfully on the first attempt — `(ok 'SP1YNEJ....lft)`. This
-confirms both the redeployed mainnet contracts and the `uri`-argument fix
-are correct.
+omitted (using the `Some("")` workaround that was in place at the time —
+see the "Resolved" note above; a bare `none` has since been confirmed
+correct and is what `launkr.ts` sends today). Both the deploy and
+`create-pool-bonding` confirmed successfully on the first attempt —
+`(ok 'SP1YNEJ....lft)`. This confirms the redeployed mainnet contracts are
+correct.
 
 **Mainnet (2026-08-05), `Deny`-mode swap verification:** Against the same
 LFT pool, ran `swap-exact-stx-for-tokens` for 0.3 STX with the full
@@ -256,5 +253,5 @@ fix resolves it.
 
 See `AGENT.md` in this folder for operating rules when using this skill
 autonomously, and `launkr.ts` for a reference CLI implementation with all
-fixes applied (`uri`-argument workaround, `swap-sell` post-condition,
-pool-creation arg cross-check).
+fixes applied (correct `uri`/`none` handling, full swap post-condition
+coverage, pool-creation arg cross-check).

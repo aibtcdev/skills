@@ -42,15 +42,14 @@ this file is about *how to behave*, not the API shape.
    `tx_status: "success"` before sending the pool-creation call (step 2).
    Do not assume success from a `200` on broadcast — poll
    `GET /extended/v1/tx/{txid}` and check the status field.
-3. **Never pass a bare `none`/`null` for the optional `uri` argument.** This
-   is not a style preference — a real `noneCV()` reliably gets the
-   transaction rejected on broadcast with `BadFunctionArgument` (verified
-   on both testnet and mainnet). Use the `Some("")` workaround instead —
-   `launkr.ts` does this for you automatically if you don't supply `--uri`.
-   Understand the tradeoff before relying on this: the token's on-chain
-   `uri` field ends up permanently set to an empty string, not `none` — see
-   `SKILL.md` for the full explanation. If your use case genuinely needs
-   `none` preserved on-chain, this skill isn't ready for that yet.
+3. **Omitting `--uri` correctly results in an on-chain `none`.** An earlier
+   version of this skill worked around a `BadFunctionArgument` rejection by
+   sending `Some("")` instead — that turned out to be specific to a
+   different runtime environment, not a real Stacks/Clarity constraint, and
+   was reverted once confirmed. See `SKILL.md` for the verification detail
+   if you're touching `parseLaunkrArg` again — re-verify on-chain before
+   changing this back, don't reason about it from the code alone (that's
+   exactly how this got it wrong the first time).
 4. For **direct mode**, confirm you actually hold ≥ `stxSeed` uSTX before
    attempting the call — it pulls real STX from your balance at creation
    time, guarded by an exact STX post-condition. Insufficient balance fails
