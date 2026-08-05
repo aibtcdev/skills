@@ -5,7 +5,7 @@ metadata:
   author: "rather-labs"
   author-agent: "Launkr by Rather Labs"
   user-invocable: "false"
-  arguments: "launch | get-pool | quote-buy | quote-sell | swap-buy | swap-sell"
+  arguments: "launch | create-pool | get-pool | quote-buy | quote-sell | swap-buy | swap-sell | set-fee-receiver | accept-fee-receiver"
   entry: "launkr/launkr.ts"
   mcp-tools: "deploy_contract, call_contract, call_read_only_function"
   requires: "wallet"
@@ -207,6 +207,63 @@ address varies).
 Always call `quote-buy`/`quote-sell` first and set `min-tokens-out` /
 `min-stx-out` a few % under the quote as a slippage guard. Use
 `deadline: 0xffffffff` (4294967295) if you don't need a block-height cutoff.
+
+## 4. Recovery, fee-receiver transfer, and other operations
+
+**`create-pool`** — recovery path for when `launch` deployed the token but
+the pool-creation step failed or was interrupted (`launch` is two separate
+transactions with no atomicity between them). Takes `--token
+<already-deployed-principal>` plus the same params `launch` would have
+used, and runs only the pool-creation call — built directly from the
+documented `create-pool-bonding`/`create-pool-direct` signature above
+rather than round-tripping through `/api/launch` again (nothing in that
+response for this step isn't already fully determined by your own input).
+Re-running `launch` itself after a failed step 2 would deploy a *second*
+token, not resume — use `create-pool` instead.
+
+**`set-fee-receiver` / `accept-fee-receiver`** — the singleton's two-step
+fee-receiver transfer (`set-pending-fee-receiver` proposed by the current
+receiver, `accept-fee-receiver` confirmed by the new one), exposed as CLI
+subcommands. The fee-receiver collects 90% of swap volume permanently
+once a pool is created — this is the only correction path if it was set
+wrong.
+
+**Deploy verification:** `launch` now fetches the real template source
+on-chain (`GET /v2/contracts/source/...`) and byte-compares it against the
+API's `clarityCode` *before* deploying, rather than trusting the API
+response and finding out only after the deploy fee is spent that the
+singleton would have rejected it (`ERR_TOKEN_NOT_OURS`) anyway.
+
+**Pool-arg verification:** `validatePoolStepMatchesRequest` (see `launch`)
+now also checks `virtual-stx`/`graduation-threshold` (bonding) or
+`stx-seed` (direct) against what was requested, not just
+name/symbol/supply/fee-receiver — those curve parameters are just as
+capable of coming back wrong from the API and are what the entire price
+curve is built from.
+
+**Does graduating a pool unlock token transfers?** No. Checked directly
+against the singleton's source: graduating only changes the pool's `mode`
+field (bonding fee 1% → graduated fee 5%, and enables `swap-and-burn`) — it
+never touches the token contract's allowlist. The restricted token's
+`transfer` function only ever allows sending to the singleton (or another
+address the allowlist-admin has explicitly approved), and nothing in the
+singleton's graduation path calls anything on the token to change that.
+Holders can never move these tokens except by selling back through the
+singleton — that's true before and after graduation, permanently, unless
+the allowlist-admin manually approves more recipients.
+
+**Could this skill build pool-creation args on-chain and skip
+`/api/launch` for step 2 entirely?** Yes — the answer above is exactly what
+`create-pool` now does. Extending that to skip the API for step 1 too
+(fetch the template on-chain, deploy under a locally-chosen contract name,
+never call `/api/launch` at all) is also possible in principle, since
+nothing in that response is undeterminable from on-chain data plus your
+own input. Deliberately not done here: launches submitted through
+`/api/launch` are how Launkr's own backend currently learns about new
+tokens for its own tracking, separate from the on-chain event indexing
+`launkr.io`'s frontend already does independently. Whether to give that up
+for a smaller trust surface is a product decision for the Launkr team, not
+something to change unilaterally in a skill PR.
 
 ## Error codes
 

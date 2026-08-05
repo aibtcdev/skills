@@ -59,13 +59,18 @@ this file is about *how to behave*, not the API shape.
    token — floor values create a very "top-heavy" curve (large price impact
    per STX traded).
 6. **Trust but verify the Launkr API's response.** `launkr.ts` cross-checks
-   `name`, `symbol`, `supply`, and `fee-receiver` in the returned
-   pool-creation args against what you requested, and aborts before
-   deploying if anything doesn't match — this exists because the hash gate
-   protects the token's *bytes*, not the pool-creation *arguments*. Don't
-   remove or bypass this check. (It does not yet check `virtual-stx`/
-   `graduation-threshold` — those aren't cross-checked, so double-check
-   them yourself against what you requested before confirming a launch.)
+   `name`, `symbol`, `supply`, `fee-receiver`, and the curve parameters
+   (`virtual-stx`/`graduation-threshold` for bonding, `stx-seed` for
+   direct) in the returned pool-creation args against what you requested,
+   and separately byte-compares the deploy step's `clarityCode` against
+   the real on-chain template — both before spending any gas. Don't remove
+   or bypass either check.
+7. **`launch` is two transactions with no atomicity between them, but there
+   is a recovery path.** If pool creation (step 2) fails or the process is
+   interrupted after the token deploys, don't re-run `launch` — it deploys
+   a *second* token. Use `create-pool --token <the-already-deployed-principal>`
+   with the same params instead; `launch` itself prints this exact
+   instruction after a successful deploy.
 
 ## Trading (quote / swap)
 
@@ -111,9 +116,17 @@ this file is about *how to behave*, not the API shape.
 ## What NOT to do
 
 - Don't launch a token with a `feeReceiver` you don't control unless that's
-  explicitly the intent — it receives 90% of all swap fees on that pool,
-  permanently (a two-step transfer exists on-chain, but don't rely on
-  needing it).
+  explicitly the intent — it receives 90% of all swap fees on that pool.
+  If you do need to fix it after the fact, `set-fee-receiver` (called by
+  the *current* receiver) followed by `accept-fee-receiver` (called by the
+  new one) is the correction path — it's a real two-step on-chain transfer,
+  exposed by this skill, not just a theoretical escape hatch.
+- Tokens **cannot be transferred outside the singleton, ever, including
+  after graduation.** Graduating a pool only changes its fee tier
+  (1% → 5%) and enables `swap-and-burn` — it does not touch the token's
+  allowlist. The only way out of a position is selling back through the
+  singleton (`swap-sell`). Don't imply otherwise to a user deciding
+  whether to launch or hold.
 - Don't assume a pool is safe to trade at size just because it exists.
   `get-pool` first — check `active`, `mode`, and current reserves before
   committing meaningful STX to a swap.

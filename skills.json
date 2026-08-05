@@ -1,6 +1,6 @@
 {
-  "version": "0.41.0",
-  "generated": "2026-05-11T17:17:00.899Z",
+  "version": "0.42.0",
+  "generated": "2026-08-05T17:10:11.807Z",
   "skills": [
     {
       "name": "agent-lookup",
@@ -1540,11 +1540,14 @@
       "entry": "launkr/launkr.ts",
       "arguments": [
         "launch",
+        "create-pool",
         "get-pool",
         "quote-buy",
         "quote-sell",
         "swap-buy",
-        "swap-sell"
+        "swap-sell",
+        "set-fee-receiver",
+        "accept-fee-receiver"
       ],
       "requires": [
         "wallet"
