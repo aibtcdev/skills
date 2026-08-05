@@ -28,7 +28,9 @@ import { getAccount, getWalletAddress } from "../src/lib/services/x402.service.j
 import { callContract, deployContract } from "../src/lib/transactions/builder.js";
 import {
   createStxPostCondition,
+  createContractStxPostCondition,
   createFungiblePostCondition,
+  createContractFungiblePostCondition,
 } from "../src/lib/transactions/post-conditions.js";
 import { resolveFee } from "../src/lib/utils/fee.js";
 import { printJson, handleError } from "../src/lib/utils/cli.js";
@@ -312,16 +314,20 @@ program
     "[direct] Real STX to seed the pool in uSTX (min 100000000 = 100 STX)"
   )
   .option("--uri <uri>", "Optional token metadata URI")
-  .option(
-    "--network <network>",
-    "Target network: mainnet or testnet (default: AIBTC NETWORK env)"
-  )
   .option("--fee <fee>", "Fee preset (low|medium|high) or micro-STX amount")
   .action(async (opts) => {
     try {
-      const network = resolveNetwork(opts.network);
-      const { singleton, hiroApi, chainParam } = NET_CONFIG[network];
+      // FIX (biwasxyz review, PR #414, blocker #2): the network that
+      // actually gets signed/broadcast to is account.network (set by which
+      // wallet is loaded, via the NETWORK env var at wallet-creation time)
+      // — a `--network` flag here can never change that, since
+      // callContract/deployContract derive their network from the account,
+      // not from a parameter we control. Rather than have a flag that looks
+      // like it selects the network but silently doesn't, derive everything
+      // from the account so there's only one source of truth.
       const account = await getAccount();
+      const network = account.network;
+      const { singleton, hiroApi, chainParam } = NET_CONFIG[network];
 
       // -----------------------------------------------------------------------
       // Step 1 — Get the launch intent from the Launkr API
@@ -404,7 +410,7 @@ program
         `Deploying token contract "${deployStep.contractName}" on ${network}...\n`
       );
 
-      const deployFee = await resolveFee(opts.fee, NETWORK, "smart_contract");
+      const deployFee = await resolveFee(opts.fee, network, "smart_contract");
       const deployResult = await deployContract(account, {
         contractName: deployStep.contractName,
         codeBody: deployStep.clarityCode,
@@ -429,7 +435,7 @@ program
       // Step 4 — Create the pool
       // -----------------------------------------------------------------------
       const clarityArgs = poolStep.functionArgs.map(parseLaunkrArg);
-      const poolFee = await resolveFee(opts.fee, NETWORK, "contract_call");
+      const poolFee = await resolveFee(opts.fee, network, "contract_call");
       const [singletonAddr, singletonName] = singleton.split(".");
 
       // Direct mode: post-condition guards the STX seed pulled from the caller.
@@ -457,7 +463,7 @@ program
         deployTxid: deployResult.txid,
         poolTxid: poolResult.txid,
         network,
-        explorerUrl: getExplorerTxUrl(poolResult.txid, NETWORK),
+        explorerUrl: getExplorerTxUrl(poolResult.txid, network),
         launkrUrl: `https://launkr.io/token/${intent.tokenPrincipal}`,
         chainExplorerUrl: `https://explorer.hiro.so/txid/${poolResult.txid}?chain=${chainParam}`,
       });
@@ -721,16 +727,19 @@ program
     "--recipient <address>",
     "Address to receive tokens (default: wallet address)"
   )
-  .option("--network <network>", "mainnet or testnet")
   .option("--fee <fee>", "Fee preset (low|medium|high) or micro-STX amount")
   .action(async (opts) => {
     try {
-      const network = resolveNetwork(opts.network);
-      const { singleton, chainParam } = NET_CONFIG[network];
+      // FIX (biwasxyz review, PR #414, blocker #2) — see the identical note
+      // in `launch`: the account's own network is the only thing that
+      // actually determines the broadcast target, so it's the only thing
+      // that should select which singleton/config we use.
       const account = await getAccount();
+      const network = account.network;
+      const { singleton, chainParam } = NET_CONFIG[network];
       const recipient = opts.recipient ?? account.address;
       const [singletonAddr, singletonName] = singleton.split(".");
-      const resolvedFee = await resolveFee(opts.fee, NETWORK, "contract_call");
+      const resolvedFee = await resolveFee(opts.fee, network, "contract_call");
 
       const result = await callContract(account, {
         contractAddress: singletonAddr,
@@ -743,10 +752,35 @@ program
           uintCV(BigInt(opts.deadline)),
           parsePrincipalCV(recipient),
         ],
+        // FIX (biwasxyz review, PR #414, blocker #1 — verified on-chain,
+        // both testnet and mainnet, 2026-08-05): Deny mode requires EVERY
+        // principal that moves an asset in the transaction to be covered,
+        // not just the caller. A buy has the singleton sending back BOTH
+        // the FT payout and STX (the two fee legs, treasury + protocol) —
+        // omitting those two conditions aborts with abort_by_post_condition
+        // even though the underlying contract call succeeds. One
+        // post-condition per (principal, asset) covers the *aggregate*
+        // amount that principal sends of that asset across the whole tx —
+        // confirmed empirically, no need for one condition per fee leg.
         postConditionMode: PostConditionMode.Deny,
-        // Guard: caller sends exactly stxIn uSTX (no more, no less).
         postConditions: [
+          // Caller: sends exactly stxIn uSTX, no more, no less.
           createStxPostCondition(account.address, "eq", BigInt(opts.stxIn)),
+          // Singleton: pays out the two STX fee legs (treasury + protocol).
+          // Not meaningful to bound tightly here — the amount is the
+          // contract's own fee math, not attacker-controlled input — so
+          // `gte 0` just satisfies Deny mode's "every sender is covered"
+          // rule without asserting anything false.
+          createContractStxPostCondition(singleton, "gte", 0n),
+          // Singleton: pays out at least minTokensOut of the FT — this
+          // *is* the meaningful guard (the actual slippage protection).
+          createContractFungiblePostCondition(
+            singleton,
+            opts.token,
+            LAUNKR_FT_ASSET_NAME,
+            "gte",
+            BigInt(opts.minTokensOut)
+          ),
         ],
         ...(resolvedFee !== undefined && { fee: resolvedFee }),
       });
@@ -759,7 +793,7 @@ program
         minTokensOut: opts.minTokensOut,
         recipient,
         network,
-        explorerUrl: getExplorerTxUrl(result.txid, NETWORK),
+        explorerUrl: getExplorerTxUrl(result.txid, network),
         chainExplorerUrl: `https://explorer.hiro.so/txid/${result.txid}?chain=${chainParam}`,
       });
     } catch (error) {
@@ -786,16 +820,17 @@ program
   )
   .option("--deadline <block>", "Max Stacks block height (default: no deadline)", "4294967295")
   .option("--recipient <address>", "Address to receive STX (default: wallet address)")
-  .option("--network <network>", "mainnet or testnet")
   .option("--fee <fee>", "Fee preset (low|medium|high) or micro-STX amount")
   .action(async (opts) => {
     try {
-      const network = resolveNetwork(opts.network);
-      const { singleton, chainParam } = NET_CONFIG[network];
+      // FIX (biwasxyz review, PR #414, blocker #2) — see the identical note
+      // in `launch`.
       const account = await getAccount();
+      const network = account.network;
+      const { singleton, chainParam } = NET_CONFIG[network];
       const recipient = opts.recipient ?? account.address;
       const [singletonAddr, singletonName] = singleton.split(".");
-      const resolvedFee = await resolveFee(opts.fee, NETWORK, "contract_call");
+      const resolvedFee = await resolveFee(opts.fee, network, "contract_call");
 
       const result = await callContract(account, {
         contractAddress: singletonAddr,
@@ -808,11 +843,19 @@ program
           uintCV(BigInt(opts.deadline)),
           parsePrincipalCV(recipient),
         ],
-        // FIX: the FT asset name is NOT per-token-variable — every Launkr
-        // token uses the identical internal asset name `strategy-token`
-        // (verified against the deployed byte-frozen template source, both
-        // mainnet and testnet). Only the contract address varies. This lets
-        // us scope a precise post-condition instead of using Allow mode.
+        // The FT asset name is NOT per-token-variable — every Launkr token
+        // uses the identical internal asset name `strategy-token` (verified
+        // against the deployed byte-frozen template source, both mainnet
+        // and testnet). Only the contract address varies.
+        //
+        // FIX (biwasxyz review, PR #414, blocker #1 — verified on-chain,
+        // both testnet and mainnet, 2026-08-05): a sell has the singleton
+        // paying out STX (the swap proceeds *and* the two fee legs) — Deny
+        // mode requires that covered too, not just the caller's FT leg.
+        // One post-condition per (principal, asset) covers the aggregate
+        // amount sent, confirmed empirically — a single `gte minStxOut` on
+        // the singleton's uSTX is both correct and the meaningful guard
+        // here (the actual slippage protection).
         postConditionMode: PostConditionMode.Deny,
         postConditions: [
           createFungiblePostCondition(
@@ -822,6 +865,7 @@ program
             "eq",
             BigInt(opts.tokensIn)
           ),
+          createContractStxPostCondition(singleton, "gte", BigInt(opts.minStxOut)),
         ],
         ...(resolvedFee !== undefined && { fee: resolvedFee }),
       });
@@ -834,7 +878,7 @@ program
         minStxOut: opts.minStxOut,
         recipient,
         network,
-        explorerUrl: getExplorerTxUrl(result.txid, NETWORK),
+        explorerUrl: getExplorerTxUrl(result.txid, network),
         chainExplorerUrl: `https://explorer.hiro.so/txid/${result.txid}?chain=${chainParam}`,
       });
     } catch (error) {

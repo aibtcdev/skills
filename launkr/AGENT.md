@@ -1,3 +1,9 @@
+---
+name: launkr-agent
+skill: launkr
+description: Launch and trade restricted SIP-010 tokens on Launkr — a protected token launcher and XYK AMM on Stacks. Deploy a token, open a bonding or direct pool, and trade STX for tokens.
+---
+
 # Launkr — Autonomous Operation Rules
 
 Rules for an agent using the Launkr skill (`launkr.ts`) without a human
@@ -11,9 +17,17 @@ this file is about *how to behave*, not the API shape.
    redeploy). Never hardcode an address from memory or from an old run.
 2. **Know which network you're on.** Testnet and mainnet contracts are
    structurally identical but financially very different — testnet STX is
-   free from a faucet, mainnet STX is real money. Every `launkr.ts` command
-   accepts an explicit `--network mainnet|testnet` flag; pass it explicitly
-   rather than relying on the `NETWORK` env var default.
+   free from a faucet, mainnet STX is real money. `launkr.ts` follows the
+   network of whichever wallet is currently loaded (set by the `NETWORK`
+   env var *at wallet-creation time*, not per command) — there is
+   deliberately no per-command `--network` override for `launch`,
+   `swap-buy`, or `swap-sell`, because the actual broadcast target is
+   always the loaded wallet's network regardless of any flag, and a flag
+   that looked like it controlled that but didn't was a real, confirmed
+   bug in an earlier version of this skill. Check which wallet/network is
+   active before running a write command, don't assume. (`get-pool`,
+   `quote-buy`, `quote-sell` are pure reads with no wallet coupling, so
+   they do still take an independent `--network` flag.)
 3. **This is an early-stage mainnet deployment.** Redeployed 2026-07-16.
    Start with small amounts (floor-minimum supply, minimum virtual-stx) on
    any new integration before scaling up, even though the contract has
@@ -50,7 +64,9 @@ this file is about *how to behave*, not the API shape.
    pool-creation args against what you requested, and aborts before
    deploying if anything doesn't match — this exists because the hash gate
    protects the token's *bytes*, not the pool-creation *arguments*. Don't
-   remove or bypass this check.
+   remove or bypass this check. (It does not yet check `virtual-stx`/
+   `graduation-threshold` — those aren't cross-checked, so double-check
+   them yourself against what you requested before confirming a launch.)
 
 ## Trading (quote / swap)
 
@@ -62,12 +78,19 @@ this file is about *how to behave*, not the API shape.
 2. Treat a `none` result from `quote-buy`/`quote-sell` as "do not proceed" —
    it means the pool doesn't exist or your input amount is zero, not "any
    amount is fine."
-3. For sells, scope a real fungible-token post-condition (asset name is
-   always `strategy-token` — see `SKILL.md`) rather than broadcasting with
-   `PostConditionMode.Allow`. `launkr.ts`'s `swap-sell` already does this;
-   don't switch it back to `Allow` — an unexpected contract bug or a future
-   template change could otherwise move more than you intended, with
-   nothing to catch it.
+3. **Every principal that moves an asset in the swap needs a post-condition
+   under `Deny` mode, not just you.** A buy has the singleton sending back
+   both the token *and* STX (two fee legs); a sell has the singleton paying
+   out STX (proceeds + fees). `launkr.ts` covers all of it — your own leg
+   tightly (`eq`), the singleton's fee-paying leg loosely (`gte 0`, since
+   that's the contract's own fee math, not something worth asserting an
+   exact bound on), and the singleton's payout to you as the real slippage
+   guard (`gte` your minimum). One post-condition per (principal, asset)
+   covers everything that principal sends of that asset in the whole
+   transaction — you don't need a separate condition per individual
+   transfer. Don't strip any of these down to "just the caller" again —
+   an earlier version did exactly that and aborted every single swap with
+   `abort_by_post_condition`, verified on both testnet and mainnet.
 4. Set a `deadline` when the surrounding context is time-sensitive (e.g.
    part of a multi-step flow where a stale price is a real risk). Only fall
    back to `0xffffffff` (no deadline) for one-off manual actions.
@@ -78,6 +101,9 @@ this file is about *how to behave*, not the API shape.
   — `BadFunctionArgument`, a post-condition failure, and a real contract
   `(err uNNN)` all need different fixes, and blind retries can burn gas
   repeatedly on the same mistake.
+- `abort_by_post_condition` specifically means some asset movement in the
+  transaction wasn't covered by a post-condition — check the node's
+  `vm_error` for which principal/asset it flagged rather than guessing.
 - Map `(err uNNN)` results to the error table in `SKILL.md` before deciding
   what to do next — several of them (e.g. `u209`/`u220`/`u224`) mean your
   launch parameters are mathematically invalid for the curve, not that
@@ -98,6 +124,8 @@ this file is about *how to behave*, not the API shape.
   the wait would have.
 - Don't assume documentation and code agree without checking — if you're
   editing either `SKILL.md`/`AGENT.md` or `launkr.ts`, update both together
-  and re-verify end-to-end before pushing. This exact gap (docs describing
-  `none` while the code sends `Some("")`) is what blocked this skill's
-  first merge attempt.
+  and re-verify end-to-end **on-chain, not just by reading the code** before
+  pushing. Two separate real bugs made it past review this way already:
+  docs describing `none` while the code sent `Some("")`, and `Deny`-mode
+  post-conditions that looked correct on paper but had never actually been
+  broadcast — both only surfaced once someone checked the chain.

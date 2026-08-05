@@ -61,9 +61,17 @@ staging suffix — verified live on-chain, see worked examples below):
 - Template: `ST2ABWV7JE5SFV1A1BDS8HARP2QY7QRPGC9KJJYWE.restricted-token-template-v6`
 - Trait: `ST2ABWV7JE5SFV1A1BDS8HARP2QY7QRPGC9KJJYWE.restricted-ft-trait-v6`
 
-Every `launkr.ts` command accepts `--network mainnet|testnet` explicitly
-(falls back to the `NETWORK` env var only if the flag is omitted) — always
-pass it explicitly rather than relying on the default.
+`get-pool`, `quote-buy`, and `quote-sell` are pure reads and take an
+explicit `--network mainnet|testnet` flag. `launch`, `swap-buy`, and
+`swap-sell` do **not** — they always follow whichever wallet is currently
+loaded (set by the `NETWORK` env var at wallet-creation time), because
+that's what actually determines the broadcast target no matter what a flag
+says. An earlier version of this skill had a `--network` flag on every
+command, including the three that sign transactions — it silently had no
+effect on where the transaction was actually sent, since `callContract`/
+`deployContract` read the network from the account, not from any
+parameter. Confirm which wallet/network is active before running a write
+command rather than expecting a flag to control it.
 
 ## Fees
 
@@ -173,15 +181,33 @@ Direct contract calls on the singleton — no API round-trip needed once you
 have a quote.
 
 **Buy:** `swap-exact-stx-for-tokens(token, stx-in, min-tokens-out, deadline, recipient)`
-— scope an `eq` STX post-condition to `stx-in`.
 
 **Sell:** `swap-exact-tokens-for-stx(token, tokens-in, min-stx-out, deadline, recipient)`
 — every Launkr token uses the **identical internal FT asset name
 `strategy-token`**, regardless of display name/symbol (verified against the
 deployed byte-frozen template source, both networks — only the contract
-address varies). Use an `eq` fungible-token post-condition scoped to
-`tokens-in` with asset name `strategy-token` rather than
-`PostConditionMode.Allow`. `launkr.ts` does this correctly.
+address varies).
+
+> **Gotcha — fixed in `launkr.ts`, verified on-chain on both testnet and
+> mainnet:** under `PostConditionMode.Deny`, **every principal that moves
+> an asset in the transaction needs a post-condition, not just the
+> caller.** A buy has the singleton sending back both the FT payout *and*
+> STX (the treasury + protocol fee legs); a sell has the singleton paying
+> out STX (proceeds + both fee legs). Post-conditioning only the caller's
+> own leg — which looks like the obviously-correct, safe thing to do —
+> aborts with `abort_by_post_condition` every time, because the
+> uncovered singleton-originated transfers get flagged. One
+> post-condition per `(principal, asset)` pair covers the aggregate amount
+> that principal sends of that asset across the whole transaction, so this
+> doesn't need one condition per individual fee leg. The complete correct
+> set:
+> - **Buy** — caller `eq stx-in` (uSTX), singleton `gte 0` (uSTX, covers
+>   the fee legs — not meaningfully boundable since that's the contract's
+>   own fee math, not caller input), singleton `gte min-tokens-out` (FT,
+>   `strategy-token` — this is the real slippage guard).
+> - **Sell** — caller `eq tokens-in` (FT, `strategy-token`), singleton
+>   `gte min-stx-out` (uSTX — covers proceeds + both fee legs in one
+>   aggregate check, and is itself the real slippage guard).
 
 Always call `quote-buy`/`quote-sell` first and set `min-tokens-out` /
 `min-stx-out` a few % under the quote as a slippage guard. Use
@@ -205,7 +231,9 @@ Always call `quote-buy`/`quote-sell` first and set `min-tokens-out` /
 500 virtual STX / 2000 STX graduation threshold, 1B supply. Created pool.
 Quoted 1 STX → 1,976,087.347052 LTT via `quote-buy`. Executed
 `swap-exact-stx-for-tokens` for 1 STX — received exactly the quoted amount,
-fees split 0.9%/0.1% as documented.
+fees split 0.9%/0.1% as documented. (This particular swap was broadcast in
+`Allow` mode, before the `Deny`-mode post-condition gotcha above was found
+— see the mainnet example below for a `Deny`-mode-verified swap.)
 
 **Mainnet (2026-07-16), against the redeployed contracts above:** Deployed
 `SP1YNEJRV1AJHGVSF2EMDWP58NF2XBNPYG0R94ZWW.lft` (LFT), bonding mode, 100M
@@ -214,6 +242,17 @@ omitted (using the `Some("")` fix). Both the deploy and `create-pool-bonding`
 confirmed successfully on the first attempt — `(ok 'SP1YNEJ....lft)`. This
 confirms both the redeployed mainnet contracts and the `uri`-argument fix
 are correct.
+
+**Mainnet (2026-08-05), `Deny`-mode swap verification:** Against the same
+LFT pool, ran `swap-exact-stx-for-tokens` for 0.3 STX with the full
+three-post-condition set from the gotcha above — `(ok u59364737346)`,
+matching the `quote-buy` result exactly. Then ran
+`swap-exact-tokens-for-stx` selling 10,000 LFT with the two-post-condition
+sell set — `(ok u49554)`, matching `quote-sell` exactly. Both confirmed on
+the first attempt with the corrected post-conditions; the original
+(caller-only) post-condition set was also tested first and reliably
+produced `abort_by_post_condition`, confirming the gotcha is real and the
+fix resolves it.
 
 See `AGENT.md` in this folder for operating rules when using this skill
 autonomously, and `launkr.ts` for a reference CLI implementation with all
