@@ -21,9 +21,13 @@ intermediary, no custody, no fee to any third party beyond Launkr's own
 protocol fee (see below).
 
 **What Launkr is:** A singleton XYK AMM that hosts N pools. Each pool trades
-STX against a *restricted* SIP-010 token — a token whose `transfer` function
-is locked so all trading must go through the authorized singleton. This
-guarantees fee capture on every swap.
+STX against a *restricted* SIP-010 token. "Restricted" means composability,
+not custody: transfers to an ordinary wallet always succeed; only sending
+to a *contract* is gated (allowlisted principals/code-hashes, initially
+just the singleton). This guarantees fee capture on every *swap* — trades
+must go through the singleton — without freezing the token in your wallet.
+See `AGENT.md`'s "What NOT to do" for the precise on-chain logic and why
+an earlier draft of these docs described this restriction incorrectly.
 
 **Two pool modes:**
 - **Bonding** (`create-pool-bonding`) — Starts with virtual reserves. No STX
@@ -142,19 +146,21 @@ post-condition** (`eq`, amount = stxSeed) since it pulls real STX from the
 caller at creation. Bonding mode pulls no STX at creation — its
 post-conditions array is empty.
 
-> **Resolved (2026-08-05):** an earlier version of `launkr.ts` sent an
-> explicit `Some("")` instead of `none` for an omitted `uri`, working
-> around a `BadFunctionArgument` broadcast rejection. That rejection turned
-> out to be specific to a *different* environment (the published
-> `@aibtc/mcp-server` npm package's own dependency resolution) rather than
-> a Stacks/Clarity issue — a bare `noneCV()` broadcasts and confirms fine
-> against this repo's own pinned `@stacks/transactions@7.3.1`, verified
-> both with a standalone script and this repo's own `callContract`
-> (testnet txids `6ee46234adfd545bb55d7396835fa730a4184324ac3ad1bf47b0406305234d8e`
-> and `9403bd6670eea9fb5f6812b937bdcd1604adb2d79da019c66583ae13fe38fbc6`,
-> both `(ok true)`). `parseLaunkrArg` sends a proper `none` again — a token
-> launched without `--uri` correctly has `none` on-chain, not an empty
-> string.
+> **Resolved (2026-08-05, corrected 2026-08-17):** an earlier version of
+> `launkr.ts` sent an explicit `Some("")` instead of `none` for an omitted
+> `uri`, working around a `BadFunctionArgument` broadcast rejection. That
+> rejection turned out to be specific to a *different* environment (the
+> published `@aibtc/mcp-server` npm package's own dependency resolution)
+> rather than a Stacks/Clarity issue — a bare `noneCV()` broadcasts and
+> confirms fine against this repo's own pinned `@stacks/transactions@7.3.1`.
+> (A prior version of this note cited two testnet txids for this that
+> don't exist on-chain — written before the test was actually run, an
+> error rather than a stale reference. Verified for real afterward: mainnet
+> txid `29b7e58d636d2be118ca658707220e3f5ff19100fbb264f5aeb00c765202e390`,
+> `(ok true)`, calling `set-token-uri` with a bare `noneCV()` signed with
+> this exact pinned dependency version.) `parseLaunkrArg` sends a proper
+> `none` again — a token launched without `--uri` correctly has `none`
+> on-chain, not an empty string.
 
 ## 2. Quote a trade (free, read-only, no gas)
 
@@ -241,29 +247,102 @@ name/symbol/supply/fee-receiver — those curve parameters are just as
 capable of coming back wrong from the API and are what the entire price
 curve is built from.
 
-**Does graduating a pool unlock token transfers?** No. Checked directly
-against the singleton's source: graduating only changes the pool's `mode`
-field (bonding fee 1% → graduated fee 5%, and enables `swap-and-burn`) — it
-never touches the token contract's allowlist. The restricted token's
-`transfer` function only ever allows sending to the singleton (or another
-address the allowlist-admin has explicitly approved), and nothing in the
-singleton's graduation path calls anything on the token to change that.
-Holders can never move these tokens except by selling back through the
-singleton — that's true before and after graduation, permanently, unless
-the allowlist-admin manually approves more recipients.
+**Does graduating a pool unlock token transfers?** Not applicable the way
+this question originally assumed — see the correction below. Graduating
+only changes the pool's `mode` field (bonding fee 1% → graduated fee 5%,
+and enables `swap-and-burn`); it never touches the token contract's
+allowlist, before or after graduation.
+
+**Correction (2026-08-17):** an earlier version of this doc (and
+`AGENT.md`) claimed tokens can *only* ever move by selling back through
+the singleton, with transfers "restricted to the singleton permanently."
+That's wrong. From `is-recipient-allowed` in the deployed
+`restricted-token-template-v6`: `(is-none (get name ok-parts)) → true` —
+a transfer to a **standard principal** (an ordinary wallet) is always
+allowed, unconditionally. The allowlist (`approved-principals`/
+`approved-code-hashes`, seeded with only the singleton) gates **contract**
+recipients only. So the real restriction is on composability — you can't
+plug the token into another DEX, use it as collateral, or hand it to any
+other contract unless the allowlist-admin adds it — not on moving it at
+all; sending to another wallet you or someone else controls works today,
+same as any SIP-010 token. It's also not necessarily permanent: the
+allowlist admin (hardcoded in the template at deploy time, itself
+transferable via `set-pending-allowlist-admin`/`accept-allowlist-admin`)
+can add or remove approved principals/code hashes at any time.
 
 **Could this skill build pool-creation args on-chain and skip
-`/api/launch` for step 2 entirely?** Yes — the answer above is exactly what
-`create-pool` now does. Extending that to skip the API for step 1 too
-(fetch the template on-chain, deploy under a locally-chosen contract name,
-never call `/api/launch` at all) is also possible in principle, since
-nothing in that response is undeterminable from on-chain data plus your
-own input. Deliberately not done here: launches submitted through
-`/api/launch` are how Launkr's own backend currently learns about new
-tokens for its own tracking, separate from the on-chain event indexing
-`launkr.io`'s frontend already does independently. Whether to give that up
-for a smaller trust surface is a product decision for the Launkr team, not
-something to change unilaterally in a skill PR.
+`/api/launch` for step 2 entirely?** Yes — `create-pool` already does
+this. Extending that to skip the API for step 1 too (fetch the template
+on-chain, deploy under a locally-chosen contract name, never call
+`/api/launch` at all) is also possible in principle, since nothing in that
+response is undeterminable from on-chain data plus your own input.
+Deliberately not done here: launches submitted through `/api/launch` are
+how Launkr's own backend currently learns about new tokens for its own
+tracking, separate from the on-chain event indexing `launkr.io`'s frontend
+already does independently. Whether to give that up for a smaller trust
+surface is a product decision for the Launkr team, not something to
+change unilaterally in a skill PR.
+
+**Config now actually fetched live.** `AGENT.md` has always said to fetch
+`GET /api/protocol` fresh every session rather than hardcode an address —
+but nothing in `launkr.ts` called it; every command read the `-v6`
+addresses baked into the script at the time it was written. Fixed:
+`fetchProtocolConfig` now calls the live endpoint at the start of every
+command that needs the singleton or template address, falling back to the
+baked-in addresses (with a warning) only if the request fails. This
+contract already redeployed once (2026-07-16); a second redeploy would
+previously have made every write target a retired contract and every read
+report `found: false`, silently.
+
+**`get-pool` decode bug, fixed.** A single `.value` unwrap isn't enough for
+a tuple response — every field *inside* the tuple is its own `{type,
+value}` node one level further down. The old code read `mode`/`active`/
+reserves directly off the once-unwrapped result and got back objects
+(`String(...)` → `"[object Object]"`) or `undefined` for every field,
+while still reporting `found: true`. Verified directly against a real
+mainnet pool: the old code produced `mode: "[object Object]"`; the fix
+(`unwrapCV`, a small recursive tree-flattener) produces `mode: "bonding"`,
+`active: true`, and correct numeric strings for every reserve field, from
+the same response. `quote-buy`/`quote-sell` didn't have this bug (their
+result shape happens to bottom out one level shallower) but now share the
+same helper instead of near-duplicate manual unwrap logic.
+
+**`launch`/`create-pool` now require the mode-appropriate curve flags.**
+`--virtual-stx`/`--graduation-threshold` (bonding) and `--stx-seed`
+(direct) used to be plain optional flags. A `--mode direct` launch with no
+`--stx-seed` used to proceed through the entire token deploy — spending
+that fee — before failing at pool creation with `abort_by_post_condition`
+(the post-condition guarding the seed can't be built from `undefined`).
+Both commands now validate this before doing anything on-chain. As a
+consequence, `validatePoolStepMatchesRequest`'s curve-parameter checks
+(added when the checker was first extended to cover them) are now always
+exercised — they used to silently no-op whenever the corresponding flag
+was omitted, which was the default, most common case.
+
+**`validatePoolStepMatchesRequest` now checks the pool-creation function
+name, the exact arg count per mode, and the token principal, not just the
+argument values.** Three more gaps: the API's chosen `functionName` was
+invoked verbatim with no check that it matched the locally-validated
+`--mode` (a `create-pool-direct` response under `--mode bonding` would
+have passed every other check and broadcast a call that pulls STX with no
+post-condition); the arg-count check accepted `>= 8`, so an 8-arg response
+under bonding mode (which needs 9) had `graduation-threshold` and
+`fee-receiver` silently read from the same slot; and `args[0]`, the token
+the pool is even for, was never compared against the token that was
+actually just deployed. All three are checked now.
+
+**`create-pool` reads `decimals` from the already-deployed token contract**
+instead of hardcoding `6` — `launch` takes decimals from whatever the API
+response used, so a hardcoded value in the recovery path could silently
+diverge and create a differently-configured pool than `launch` would have.
+Reading it back from the live contract via `get-decimals` can't drift from
+what's actually on-chain, by construction.
+
+**`launch` now waits for the pool-creation transaction to confirm**, not
+just the deploy — it used to print `success: true` right after
+*broadcasting* the pool-creation call, so a caller had no way to
+distinguish "pool created" from "pool creation is still pending" from
+"pool creation aborted on-chain" from the JSON output alone.
 
 ## Error codes
 

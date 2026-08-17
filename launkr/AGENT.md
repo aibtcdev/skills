@@ -50,21 +50,33 @@ this file is about *how to behave*, not the API shape.
    if you're touching `parseLaunkrArg` again — re-verify on-chain before
    changing this back, don't reason about it from the code alone (that's
    exactly how this got it wrong the first time).
-4. For **direct mode**, confirm you actually hold ≥ `stxSeed` uSTX before
-   attempting the call — it pulls real STX from your balance at creation
-   time, guarded by an exact STX post-condition. Insufficient balance fails
-   loudly (post-condition or balance check), it does not silently partial-fill.
+4. `--virtual-stx`/`--graduation-threshold` (bonding) and `--stx-seed`
+   (direct) are required per mode — `launch` and `create-pool` both fail
+   fast with a clear message if the wrong ones are missing, rather than
+   deploying the token first and only discovering the gap when pool
+   creation aborts. (That was a real bug: `--stx-seed` used to be optional,
+   so a `--mode direct` run with no seed proceeded through the whole
+   deploy before failing.) For **direct mode**, separately confirm you
+   actually hold ≥ `stxSeed` uSTX before attempting the call — the required
+   flag only means the value was supplied, not that you can afford it.
 5. Pick `virtualStx`/`graduationThreshold` (bonding) deliberately, not just
    at the floor minimums, unless the goal is specifically a cheap test
    token — floor values create a very "top-heavy" curve (large price impact
    per STX traded).
-6. **Trust but verify the Launkr API's response.** `launkr.ts` cross-checks
-   `name`, `symbol`, `supply`, `fee-receiver`, and the curve parameters
-   (`virtual-stx`/`graduation-threshold` for bonding, `stx-seed` for
-   direct) in the returned pool-creation args against what you requested,
-   and separately byte-compares the deploy step's `clarityCode` against
-   the real on-chain template — both before spending any gas. Don't remove
-   or bypass either check.
+6. **Trust but verify the Launkr API's response** — this is the part of
+   `launch` most worth re-reading if you're extending it, since it's been
+   wrong twice already in ways that only surfaced on-chain. `launkr.ts`
+   checks, before spending any gas: the deploy step's `clarityCode`
+   byte-matches the real on-chain template; the pool-creation step calls
+   the function that matches your `--mode` (`create-pool-bonding` vs
+   `create-pool-direct` — a response could otherwise call the wrong one
+   while every arg still looked fine); the pool-creation args are exactly
+   the length the mode requires (not just "at least" — a short bonding
+   response can read `fee-receiver` as `graduation-threshold`); and the
+   `token`/`name`/`symbol`/`supply`/`fee-receiver`/curve-parameter values
+   in those args match what was requested. Don't remove or narrow any of
+   these — each one closes a gap a previous version of this file actually
+   had.
 7. **`launch` is two transactions with no atomicity between them, but there
    is a recovery path.** If pool creation (step 2) fails or the process is
    interrupted after the token deploys, don't re-run `launch` — it deploys
@@ -121,15 +133,33 @@ this file is about *how to behave*, not the API shape.
   the *current* receiver) followed by `accept-fee-receiver` (called by the
   new one) is the correction path — it's a real two-step on-chain transfer,
   exposed by this skill, not just a theoretical escape hatch.
-- Tokens **cannot be transferred outside the singleton, ever, including
-  after graduation.** Graduating a pool only changes its fee tier
-  (1% → 5%) and enables `swap-and-burn` — it does not touch the token's
-  allowlist. The only way out of a position is selling back through the
-  singleton (`swap-sell`). Don't imply otherwise to a user deciding
-  whether to launch or hold.
+- **Correction (biwasxyz review round 2): the line that used to be here was
+  wrong, not just imprecise.** It said tokens can never be transferred
+  outside the singleton and that selling back is the only way out. From
+  `is-recipient-allowed` in the deployed `restricted-token-template-v6`:
+  a transfer to an ordinary wallet (a standard principal) is **always**
+  allowed — `(is-none (get name ok-parts)) → true`, unconditionally. The
+  gate only applies to **contract** recipients (checked against
+  `approved-principals`/`approved-code-hashes`, which start out containing
+  only the singleton). So the real restriction is on *composability* — you
+  can't hand the token to another DEX, use it as collateral, or plug it
+  into another protocol unless that contract gets allowlisted — not on
+  moving it at all. Selling via `swap-sell` is how you convert it back to
+  STX, but sending it to a friend's wallet, another EOA you control, or an
+  exchange deposit address (if that's a standard principal, as most are)
+  works today, unconditionally. Also not permanent: the allowlist admin
+  (hardcoded in the template at deploy time, itself transferable via
+  `set-pending-allowlist-admin`/`accept-allowlist-admin`) can add or remove
+  approved principals/code hashes at any time. Tell a user deciding whether
+  to hold or launch the real shape of the restriction, not the wrong one.
 - Don't assume a pool is safe to trade at size just because it exists.
   `get-pool` first — check `active`, `mode`, and current reserves before
-  committing meaningful STX to a swap.
+  committing meaningful STX to a swap. (This instruction was previously
+  unfollowable: `get-pool` had a decode bug that returned every field as
+  `undefined` or the literal string `"[object Object]"`, `active` included
+  — an agent checking `active` got a falsy value regardless of the pool's
+  real state. Fixed by decoding the full Clarity-value tree instead of
+  assuming a fixed unwrap depth; verified against a real pool.)
 - Don't skip the confirmation-wait between launch steps to save time. A
   pool-creation call against an unconfirmed (or failed) token deploy will
   fail outright, and diagnosing "why" after the fact costs more time than
@@ -137,7 +167,12 @@ this file is about *how to behave*, not the API shape.
 - Don't assume documentation and code agree without checking — if you're
   editing either `SKILL.md`/`AGENT.md` or `launkr.ts`, update both together
   and re-verify end-to-end **on-chain, not just by reading the code** before
-  pushing. Two separate real bugs made it past review this way already:
-  docs describing `none` while the code sent `Some("")`, and `Deny`-mode
+  pushing. Three separate real bugs made it past review this way already:
+  docs describing `none` while the code sent `Some("")`; `Deny`-mode
   post-conditions that looked correct on paper but had never actually been
-  broadcast — both only surfaced once someone checked the chain.
+  broadcast; and a decode helper (`get-pool`) that looked correct on paper
+  and had *also* never actually been run against a real response. All three
+  only surfaced once someone checked the chain — reading the code carefully
+  was not enough in any of the three cases, and paraphrasing an unverified
+  claim in a PR comment (which briefly happened here too, over the
+  `noneCV()` root-cause writeup) is its own version of the same mistake.

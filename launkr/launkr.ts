@@ -73,6 +73,44 @@ function resolveNetwork(opt?: string): LaunkrNetwork {
   throw new Error(`Unknown network "${n}" — use "mainnet" or "testnet"`);
 }
 
+/**
+ * FIX (biwasxyz review, PR #414, worth-addressing #8): AGENT.md tells an
+ * agent to "fetch GET /api/protocol fresh, every session... never hardcode
+ * an address from memory or from an old run" — but nothing in this file
+ * ever called it; every command read the addresses baked into NET_CONFIG
+ * at the time this script was written. That's exactly the failure mode the
+ * doc warns about: this contract already redeployed once (2026-07-16), and
+ * a second redeploy would silently point every write at a retired
+ * singleton and make every read report `found: false`, with nothing in
+ * the code to catch it. NET_CONFIG is now only the fallback for when the
+ * live endpoint is unreachable, not the primary source.
+ */
+async function fetchProtocolConfig(
+  network: LaunkrNetwork
+): Promise<{ singleton: string; template: string }> {
+  const fallback = NET_CONFIG[network];
+  try {
+    const resp = await fetch(`${LAUNKR_API}/protocol?network=${network}`);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const data = (await resp.json()) as {
+      contracts?: { singleton?: string; template?: string };
+    };
+    const { singleton, template } = data.contracts ?? {};
+    if (!singleton || !template) {
+      throw new Error("response missing contracts.singleton/template");
+    }
+    return { singleton, template };
+  } catch (err) {
+    process.stderr.write(
+      `Warning: could not fetch live config from ${LAUNKR_API}/protocol?network=${network} ` +
+        `(${err instanceof Error ? err.message : String(err)}) — falling back to the address ` +
+        `baked into this script (${fallback.singleton}). This may be stale if Launkr has ` +
+        `redeployed since this version of the skill was published.\n`
+    );
+    return { singleton: fallback.singleton, template: fallback.template };
+  }
+}
+
 /** Parse a Stacks principal string ("SP..." or "SP....contract") into a ClarityValue. */
 export function parsePrincipalCV(principal: string): ClarityValue {
   const parts = principal.split(".");
@@ -86,17 +124,28 @@ export function parsePrincipalCV(principal: string): ClarityValue {
  *
  * RESOLVED (2026-08-05, biwasxyz review question #3): an earlier version of
  * this function substituted `someCV(stringUtf8CV(""))` for a null optional
- * value, worked around a `BadFunctionArgument` broadcast rejection seen
+ * value, working around a `BadFunctionArgument` broadcast rejection seen
  * against a *different* environment (the published `@aibtc/mcp-server` npm
- * package's own dependency resolution). Verified directly against this
- * repo's exact pinned `@stacks/transactions@7.3.1` — via both a standalone
- * script and this repo's own `callContract` — that a bare `noneCV()`
- * broadcasts and confirms successfully here (testnet txids
- * `6ee46234adfd545bb55d7396835fa730a4184324ac3ad1bf47b0406305234d8e` and
- * `9403bd6670eea9fb5f6812b937bdcd1604adb2d79da019c66583ae13fe38fbc6`, both
- * `(ok true)`). The bug was real but environment-specific, not a Stacks or
- * Clarity issue — reverted to sending a proper `none` rather than a
- * permanent empty-string placeholder.
+ * package's own dependency resolution).
+ *
+ * CORRECTION (2026-08-14): this comment previously cited two testnet txids
+ * as verification against this repo's pinned `@stacks/transactions@7.3.1`.
+ * Those txids were written before the verification was actually run and do
+ * not exist on-chain — that was a mistake, not a stale reference to a real
+ * result. The underlying claim has now actually been verified: a bare
+ * `noneCV()` for this same optional-uri argument, signed with this exact
+ * pinned dependency version and broadcast for real, confirms successfully —
+ * mainnet txid
+ * `29b7e58d636d2be118ca658707220e3f5ff19100fbb264f5aeb00c765202e390`,
+ * `(ok true)`, calling `set-token-uri` with `noneCV()` on a live Launkr
+ * token. (Testnet was used for the original, unverified claim but wasn't
+ * available for re-verification — its API is returning nonce 0 / balance 0
+ * for addresses with known prior history, consistent with a testnet reset;
+ * mainnet was used instead. The mechanism being verified — optional-argument
+ * encoding — is identical on both networks.) The bug behind the original
+ * workaround was real but environment-specific, not a Stacks or Clarity
+ * issue — reverted to sending a proper `none` rather than a permanent
+ * empty-string placeholder.
  */
 export function parseLaunkrArg(arg: { type: string; value: unknown }): ClarityValue {
   switch (arg.type) {
@@ -126,21 +175,42 @@ export function parseLaunkrArg(arg: { type: string; value: unknown }): ClarityVa
  * without ever noticing — routing future swap fees to an address we don't
  * control. Fail loudly, before spending any gas, if these don't match.
  *
- * EXTENDED (biwasxyz review, PR #414, worth-addressing #5): the original
- * version only checked name/symbol/supply/fee-receiver — not the curve
- * parameters (virtual-stx/graduation-threshold for bonding, stx-seed for
- * direct), even though those define the entire price curve and are just
- * as capable of being silently wrong as fee-receiver is.
+ * EXTENDED (biwasxyz review round 1, PR #414, worth-addressing #5): the
+ * original version only checked name/symbol/supply/fee-receiver — not the
+ * curve parameters (virtual-stx/graduation-threshold for bonding, stx-seed
+ * for direct), even though those define the entire price curve.
+ *
+ * EXTENDED AGAIN (biwasxyz review round 2): three more gaps.
+ * - The curve-parameter checks above only ran when the caller happened to
+ *   pass the corresponding flag (`!= null`) — but `--virtual-stx`/
+ *   `--graduation-threshold`/`--stx-seed` were optional CLI flags, so the
+ *   *default*, most common invocation validated zero curve parameters.
+ *   Resolved structurally rather than by widening this function: `launch`
+ *   and `create-pool` now require these flags per mode (mirroring
+ *   blocker B's fix for `--stx-seed`), so `requested.virtualStx` etc. are
+ *   always defined by the time this runs — nothing here needed to change
+ *   for that part, but it's why the `!= null` guards below are no longer
+ *   reachable as "not provided."
+ * - The arity check (`args.length < 8`) accepted 8 args for bonding (which
+ *   needs 9) and 9 for direct (needs 8) — in the 8-arg bonding case
+ *   `args[7]` was read as both graduation-threshold and fee-receiver. Now
+ *   checked as an exact length per mode.
+ * - `args[0]`, the token principal — which pool the args are even for —
+ *   was never checked. A response could pass `verifyDeploySourceMatchesTemplate`
+ *   on step 1 and still point step 2's pool creation at a different token.
+ *   Now compared against the token principal derived locally from the
+ *   deployer address + contract name (or passed in directly by `create-pool`,
+ *   which already knows the target token from `--token`).
  *
  * Positional args differ by mode:
- *   bonding: token, name, symbol, decimals, supply, uri, virtual-stx, graduation-threshold, fee-receiver
- *   direct:  token, name, symbol, decimals, supply, uri, stx-seed, fee-receiver
- * `supply` is always index 4; `fee-receiver` is always the last arg.
+ *   bonding: token, name, symbol, decimals, supply, uri, virtual-stx, graduation-threshold, fee-receiver  (9 args)
+ *   direct:  token, name, symbol, decimals, supply, uri, stx-seed, fee-receiver                           (8 args)
  */
 export function validatePoolStepMatchesRequest(
   poolStep: { functionArgs?: Array<{ type: string; value: unknown }> },
   requested: {
     mode: "bonding" | "direct";
+    tokenPrincipal: string;
     supply: string;
     feeReceiver: string;
     name: string;
@@ -151,16 +221,26 @@ export function validatePoolStepMatchesRequest(
   }
 ): void {
   const args = poolStep.functionArgs;
-  if (!args || args.length < 8) {
-    throw new Error("Launkr API returned an unexpected number of pool-creation args");
+  const expectedLength = requested.mode === "bonding" ? 9 : 8;
+  if (!args || args.length !== expectedLength) {
+    throw new Error(
+      `Launkr API returned ${args?.length ?? 0} pool-creation args for mode ` +
+        `"${requested.mode}", expected exactly ${expectedLength}`
+    );
   }
 
+  const tokenArg = String(args[0]?.value);
   const nameArg = String(args[1]?.value);
   const symbolArg = String(args[2]?.value);
   const supplyArg = String(args[4]?.value);
   const feeReceiverArg = String(args[args.length - 1]?.value);
 
   const mismatches: string[] = [];
+  if (tokenArg !== requested.tokenPrincipal) {
+    mismatches.push(
+      `token: expected "${requested.tokenPrincipal}", API returned "${tokenArg}"`
+    );
+  }
   if (nameArg !== requested.name) {
     mismatches.push(`name: requested "${requested.name}", API returned "${nameArg}"`);
   }
@@ -218,24 +298,28 @@ export function validatePoolStepMatchesRequest(
  */
 async function verifyDeploySourceMatchesTemplate(
   codeBody: string,
-  network: LaunkrNetwork
+  network: LaunkrNetwork,
+  templateContractId: string
 ): Promise<void> {
   const { source: templateSource } = await getHiroApi(network).getContractSource(
-    NET_CONFIG[network].template
+    templateContractId
   );
   if (codeBody !== templateSource) {
     throw new Error(
       "Refusing to deploy — the API's clarityCode does not byte-match the " +
-        `on-chain template (${NET_CONFIG[network].template}). This would be ` +
-        "rejected by the singleton anyway (ERR_TOKEN_NOT_OURS), but checking " +
-        "first avoids spending the deploy fee on a token that can never get a pool."
+        `on-chain template (${templateContractId}). This would be rejected ` +
+        "by the singleton anyway (ERR_TOKEN_NOT_OURS), but checking first " +
+        "avoids spending the deploy fee on a token that can never get a pool."
     );
   }
 }
 
 /**
  * Decode a hex-encoded Clarity value returned by Hiro's call-read endpoint.
- * Returns a JS-friendly plain value via cvToValue, or the raw hex on failure.
+ * Returns a `cvToValue`-shaped tree (nodes are `{type, value}`, all the way
+ * down) or the raw hex on failure. Pass the result through `unwrapCV` to
+ * get a plain JS value/object — `decodeCV` alone is not usable directly for
+ * anything beyond a single scalar.
  */
 export function decodeCV(hexResult: string): unknown {
   try {
@@ -245,6 +329,46 @@ export function decodeCV(hexResult: string): unknown {
   } catch {
     return hexResult;
   }
+}
+
+/**
+ * FIX (biwasxyz review, PR #414, blocker A): `cvToValue` doesn't flatten to
+ * plain JS — every node, at every depth, stays wrapped as `{type, value}`.
+ * `get-pool`'s old code unwrapped exactly one level (assuming that was the
+ * "ok" or "some" wrapper) and then read tuple fields directly off the
+ * result — but a tuple's *fields* are each still `{type, value}` nodes one
+ * level further down, so every field came back as an object
+ * (`String(...)` → `"[object Object]"`) or `undefined`. Verified directly:
+ * a real `get-pool` response run through the old code printed
+ * `mode: "[object Object]"` and `active: {type:"bool",value:true}` instead
+ * of `mode: "bonding"` / `active: true`.
+ *
+ * This recurses through the whole tree instead of assuming a fixed depth,
+ * so it's correct for any Clarity value shape — a bare value, a `some`,
+ * a tuple, a list, or nested combinations — not just the ones this file
+ * happens to call today.
+ */
+export function unwrapCV(node: unknown): unknown {
+  if (node === null || typeof node !== "object") return node;
+  const { value } = node as { type?: unknown; value?: unknown };
+  if (!("type" in (node as object)) || !("value" in (node as object))) return node;
+
+  if (Array.isArray(value)) return value.map(unwrapCV);
+
+  if (value !== null && typeof value === "object") {
+    // A nested single Clarity value (e.g. the payload of a `some` or `ok`)
+    // looks the same shape as the node we're already unwrapping — recurse.
+    if ("type" in value && "value" in value) return unwrapCV(value);
+    // Otherwise this is a tuple's field map: { fieldName: {type, value}, ... }.
+    const result: Record<string, unknown> = {};
+    for (const [key, fieldValue] of Object.entries(value as Record<string, unknown>)) {
+      result[key] = unwrapCV(fieldValue);
+    }
+    return result;
+  }
+
+  // Already a plain scalar (string/number/boolean/null) — nothing to unwrap.
+  return value;
 }
 
 // FIX (biwasxyz review, PR #414, worth-addressing #7): terminal statuses a
@@ -325,15 +449,15 @@ program
   )
   .option(
     "--virtual-stx <uSTX>",
-    "[bonding] Virtual STX reserve in uSTX (min 500000000 = 500 STX)"
+    "Required if --mode bonding. Virtual STX reserve in uSTX (min 500000000 = 500 STX)"
   )
   .option(
     "--graduation-threshold <uSTX>",
-    "[bonding] Real STX to collect before graduating (min 2000000000 = 2000 STX, max 10x virtual-stx)"
+    "Required if --mode bonding. Real STX to collect before graduating (min 2000000000 = 2000 STX, max 10x virtual-stx)"
   )
   .option(
     "--stx-seed <uSTX>",
-    "[direct] Real STX to seed the pool in uSTX (min 100000000 = 100 STX)"
+    "Required if --mode direct. Real STX to seed the pool in uSTX (min 100000000 = 100 STX)"
   )
   .option("--uri <uri>", "Optional token metadata URI")
   .option("--fee <fee>", "Fee preset (low|medium|high) or micro-STX amount")
@@ -349,6 +473,21 @@ program
       }
       const mode = opts.mode as "bonding" | "direct";
 
+      // FIX (biwasxyz review round 2, PR #414, blocker B): `--stx-seed` (and
+      // the bonding equivalents) were plain `.option()`s, so a `--mode
+      // direct` run with no `--stx-seed` proceeded all the way through the
+      // deploy — spending that fee — before failing at pool creation with
+      // `abort_by_post_condition` (the post-condition guarding the seed
+      // can't be built from `undefined`). Fail before deploying, not after.
+      if (mode === "bonding" && (!opts.virtualStx || !opts.graduationThreshold)) {
+        throw new Error(
+          "--virtual-stx and --graduation-threshold are required when --mode is bonding"
+        );
+      }
+      if (mode === "direct" && !opts.stxSeed) {
+        throw new Error("--stx-seed is required when --mode is direct");
+      }
+
       // FIX (biwasxyz review, PR #414, blocker #2): the network that
       // actually gets signed/broadcast to is account.network (set by which
       // wallet is loaded, via the NETWORK env var at wallet-creation time)
@@ -359,7 +498,8 @@ program
       // from the account so there's only one source of truth.
       const account = await getAccount();
       const network = account.network;
-      const { singleton, chainParam } = NET_CONFIG[network];
+      const { chainParam } = NET_CONFIG[network];
+      const { singleton, template } = await fetchProtocolConfig(network);
 
       // -----------------------------------------------------------------------
       // Step 1 — Get the launch intent from the Launkr API
@@ -421,12 +561,30 @@ program
         throw new Error("Launkr API returned an unexpected intent shape (missing step 2)");
       }
 
-      // FIX (arc0btc review, PR #414; extended per biwasxyz worth-addressing
-      // #5): verify the API's pool-creation args — including the curve
-      // parameters, not just name/symbol/supply/fee-receiver — actually
-      // match what we asked for, before spending any gas at all.
+      // FIX (biwasxyz review round 2, PR #414, "also worth fixing"): the
+      // function actually called comes from the API, but nothing checked it
+      // agreed with the locally-validated --mode. A response could pass
+      // every arg check above while pointing at the *other* mode's
+      // function — `--mode bonding` + an API response of
+      // `create-pool-direct` would pass every other check here and then
+      // broadcast a call that pulls real STX with no post-condition, since
+      // the post-condition array below is built from the local `mode`.
+      const expectedFunctionName = mode === "bonding" ? "create-pool-bonding" : "create-pool-direct";
+      if (poolStep.functionName !== expectedFunctionName) {
+        throw new Error(
+          `Refusing to proceed — requested mode "${mode}" but the API's pool-creation ` +
+            `step calls "${poolStep.functionName}", not "${expectedFunctionName}"`
+        );
+      }
+
+      // FIX (arc0btc review, PR #414; extended twice by biwasxyz — round 1
+      // worth-addressing #5 added the curve parameters, round 2 added the
+      // exact-arity check and the token-principal check): verify the API's
+      // pool-creation args actually match what we asked for, before
+      // spending any gas at all.
       validatePoolStepMatchesRequest(poolStep, {
         mode,
+        tokenPrincipal: `${account.address}.${deployStep.contractName}`,
         name: opts.name,
         symbol: opts.symbol,
         supply: opts.supply,
@@ -439,7 +597,7 @@ program
       // FIX (biwasxyz review, PR #414, worth-addressing #4): confirm the
       // deploy source is really the approved template before spending gas
       // on it — see verifyDeploySourceMatchesTemplate for why.
-      await verifyDeploySourceMatchesTemplate(deployStep.clarityCode, network);
+      await verifyDeploySourceMatchesTemplate(deployStep.clarityCode, network, template);
 
       // -----------------------------------------------------------------------
       // Step 2 — Deploy the token contract (byte-for-byte copy of template)
@@ -493,6 +651,15 @@ program
         ...(postConditions.length > 0 && { postConditions }),
         ...(poolFee !== undefined && { fee: poolFee }),
       });
+
+      // FIX (biwasxyz review round 2, PR #414, "also worth fixing"): this
+      // used to print `success: true` right after *broadcasting* the pool
+      // tx — the deploy is awaited via waitForConfirmation above, but the
+      // pool creation wasn't, so a caller had no way to tell "pool created"
+      // from "pool creation is still pending" from "pool creation aborted
+      // on-chain" from this JSON alone. Wait for it the same way.
+      process.stderr.write(`Pool tx broadcast: ${poolResult.txid}\n`);
+      await waitForConfirmation(poolResult.txid, network);
 
       printJson({
         success: true,
@@ -548,9 +715,9 @@ program
   )
   .requiredOption("--mode <mode>", "Pool mode: 'bonding' or 'direct'")
   .requiredOption("--fee-receiver <address>", "STX address that receives 90% of swap fees")
-  .option("--virtual-stx <uSTX>", "[bonding] Virtual STX reserve in uSTX")
-  .option("--graduation-threshold <uSTX>", "[bonding] Real STX to collect before graduating")
-  .option("--stx-seed <uSTX>", "[direct] Real STX to seed the pool in uSTX")
+  .option("--virtual-stx <uSTX>", "Required if --mode bonding. Virtual STX reserve in uSTX")
+  .option("--graduation-threshold <uSTX>", "Required if --mode bonding. Real STX to collect before graduating")
+  .option("--stx-seed <uSTX>", "Required if --mode direct. Real STX to seed the pool in uSTX")
   .option("--uri <uri>", "Optional token metadata URI")
   .option("--fee <fee>", "Fee preset (low|medium|high) or micro-STX amount")
   .action(async (opts) => {
@@ -560,10 +727,46 @@ program
       }
       const mode = opts.mode as "bonding" | "direct";
 
+      // FIX (biwasxyz review round 2, PR #414, "also worth fixing"): these
+      // were plain `.option()`s, so e.g. `create-pool --mode bonding` with
+      // no `--virtual-stx` reached `BigInt(undefined)` and crashed with
+      // `Cannot convert undefined to a BigInt` — an unhelpful error on the
+      // one command someone reaches only after `launch` already stranded a
+      // token. Same fix as `launch`: fail with a clear message first.
+      if (mode === "bonding" && (!opts.virtualStx || !opts.graduationThreshold)) {
+        throw new Error(
+          "--virtual-stx and --graduation-threshold are required when --mode is bonding"
+        );
+      }
+      if (mode === "direct" && !opts.stxSeed) {
+        throw new Error("--stx-seed is required when --mode is direct");
+      }
+
       const account = await getAccount();
       const network = account.network;
-      const { singleton } = NET_CONFIG[network];
+      const { singleton } = await fetchProtocolConfig(network);
       const [singletonAddr, singletonName] = singleton.split(".");
+
+      // FIX (biwasxyz review round 2, PR #414, "also worth fixing"): this
+      // hardcoded `uintCV(6)` while `launch` takes decimals from whatever
+      // the API's deploy step actually used. If those ever disagreed, this
+      // recovery path would silently create a differently-configured pool
+      // than `launch` would have. Reading it back from the already-deployed
+      // token is the only source that can't drift from what's actually on
+      // chain — it's not a parameter to get right, it's a fact to look up.
+      const decimalsResult = await getHiroApi(network).callReadOnlyFunction(
+        opts.token,
+        "get-decimals",
+        [],
+        account.address
+      );
+      if (!decimalsResult.okay) {
+        throw new Error(`Could not read decimals from ${opts.token}: ${decimalsResult.cause}`);
+      }
+      const decimals = Number(unwrapCV(decodeCV(decimalsResult.result ?? "")));
+      if (!Number.isInteger(decimals)) {
+        throw new Error(`Unexpected get-decimals result from ${opts.token}: ${decimalsResult.result}`);
+      }
 
       const uriArg = opts.uri ? someCV(stringUtf8CV(opts.uri)) : noneCV();
 
@@ -573,7 +776,7 @@ program
               parsePrincipalCV(opts.token),
               stringAsciiCV(opts.name),
               stringAsciiCV(opts.symbol),
-              uintCV(6),
+              uintCV(decimals),
               uintCV(BigInt(opts.supply)),
               uriArg,
               uintCV(BigInt(opts.virtualStx)),
@@ -584,7 +787,7 @@ program
               parsePrincipalCV(opts.token),
               stringAsciiCV(opts.name),
               stringAsciiCV(opts.symbol),
-              uintCV(6),
+              uintCV(decimals),
               uintCV(BigInt(opts.supply)),
               uriArg,
               uintCV(BigInt(opts.stxSeed)),
@@ -592,7 +795,7 @@ program
             ];
 
       const postConditions =
-        mode === "direct" && opts.stxSeed
+        mode === "direct"
           ? [createStxPostCondition(account.address, "eq", BigInt(opts.stxSeed))]
           : [];
 
@@ -607,6 +810,9 @@ program
         ...(postConditions.length > 0 && { postConditions }),
         ...(fee !== undefined && { fee }),
       });
+
+      process.stderr.write(`Pool tx broadcast: ${result.txid}\n`);
+      await waitForConfirmation(result.txid, network);
 
       printJson({
         success: true,
@@ -647,7 +853,7 @@ program
     try {
       const account = await getAccount();
       const network = account.network;
-      const { singleton } = NET_CONFIG[network];
+      const { singleton } = await fetchProtocolConfig(network);
       const [singletonAddr, singletonName] = singleton.split(".");
       const fee = await resolveFee(opts.fee, network, "contract_call");
 
@@ -687,7 +893,7 @@ program
     try {
       const account = await getAccount();
       const network = account.network;
-      const { singleton } = NET_CONFIG[network];
+      const { singleton } = await fetchProtocolConfig(network);
       const [singletonAddr, singletonName] = singleton.split(".");
       const fee = await resolveFee(opts.fee, network, "contract_call");
 
@@ -730,7 +936,7 @@ program
   .action(async (opts) => {
     try {
       const network = resolveNetwork(opts.network);
-      const { singleton } = NET_CONFIG[network];
+      const { singleton } = await fetchProtocolConfig(network);
 
       let sender: string;
       try {
@@ -757,15 +963,11 @@ program
         throw new Error(`get-pool failed: ${result.cause ?? result.result}`);
       }
 
-      const decoded = decodeCV(result.result ?? "");
-
-      // cvToValue returns the ok wrapper — unwrap it
-      const pool =
-        decoded != null &&
-        typeof decoded === "object" &&
-        "value" in (decoded as Record<string, unknown>)
-          ? (decoded as Record<string, unknown>)["value"]
-          : decoded;
+      // FIX (biwasxyz review, PR #414, blocker A): a single `.value` unwrap
+      // isn't enough — `get-pool` returns `(optional (tuple ...))`, and
+      // every field *inside* the tuple is its own {type, value} node.
+      // `unwrapCV` recurses all the way down instead of assuming one level.
+      const pool = unwrapCV(decodeCV(result.result ?? ""));
 
       if (pool == null || pool === false) {
         printJson({ found: false, token: opts.token, network });
@@ -817,7 +1019,7 @@ program
   .action(async (opts) => {
     try {
       const network = resolveNetwork(opts.network);
-      const { singleton } = NET_CONFIG[network];
+      const { singleton } = await fetchProtocolConfig(network);
 
       let sender: string;
       try {
@@ -840,22 +1042,9 @@ program
         throw new Error(`quote-buy failed: ${result.cause ?? result.result}`);
       }
 
-      // Result shape: (ok (some uN)) → decoded as { value: { value: "N" } }
-      // or (ok none) → decoded as { value: null }
-      const decoded = decodeCV(result.result ?? "");
-      const inner =
-        decoded != null &&
-        typeof decoded === "object" &&
-        "value" in (decoded as Record<string, unknown>)
-          ? (decoded as Record<string, unknown>)["value"]
-          : decoded;
-
-      const tokensOut =
-        inner != null && typeof inner === "object" && "value" in (inner as Record<string, unknown>)
-          ? String((inner as Record<string, unknown>)["value"])
-          : inner != null
-          ? String(inner)
-          : null;
+      // (some uN) → the uint as a string; none → null.
+      const unwrapped = unwrapCV(decodeCV(result.result ?? ""));
+      const tokensOut = unwrapped == null ? null : String(unwrapped);
 
       printJson({
         token: opts.token,
@@ -888,7 +1077,7 @@ program
   .action(async (opts) => {
     try {
       const network = resolveNetwork(opts.network);
-      const { singleton } = NET_CONFIG[network];
+      const { singleton } = await fetchProtocolConfig(network);
 
       let sender: string;
       try {
@@ -911,20 +1100,8 @@ program
         throw new Error(`quote-sell failed: ${result.cause ?? result.result}`);
       }
 
-      const decoded = decodeCV(result.result ?? "");
-      const inner =
-        decoded != null &&
-        typeof decoded === "object" &&
-        "value" in (decoded as Record<string, unknown>)
-          ? (decoded as Record<string, unknown>)["value"]
-          : decoded;
-
-      const stxOut =
-        inner != null && typeof inner === "object" && "value" in (inner as Record<string, unknown>)
-          ? String((inner as Record<string, unknown>)["value"])
-          : inner != null
-          ? String(inner)
-          : null;
+      const unwrapped = unwrapCV(decodeCV(result.result ?? ""));
+      const stxOut = unwrapped == null ? null : String(unwrapped);
 
       printJson({
         token: opts.token,
@@ -976,7 +1153,8 @@ program
       // that should select which singleton/config we use.
       const account = await getAccount();
       const network = account.network;
-      const { singleton, chainParam } = NET_CONFIG[network];
+      const { chainParam } = NET_CONFIG[network];
+      const { singleton } = await fetchProtocolConfig(network);
       const recipient = opts.recipient ?? account.address;
       const [singletonAddr, singletonName] = singleton.split(".");
       const resolvedFee = await resolveFee(opts.fee, network, "contract_call");
@@ -1067,7 +1245,8 @@ program
       // in `launch`.
       const account = await getAccount();
       const network = account.network;
-      const { singleton, chainParam } = NET_CONFIG[network];
+      const { chainParam } = NET_CONFIG[network];
+      const { singleton } = await fetchProtocolConfig(network);
       const recipient = opts.recipient ?? account.address;
       const [singletonAddr, singletonName] = singleton.split(".");
       const resolvedFee = await resolveFee(opts.fee, network, "contract_call");
