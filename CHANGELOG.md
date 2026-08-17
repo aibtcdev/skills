@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.43.0](https://github.com/aibtcdev/skills/compare/skills-v0.42.0...skills-v0.43.0) (2026-08-17)
+
+
+### Features
+
+* **hodlmm-bin-guardian:** detect grid-edge pinned pools — distinct PINNED action instead of an unpassable slippage HOLD ([#408](https://github.com/aibtcdev/skills/issues/408)) ([e0334ef](https://github.com/aibtcdev/skills/commit/e0334ef960117fd400adac15107c7e9f4fc01fea))
+* **launkr:** add restricted SIP-010 token launcher + XYK AMM skill ([#414](https://github.com/aibtcdev/skills/issues/414)) ([adbed4f](https://github.com/aibtcdev/skills/commit/adbed4f3f032f33a10ff6381588aa9a32de3592a))
+
+
+### Bug Fixes
+
+* **bitflow-hodlmm-deposit:** allow first-time deposit by handling BFF user-bins 404 ([#397](https://github.com/aibtcdev/skills/issues/397)) ([6e1b320](https://github.com/aibtcdev/skills/commit/6e1b3203c3ba0c5aa57142fb661d016d771d099d))
+* **bitflow-hodlmm-deposit:** key NFT post-conditions on actual NFT ownership, not userLiquidity &gt; 0 ([#409](https://github.com/aibtcdev/skills/issues/409)) ([8754892](https://github.com/aibtcdev/skills/commit/8754892b3988cde653f8fd0aa35e60baefc3448a))
+* **dca:** validated configurable fee; fix(defi-portfolio-scanner): LTV threshold scale consistency (dormant until ltv is populated) ([#410](https://github.com/aibtcdev/skills/issues/410)) ([5b71650](https://github.com/aibtcdev/skills/commit/5b7165002ff1640b77b09714ecf3b50dee9adecf))
+
 ## [0.42.0](https://github.com/aibtcdev/skills/compare/skills-v0.41.0...skills-v0.42.0) (2026-05-11)
 
 
