@@ -805,11 +805,26 @@ async function getYieldOptions(
         let capUsd: number;
         let swapNote: string | null = null;
 
-        if (hasX || hasY) {
+        const xUsd = (balances as unknown as Record<string, TokenBalance>)[def.tokenX]?.usd ?? 0;
+        const yUsd = (balances as unknown as Record<string, TokenBalance>)[def.tokenY]?.usd ?? 0;
+
+        if (hasX && hasY) {
+          // Both sides held. Bounded by the SMALLER side, doubled: a paired
+          // deposit can only be as large as the side that runs out first.
           tier = "deploy_now";
-          const xUsd = (balances as unknown as Record<string, TokenBalance>)[def.tokenX]?.usd ?? 0;
-          const yUsd = (balances as unknown as Record<string, TokenBalance>)[def.tokenY]?.usd ?? 0;
+          capUsd = Math.min(xUsd, yUsd) * 2;
+        } else if (hasX || hasY) {
+          // One side only, and this is NOT deploy_now.
+          //
+          // dlmm-core-v-1-1 holds the X asset only at bins at or above the active
+          // bin, and Y only at or below it, so both assets are valid together
+          // ONLY at the active bin. A deposit funded from one side lands outside
+          // it, which is outside the range where fees accrue. Reporting the
+          // pool's APY and a daily figure against that describes income the
+          // depositor does not receive.
+          tier = "swap_first";
           capUsd = Math.max(xUsd, yUsd);
+          swapNote = `Swap part of your ${hasX ? tokenXMeta.symbol : tokenYMeta.symbol} into ${hasX ? tokenYMeta.symbol : tokenXMeta.symbol} on Bitflow first`;
         } else {
           // Check if user has any token that could be swapped
           const totalUsd = balances.sbtc.usd + balances.stx.usd + balances.usdcx.usd + balances.usdh.usd + balances.aeusdc.usd;
