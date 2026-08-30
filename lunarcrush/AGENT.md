@@ -1,7 +1,7 @@
 ---
 name: lunarcrush-agent
 skill: lunarcrush
-description: Pay-per-call LunarCrush social and market intelligence via x402 on Stacks — oracle, score, health, and meta subcommands with automatic STX payment handling.
+description: Pay-per-call LunarCrush social and market intelligence via x402 on Stacks — oracle, score, velocity, health, and meta subcommands with automatic STX payment handling.
 ---
 
 # LunarCrush Skill — Agent Operations
@@ -11,7 +11,7 @@ This document covers autonomous-mode rules for invoking the `lunarcrush` skill: 
 ## Prerequisites
 
 - An unlocked Stacks wallet (managed via the `wallet` skill or via `MNEMONIC` env var).
-- For `mainnet` calls (default): the wallet must hold STX. Each `score` call costs ~$0.005 USD worth of STX (~22,000 microSTX at $0.22 STX). Verify balance is at least 100,000 microSTX before calling to leave headroom.
+- For `mainnet` calls (default): the wallet must hold STX. Each `score` / `velocity` call costs ~$0.005 USD (~22,000 microSTX at STX $0.22); each `oracle` call costs ~$0.025 (~115,000 microSTX). Verify balance is at least **`(per_call_microSTX * planned_call_count) + 100,000 microSTX safety reserve`** before starting a batch — the 100K reserve covers price drift only, NOT additional calls. For ad-hoc single calls, 100K microSTX over the per-call cost is sufficient.
 - For `testnet` calls: free STX from the Hiro testnet faucet.
 
 The skill itself does not need a separate API key — it makes paid x402 HTTP calls to a public Cloudflare Worker.
@@ -49,6 +49,15 @@ Before calling `score`:
 | `200` with `galaxy_score: null` + warning | LunarCrush upstream failed but we still paid. Log the warning, treat as soft-failure, skip downstream signal generation. |
 | `400 invalid_symbol` | Did not consume payment. Symbol must be lowercase a-z + 0-9 only, max 16 chars. Check input. |
 | `5xx` from worker | Worker outage. Retry once after 30s. If persists, alert operator. |
+
+## How verdict + vibe are generated (deterministic, not LLM)
+
+Both `verdict` and `vibe` on the `oracle` response are **deterministic synthesis** — no LLM, no upstream variability, no extra latency beyond the LunarCrush API call:
+
+- `verdict` is bucketed from the composite score (Galaxy 45% / AltRank 35% / 24h momentum 20%) into one of six fixed tiers (`STRONG-BUY` ≥75, `BUY` 60-74, `NEUTRAL` 45-59, `WATCH` 30-44, `AVOID` <30, `UNKNOWN` for missing data).
+- `vibe` is selected from six templated one-liners keyed by verdict — same composite inputs always produce the same vibe string. Emoji are static parts of each template.
+
+This means `oracle` latency is the LunarCrush v4 fetch + a few microseconds of arithmetic. No GPT/Claude/Gemini call inside, so calling `oracle` at scale carries no variable AI cost on top of the $0.025 fixed price.
 
 ## Safety checks
 

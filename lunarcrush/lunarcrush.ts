@@ -61,6 +61,36 @@ function decodePaymentReceipt(header: unknown): Record<string, unknown> | undefi
 }
 
 // ---------------------------------------------------------------------------
+// Shared paid-command helper
+// ---------------------------------------------------------------------------
+// The three paid actions (oracle, score, velocity) share identical structure:
+// create client → call endpoint → merge receipt → print. arc0btc flagged the
+// duplication in PR #392; this helper consolidates it.
+
+async function runPaidCommand(opts: {
+  symbolRaw: unknown;
+  networkRaw: unknown;
+  path: (s: string) => string;
+  apiKey: string;
+}): Promise<void> {
+  const symbol = normalizeSymbol(opts.symbolRaw as string | undefined);
+  const { network, baseUrl } = resolveHost(opts.networkRaw as string | undefined);
+
+  const api = await createApiClient(baseUrl, opts.apiKey);
+  const response = await api.request({ method: "GET", url: opts.path(symbol) });
+
+  const output: Record<string, unknown> = {
+    ...((response.data as Record<string, unknown>) ?? {}),
+    network,
+    endpoint: `${baseUrl}${opts.path(symbol)}`,
+  };
+  const receipt = decodePaymentReceipt(response.headers?.["payment-response"]);
+  if (receipt) output.payment_receipt = receipt;
+
+  printJson(output);
+}
+
+// ---------------------------------------------------------------------------
 // Commander setup
 // ---------------------------------------------------------------------------
 
@@ -77,30 +107,18 @@ program
 program
   .command("oracle")
   .description(
-    "Premium combined LunarCrush oracle for a symbol — verdict (STRONG-BUY/BUY/NEUTRAL/WATCH/AVOID), confidence (0-1), reasoning, and a vibe one-liner. One paid call, ~$0.025 USD in STX."
+    "Premium combined LunarCrush oracle for a symbol — verdict (STRONG-BUY/BUY/NEUTRAL/WATCH/AVOID), confidence (0-1), reasoning, and a deterministic vibe one-liner. One paid call, ~$0.025 USD in STX."
   )
   .requiredOption("--symbol <symbol>", "Crypto ticker (e.g. BTC, ETH, STX)")
   .option("--network <network>", "mainnet or testnet (default: mainnet)", "mainnet")
   .action(async (opts) => {
     try {
-      const symbol = normalizeSymbol(opts.symbol);
-      const { network, baseUrl } = resolveHost(opts.network);
-
-      const api = await createApiClient(baseUrl, "lunarcrush.oracle");
-      const response = await api.request({
-        method: "GET",
-        url: `/oracle/${symbol}`,
+      await runPaidCommand({
+        symbolRaw: opts.symbol,
+        networkRaw: opts.network,
+        path: (s) => `/oracle/${s}`,
+        apiKey: "lunarcrush.oracle",
       });
-
-      const output: Record<string, unknown> = {
-        ...((response.data as Record<string, unknown>) ?? {}),
-        network,
-        endpoint: `${baseUrl}/oracle/${symbol}`,
-      };
-      const receipt = decodePaymentReceipt(response.headers?.["payment-response"]);
-      if (receipt) output.payment_receipt = receipt;
-
-      printJson(output);
     } catch (error) {
       handleError(error);
     }
@@ -119,24 +137,36 @@ program
   .option("--network <network>", "mainnet or testnet (default: mainnet)", "mainnet")
   .action(async (opts) => {
     try {
-      const symbol = normalizeSymbol(opts.symbol);
-      const { network, baseUrl } = resolveHost(opts.network);
-
-      const api = await createApiClient(baseUrl, "lunarcrush.score");
-      const response = await api.request({
-        method: "GET",
-        url: `/galaxy-score/${symbol}`,
+      await runPaidCommand({
+        symbolRaw: opts.symbol,
+        networkRaw: opts.network,
+        path: (s) => `/galaxy-score/${s}`,
+        apiKey: "lunarcrush.score",
       });
+    } catch (error) {
+      handleError(error);
+    }
+  });
 
-      const output: Record<string, unknown> = {
-        ...((response.data as Record<string, unknown>) ?? {}),
-        network,
-        endpoint: `${baseUrl}/galaxy-score/${symbol}`,
-      };
-      const receipt = decodePaymentReceipt(response.headers?.["payment-response"]);
-      if (receipt) output.payment_receipt = receipt;
+// ---------------------------------------------------------------------------
+// velocity
+// ---------------------------------------------------------------------------
 
-      printJson(output);
+program
+  .command("velocity")
+  .description(
+    "Fetch social-velocity signals (24h interactions, social volume, sentiment, momentum tier) for a symbol. Costs ~$0.005 USD in STX."
+  )
+  .requiredOption("--symbol <symbol>", "Crypto ticker (e.g. BTC, ETH, STX)")
+  .option("--network <network>", "mainnet or testnet (default: mainnet)", "mainnet")
+  .action(async (opts) => {
+    try {
+      await runPaidCommand({
+        symbolRaw: opts.symbol,
+        networkRaw: opts.network,
+        path: (s) => `/social-velocity/${s}`,
+        apiKey: "lunarcrush.velocity",
+      });
     } catch (error) {
       handleError(error);
     }
@@ -177,10 +207,10 @@ program
   .action(async (opts) => {
     try {
       const { network, baseUrl } = resolveHost(opts.network);
-      const data = await fetchFree(baseUrl, "/");
+      const data = await fetchFree(baseUrl, "/meta");
       printJson({
         network,
-        endpoint: baseUrl,
+        endpoint: `${baseUrl}/meta`,
         ...(typeof data === "object" && data !== null ? (data as Record<string, unknown>) : {}),
       });
     } catch (error) {
