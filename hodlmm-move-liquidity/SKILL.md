@@ -15,7 +15,7 @@ metadata:
 
 ## What it does
 
-When the active bin drifts away from your LP position, move your liquidity to the active bin. One atomic transaction via the Bitflow DLMM liquidity router's `move-relative-liquidity-multi` function: withdraw from old bins and deposit into the active bin in a single on-chain call. No intermediate state, no nonce sequencing, no partial execution risk.
+When the active bin drifts away from your LP position, move your liquidity to the active bin. One atomic transaction via the Bitflow DLMM liquidity router's `move-liquidity-multi` function: withdraw from old bins and deposit into the active bin in a single on-chain call. No intermediate state, no nonce sequencing, no partial execution risk.
 
 The active bin is where all trades flow and fees accrue. Capital in any other bin earns zero. This skill concentrates your liquidity where it earns.
 
@@ -29,11 +29,11 @@ This skill closes the loop. The `run` command moves liquidity on demand. The `au
 
 ## Safety notes
 
-- **Writes to chain.** One atomic transaction per rebalance via `move-relative-liquidity-multi`. Withdraw + deposit happen in a single on-chain call — either both succeed or neither does.
+- **Writes to chain.** One atomic transaction per rebalance via `move-liquidity-multi`. Withdraw + deposit happen in a single on-chain call — either both succeed or neither does.
 - **Moves funds.** Liquidity is removed from old bins and placed in new bins. No tokens leave the LP's wallet — they pass through the DLMM liquidity router contract.
 - **Mainnet only.** All contract addresses are mainnet Stacks.
 - **`--confirm` required for `run`.** Without it, `run` outputs a dry-run preview with full plan details. No transaction is broadcast. The `auto` command executes directly (operator opts in by starting it).
-- **postConditionMode: Allow** — HODLMM operations mint and burn DLP tokens in the same transaction, which cannot be expressed as sender-side post-conditions. Contract-level slippage protection compensates: each move requires ≥95% DLP shares back (`min-dlp`) and caps liquidity fees at 5% of the amount (`max-x-liquidity-fee`, `max-y-liquidity-fee`). If the contract violates either bound, the transaction reverts on-chain. Additional safety: `--confirm` gate, cooldown, in-range check, and gas check.
+- **postConditionMode: Allow** — the current implementation broadcasts without sender-side post-conditions. HONEST STATUS: the code sends `min-dlp = 1`, which the contract does enforce (`>= dlp-post-fees min-dlp`) but which is vacuous at 1 — any nonzero mint passes. The live bounds are the 5% liquidity-fee caps (`max-x-liquidity-fee`/`max-y-liquidity-fee`), which bind only when the target is the active bin. Real protection today comes from the off-chain gates (`--confirm`, cooldown, in-range check, gas check, and the pre-sign staleness/side-legality gate). Deny-mode sender post-conditions ARE expressible for this strict entrypoint and are planned together with a price-aware `min-dlp`.
 - **4-hour cooldown** between moves on the same pool, enforced in code and persisted to disk.
 
 ## Commands
@@ -235,7 +235,7 @@ All commands emit JSON to stdout.
 ## Known constraints
 
 - Requires `@stacks/transactions` and `@stacks/wallet-sdk` to be installed in the runtime environment.
-- Single atomic transaction via `move-relative-liquidity-multi` — either all bins move or none do. No partial execution risk.
+- Single atomic transaction via `move-liquidity-multi` — either all bins move or none do. No partial execution risk.
 - Liquidity is distributed across ±spread bins around the active bin (default ±5). The DLMM bin invariant requires bins below active to hold only Y token and bins above active to hold only X token — source bins below active map to destination offsets [-spread, 0] and source bins above active map to [0, +spread].
 
 ## Origin
@@ -243,3 +243,9 @@ All commands emit JSON to stdout.
 Winner of AIBTC x Bitflow Skills Pay the Bills competition.
 Original author: @cliqueengagements
 Competition PR: https://github.com/BitflowFinance/bff-skills/pull/231
+
+## Doc-truth + safety update (2026-07-15 field audit F-2/F-4/F-8)
+
+- The code calls `move-liquidity-multi` (absolute signed bin IDs), not the relative variant. Earlier versions of this document named the wrong function.
+- **Honest protection statement:** the code currently sends `min-dlp = 1`; the contract enforces `>= dlp-post-fees min-dlp` (u1024) in addition to `> 0` (u1027), so the bound exists but is vacuous at 1 — any nonzero mint passes. The live contract bounds are the 5% liquidity-fee caps, which bind only when the target is the active bin. Output protection rests on the caller's off-chain gates. A price-aware `min-dlp` (95% of the contract-computed expected DLP) plus Deny-mode sender post-conditions is the planned fix.
+- **New u5001 prevention gate:** before signing, the skill re-reads the live active bin and refuses on plan staleness (`STALE_ACTIVE_BIN`) or side-illegality (`ILLEGAL_MOVE_GEOMETRY`) — the true errors beneath router `u5001` batch masking are `u1020`/`u1021` side-asserts (X only at/above active, Y only at/below) and the `u1024` empty-bin dust floor. Illegal geometry means the position needs withdraw->swap->redeposit, not a native move.
