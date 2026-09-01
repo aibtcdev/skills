@@ -1,6 +1,13 @@
 import { describe, test, expect } from "bun:test";
 import { cvToString, serializeCV, uintCV, boolCV, tupleCV, someCV, noneCV, principalCV } from "@stacks/transactions";
-import { parseLaunkrArg, decodeCV, unwrapCV, validatePoolStepMatchesRequest } from "./launkr.js";
+import {
+  parseLaunkrArg,
+  decodeCV,
+  unwrapCV,
+  validatePoolStepMatchesRequest,
+  describeConfigDrift,
+  assertValidDecimals,
+} from "./launkr.js";
 
 describe("parseLaunkrArg", () => {
   test("principal — standard address", () => {
@@ -138,6 +145,7 @@ describe("validatePoolStepMatchesRequest", () => {
     name: "My Agent Token",
     symbol: "MAT",
     supply: "1000000000000000",
+    decimals: "6",
     feeReceiver: "SP1YNEJRV1AJHGVSF2EMDWP58NF2XBNPYG0R94ZWW",
     virtualStx: "500000000",
     graduationThreshold: "2000000000",
@@ -162,6 +170,45 @@ describe("validatePoolStepMatchesRequest", () => {
     expect(() =>
       validatePoolStepMatchesRequest({ functionArgs: bondingArgs }, { ...baseRequest, supply: "999" })
     ).toThrow(/supply/);
+  });
+
+  // EXTENDED A THIRD TIME (biwasxyz review round 3, PR #414, gap #3):
+  // decimals and uri were the last two args travelling unchecked. decimals
+  // matters more than it looks — it is not baked into the byte-frozen
+  // template (which ships `token-decimals u0`), it is set permanently by the
+  // one-shot initialize() the singleton runs from this very argument.
+  test("throws on decimals mismatch", () => {
+    expect(() =>
+      validatePoolStepMatchesRequest({ functionArgs: bondingArgs }, { ...baseRequest, decimals: "18" })
+    ).toThrow(/decimals/);
+  });
+
+  test("throws when the API adds a uri the caller never asked for", () => {
+    const withUri = [...bondingArgs];
+    withUri[5] = { type: "optional-utf8", value: "https://attacker.example/meta.json" };
+    expect(() =>
+      validatePoolStepMatchesRequest({ functionArgs: withUri }, baseRequest)
+    ).toThrow(/uri/);
+  });
+
+  test("throws when the API drops or rewrites a requested uri", () => {
+    expect(() =>
+      validatePoolStepMatchesRequest(
+        { functionArgs: bondingArgs },
+        { ...baseRequest, uri: "https://example.com/meta.json" }
+      )
+    ).toThrow(/uri/);
+  });
+
+  test("passes when a requested uri comes back unchanged", () => {
+    const withUri = [...bondingArgs];
+    withUri[5] = { type: "optional-utf8", value: "https://example.com/meta.json" };
+    expect(() =>
+      validatePoolStepMatchesRequest(
+        { functionArgs: withUri },
+        { ...baseRequest, uri: "https://example.com/meta.json" }
+      )
+    ).not.toThrow();
   });
 
   // EXTENDED (biwasxyz review, PR #414, worth-addressing #5): the curve
@@ -204,6 +251,7 @@ describe("validatePoolStepMatchesRequest", () => {
           name: "My Agent Token",
           symbol: "MAT",
           supply: "1000000000000000",
+          decimals: "6",
           feeReceiver: "SP1YNEJRV1AJHGVSF2EMDWP58NF2XBNPYG0R94ZWW",
           stxSeed: "999999999",
         }
@@ -247,6 +295,7 @@ describe("validatePoolStepMatchesRequest", () => {
           name: "My Agent Token",
           symbol: "MAT",
           supply: "1000000000000000",
+          decimals: "6",
           feeReceiver: "SP1YNEJRV1AJHGVSF2EMDWP58NF2XBNPYG0R94ZWW",
           stxSeed: "100000000",
         }
@@ -258,5 +307,72 @@ describe("validatePoolStepMatchesRequest", () => {
     expect(() =>
       validatePoolStepMatchesRequest({ functionArgs: [{ type: "uint", value: "1" }] }, baseRequest)
     ).toThrow(/expected exactly 9/);
+  });
+});
+
+// FIX (biwasxyz review round 3, PR #414, gap #1): NET_CONFIG is the trust
+// anchor again — /api/protocol is still fetched so a redeploy gets noticed,
+// but a difference is refused rather than silently adopted. Without this,
+// verifyDeploySourceMatchesTemplate compared an API-supplied contract body
+// against an API-supplied template address: same origin on both sides of the
+// check, so it could only catch launkr.io disagreeing with itself.
+describe("describeConfigDrift", () => {
+  const pinned = {
+    singleton: "SP2ABWV7JE5SFV1A1BDS8HARP2QY7QRPGC9Z367PM.lp-singleton-v6",
+    template: "SP2ABWV7JE5SFV1A1BDS8HARP2QY7QRPGC9Z367PM.restricted-token-template-v6",
+  };
+
+  test("no drift when the API agrees with the pinned config", () => {
+    expect(describeConfigDrift(pinned, { ...pinned })).toEqual([]);
+  });
+
+  test("reports a substituted singleton", () => {
+    const drift = describeConfigDrift(pinned, {
+      ...pinned,
+      singleton: "SP000000000000000000002Q6VF78.evil-singleton",
+    });
+    expect(drift).toHaveLength(1);
+    expect(drift[0]).toMatch(/singleton/);
+    expect(drift[0]).toMatch(/evil-singleton/);
+  });
+
+  test("reports a substituted template", () => {
+    const drift = describeConfigDrift(pinned, {
+      ...pinned,
+      template: "SP000000000000000000002Q6VF78.evil-template",
+    });
+    expect(drift).toHaveLength(1);
+    expect(drift[0]).toMatch(/template/);
+  });
+
+  test("reports both when both differ", () => {
+    expect(
+      describeConfigDrift(pinned, { singleton: "SP1.a", template: "SP1.b" })
+    ).toHaveLength(2);
+  });
+});
+
+describe("assertValidDecimals", () => {
+  test("accepts the protocol default", () => {
+    expect(assertValidDecimals("6")).toBe(6);
+  });
+
+  test("accepts the documented bounds", () => {
+    expect(assertValidDecimals("0")).toBe(0);
+    expect(assertValidDecimals("18")).toBe(18);
+  });
+
+  test("rejects above the documented maximum", () => {
+    expect(() => assertValidDecimals("19")).toThrow(/between 0 and 18/);
+  });
+
+  test("rejects negative and non-integer values", () => {
+    expect(() => assertValidDecimals("-1")).toThrow(/between 0 and 18/);
+    expect(() => assertValidDecimals("6.5")).toThrow(/between 0 and 18/);
+    expect(() => assertValidDecimals("six")).toThrow(/between 0 and 18/);
+  });
+
+  test("rejects a missing value rather than defaulting silently", () => {
+    expect(() => assertValidDecimals(undefined)).toThrow(/between 0 and 18/);
   });
 });
