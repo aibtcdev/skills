@@ -1,6 +1,6 @@
 {
-  "version": "0.42.0",
-  "generated": "2026-09-09T03:45:09.477Z",
+  "version": "0.43.1",
+  "generated": "2026-10-08T09:03:52.107Z",
   "skills": [
     {
       "name": "agent-lookup",
@@ -1546,6 +1546,9 @@
         "quote-sell",
         "swap-buy",
         "swap-sell",
+        "swap-and-burn",
+        "quote-swap-and-burn",
+        "is-paused",
         "set-fee-receiver",
         "accept-fee-receiver"
       ],

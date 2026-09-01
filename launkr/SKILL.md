@@ -5,7 +5,7 @@ metadata:
   author: "rather-labs"
   author-agent: "Launkr by Rather Labs"
   user-invocable: "false"
-  arguments: "launch | create-pool | get-pool | quote-buy | quote-sell | swap-buy | swap-sell | set-fee-receiver | accept-fee-receiver"
+  arguments: "launch | create-pool | get-pool | quote-buy | quote-sell | swap-buy | swap-sell | swap-and-burn | quote-swap-and-burn | is-paused | set-fee-receiver | accept-fee-receiver"
   entry: "launkr/launkr.ts"
   mcp-tools: "deploy_contract, call_contract, call_read_only_function"
   requires: "wallet"
@@ -46,8 +46,7 @@ whitespace. Any change breaks the singleton's hash-based allowlist check
 
 ## Protocol Info
 
-Get contract IDs, floors, and fee schedule (call this first — addresses can
-change between deployments, always fetch fresh):
+Get contract IDs, floors, and fee schedule:
 
 ```
 GET https://launkr.io/api/protocol?network=mainnet
@@ -64,6 +63,31 @@ staging suffix — verified live on-chain, see worked examples below):
 - Singleton: `ST2ABWV7JE5SFV1A1BDS8HARP2QY7QRPGC9KJJYWE.lp-singleton-v6`
 - Template: `ST2ABWV7JE5SFV1A1BDS8HARP2QY7QRPGC9KJJYWE.restricted-token-template-v6`
 - Trait: `ST2ABWV7JE5SFV1A1BDS8HARP2QY7QRPGC9KJJYWE.restricted-ft-trait-v6`
+
+**How `launkr.ts` resolves these — read this before assuming "always fetch
+fresh" means "always trust what comes back."** Every subcommand fetches
+`GET /api/protocol` at runtime *and* compares the result against the two
+addresses pinned in `NET_CONFIG` at the top of `launkr.ts`. If they agree,
+the live values are used. If they differ, the command **refuses to run** and
+prints both.
+
+That refusal is deliberate, and it exists because the obvious version of
+this — "fetch live, fall back to the pinned copy" — quietly destroys the
+deploy verification described in section 4. `launch` byte-compares the API's
+`clarityCode` against the on-chain source of the *template address*; if that
+address also comes from the API, both sides of the comparison have the same
+origin, and the check can only catch launkr.io disagreeing with itself
+rather than a compromised or hijacked launkr.io, which is the threat it was
+written for. The same applies to the singleton: a substituted address
+collects a `--mode direct` STX seed under an `eq` post-condition that
+authorizes the transfer perfectly happily.
+
+So the two sources check each other. A genuine redeploy shows up as a clear
+refusal naming both addresses — verify the new ones independently on the
+explorer and update `NET_CONFIG`. `--allow-config-change` overrides the
+refusal for a single invocation and is available on every subcommand, but it
+puts full trust in the API response for that run: use it only after
+confirming the redeploy on-chain yourself.
 
 `get-pool`, `quote-buy`, and `quote-sell` are pure reads and take an
 explicit `--network mainnet|testnet` flag. `launch`, `swap-buy`, and
@@ -140,6 +164,18 @@ Response gives you two steps:
 string-utf8 256) · `virtual-stx` (uint) · `graduation-threshold` (uint) ·
 `fee-receiver` (principal)
 
+**`decimals` is not a property of the template.** This is the arg most
+likely to be assumed away. The byte-frozen template ships
+`(define-data-var token-decimals uint u0)`, and the *only* thing that ever
+sets it is the token's one-shot `initialize()`, which the singleton calls
+during pool creation using this very argument. A token that is deployed but
+has no pool yet reports `get-decimals` → `u0`, because it has not been
+initialized. `launkr.ts` therefore takes `--decimals` explicitly (default
+`6`, matching the `tokenDecimals` constant `/api/protocol` reports), checks
+it against the API's arg like every other parameter, and never reads it back
+off an uninitialized token. Getting this wrong is permanent — `initialize()`
+runs once and then answers `ERR_ALREADY_INITIALIZED` forever.
+
 `create-pool-direct` is the same shape with `stx-seed` (uint) replacing
 `virtual-stx`/`graduation-threshold`, and **requires a matching STX
 post-condition** (`eq`, amount = stxSeed) since it pulls real STX from the
@@ -214,6 +250,34 @@ Always call `quote-buy`/`quote-sell` first and set `min-tokens-out` /
 `min-stx-out` a few % under the quote as a slippage guard. Use
 `deadline: 0xffffffff` (4294967295) if you don't need a block-height cutoff.
 
+**Broadcast is not confirmation.** Every write subcommand waits for its
+transaction to reach a terminal on-chain status before printing, and reports
+`success: true, confirmed: true` only once it actually succeeded. This
+matters most for swaps, which really do abort on slippage and post-condition
+failures — an earlier version printed `success: true` the instant the txid
+came back, which made "the trade happened", "the trade is pending" and "the
+trade aborted" indistinguishable in the output. Pass `--no-wait` for
+fire-and-forget behaviour; that output is labelled `broadcast: true,
+confirmed: false` and carries a note telling you to poll the explorer.
+
+**Kill switch.** The singleton has a protocol-wide pause that every write
+checks on-chain first (`check-not-paused`). `bun run launkr/launkr.ts
+is-paused` reads it for free, and `launch`, `create-pool`, both swaps and
+`swap-and-burn` all pre-flight it so a paused protocol costs you nothing
+instead of a transaction fee for a guaranteed abort.
+
+**`swap-and-burn(token, stx-in, min-tokens-burned, deadline)`** — spends STX
+to buy tokens and burns them in the same call. Fee-free (0%), and the STX
+stays in the pool as protocol-owned liquidity. Graduated pools only —
+`ERR_NOT_GRADUATED (u217)` on a bonding pool, and `quote-swap-and-burn`
+returns `none` there. Note the signature has **no `recipient`**: nothing is
+paid out. Post-conditions under Deny: caller `eq stx-in` (uSTX), plus
+singleton `gte min-tokens-burned` (FT `strategy-token`) — the burn is an
+outflow from the singleton's own balance, performed under
+`(with-ft token-principal "strategy-token" dy)`, so Deny mode requires it
+covered like any other send. There is no fee leg, so no STX leaves the
+singleton.
+
 ## 4. Recovery, fee-receiver transfer, and other operations
 
 **`create-pool`** — recovery path for when `launch` deployed the token but
@@ -226,6 +290,16 @@ rather than round-tripping through `/api/launch` again (nothing in that
 response for this step isn't already fully determined by your own input).
 Re-running `launch` itself after a failed step 2 would deploy a *second*
 token, not resume — use `create-pool` instead.
+
+> `create-pool` takes `--decimals` (default `6`) for the reason given in
+> section 1: on the exact state this command exists to recover from — token
+> deployed, no pool — the token has not been initialized, so reading
+> `get-decimals` off it returns `u0` rather than the truth. An earlier
+> version did read it back, which would have permanently initialized the
+> recovered token with 0 decimals. The command also refuses up front if the
+> token reports a non-zero total supply, since that means `initialize()` has
+> already run and pool creation could only abort with
+> `ERR_ALREADY_INITIALIZED`.
 
 **`set-fee-receiver` / `accept-fee-receiver`** — the singleton's two-step
 fee-receiver transfer (`set-pending-fee-receiver` proposed by the current
@@ -241,11 +315,19 @@ response and finding out only after the deploy fee is spent that the
 singleton would have rejected it (`ERR_TOKEN_NOT_OURS`) anyway.
 
 **Pool-arg verification:** `validatePoolStepMatchesRequest` (see `launch`)
-now also checks `virtual-stx`/`graduation-threshold` (bonding) or
-`stx-seed` (direct) against what was requested, not just
-name/symbol/supply/fee-receiver — those curve parameters are just as
-capable of coming back wrong from the API and are what the entire price
-curve is built from.
+checks **all nine** args against what was requested — token principal, name,
+symbol, decimals, supply, uri, the curve parameters
+(`virtual-stx`/`graduation-threshold` for bonding, `stx-seed` for direct)
+and fee-receiver — plus the exact arg count for the mode and the function
+name itself. Every one of these is capable of coming back wrong from the
+API, and each of the later additions closed a real hole: the curve
+parameters are what the entire price curve is built from, `uri` and
+`decimals` are both written permanently by the one-shot `initialize()`, and
+the token principal decides which token the pool is even for. `launch` also
+reports the principal derived from the address it actually deploys under
+plus the contract name it actually deploys, not the `tokenPrincipal` the API
+echoes back — a mismatch is a warning on stderr, not something the user is
+silently handed.
 
 **Does graduating a pool unlock token transfers?** Not applicable the way
 this question originally assumed — see the correction below. Graduating

@@ -74,6 +74,8 @@ function resolveNetwork(opt?: string): LaunkrNetwork {
 }
 
 /**
+ * Resolve the Launkr singleton/template addresses.
+ *
  * FIX (biwasxyz review, PR #414, worth-addressing #8): AGENT.md tells an
  * agent to "fetch GET /api/protocol fresh, every session... never hardcode
  * an address from memory or from an old run" — but nothing in this file
@@ -81,14 +83,33 @@ function resolveNetwork(opt?: string): LaunkrNetwork {
  * at the time this script was written. That's exactly the failure mode the
  * doc warns about: this contract already redeployed once (2026-07-16), and
  * a second redeploy would silently point every write at a retired
- * singleton and make every read report `found: false`, with nothing in
- * the code to catch it. NET_CONFIG is now only the fallback for when the
- * live endpoint is unreachable, not the primary source.
+ * singleton and make every read report `found: false`.
+ *
+ * FIX (biwasxyz review round 3, PR #414): the first version of that fix
+ * over-corrected — it made the API authoritative and demoted NET_CONFIG to
+ * a silent fallback, which quietly dismantled the *other* fix in this file.
+ * `verifyDeploySourceMatchesTemplate` compares the API's `clarityCode`
+ * against the on-chain source of the template address, but once that
+ * address also came from the API, both sides of the comparison had the
+ * same origin: the check could only catch launkr.io disagreeing with
+ * itself, not a compromised or hijacked launkr.io — which is the threat it
+ * was written for. Same for `singleton`: a substituted address collects a
+ * `--mode direct` STX seed under an `eq` post-condition that authorizes the
+ * transfer perfectly happily.
+ *
+ * So: still fetch live (that's how a redeploy gets *noticed*), but treat
+ * NET_CONFIG as the trust anchor. Drift is surfaced and refused rather than
+ * silently adopted; `--allow-config-change` is the deliberate override for
+ * the legitimate-redeploy case, and the real resolution is to update
+ * NET_CONFIG after verifying the new addresses independently.
  */
 async function fetchProtocolConfig(
-  network: LaunkrNetwork
+  network: LaunkrNetwork,
+  opts: { allowConfigChange?: boolean } = {}
 ): Promise<{ singleton: string; template: string }> {
-  const fallback = NET_CONFIG[network];
+  const pinned = NET_CONFIG[network];
+  let live: { singleton: string; template: string };
+
   try {
     const resp = await fetch(`${LAUNKR_API}/protocol?network=${network}`);
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
@@ -99,16 +120,66 @@ async function fetchProtocolConfig(
     if (!singleton || !template) {
       throw new Error("response missing contracts.singleton/template");
     }
-    return { singleton, template };
+    live = { singleton, template };
   } catch (err) {
     process.stderr.write(
       `Warning: could not fetch live config from ${LAUNKR_API}/protocol?network=${network} ` +
-        `(${err instanceof Error ? err.message : String(err)}) — falling back to the address ` +
-        `baked into this script (${fallback.singleton}). This may be stale if Launkr has ` +
-        `redeployed since this version of the skill was published.\n`
+        `(${err instanceof Error ? err.message : String(err)}) — using the addresses pinned ` +
+        `in this skill (${pinned.singleton}). These are correct unless Launkr has redeployed ` +
+        `since this version of the skill was published.\n`
     );
-    return { singleton: fallback.singleton, template: fallback.template };
+    return { singleton: pinned.singleton, template: pinned.template };
   }
+
+  const drift = describeConfigDrift(pinned, live);
+  if (drift.length === 0) return live;
+
+  if (!opts.allowConfigChange) {
+    throw new Error(
+      `Refusing to proceed — ${LAUNKR_API}/protocol returned contract addresses that ` +
+        `differ from the ones pinned in this skill:\n` +
+        drift.map((d) => `  - ${d}`).join("\n") +
+        `\n\nEither Launkr has redeployed — in which case verify the new addresses ` +
+        `independently on the explorer and update NET_CONFIG in launkr/launkr.ts — or the ` +
+        `response is not genuine. To trust the API's addresses for this one invocation, ` +
+        `re-run with --allow-config-change.`
+    );
+  }
+
+  process.stderr.write(
+    `Warning: --allow-config-change is set, using API-supplied addresses that differ from ` +
+      `the pinned ones:\n` +
+      drift.map((d) => `  - ${d}`).join("\n") +
+      `\n`
+  );
+  return live;
+}
+
+/**
+ * Validate a `--decimals` value. SKILL.md documents a protocol maximum of 18;
+ * the default of 6 matches the `tokenDecimals` constant /api/protocol reports.
+ */
+export function assertValidDecimals(raw: unknown): number {
+  const decimals = Number(raw);
+  if (!Number.isInteger(decimals) || decimals < 0 || decimals > 18) {
+    throw new Error(`--decimals must be an integer between 0 and 18, got "${raw}"`);
+  }
+  return decimals;
+}
+
+/** Describe how live protocol config differs from the pinned config. Empty = identical. */
+export function describeConfigDrift(
+  pinned: { singleton: string; template: string },
+  live: { singleton: string; template: string }
+): string[] {
+  const drift: string[] = [];
+  if (live.singleton !== pinned.singleton) {
+    drift.push(`singleton: pinned "${pinned.singleton}", API returned "${live.singleton}"`);
+  }
+  if (live.template !== pinned.template) {
+    drift.push(`template: pinned "${pinned.template}", API returned "${live.template}"`);
+  }
+  return drift;
 }
 
 /** Parse a Stacks principal string ("SP..." or "SP....contract") into a ClarityValue. */
@@ -202,6 +273,20 @@ export function parseLaunkrArg(arg: { type: string; value: unknown }): ClarityVa
  *   deployer address + contract name (or passed in directly by `create-pool`,
  *   which already knows the target token from `--token`).
  *
+ * EXTENDED A THIRD TIME (biwasxyz review round 3, PR #414, gap #3): two of
+ * the nine args were still unchecked. `uri` (args[5]) is caller-supplied
+ * and was never compared, so a response could point the launched token's
+ * metadata at a URI the caller never asked for — permanently, since the
+ * token's one-shot `initialize()` sets it. `decimals` (args[3]) wasn't
+ * caller-supplied at all, which is why it had nothing to compare against;
+ * `launch` now takes an explicit `--decimals` (default 6, the protocol's
+ * documented `tokenDecimals`) so there is something to check it against.
+ * That matters more than it looks: decimals is not a property of the
+ * byte-frozen template — the template ships `(define-data-var
+ * token-decimals uint u0)` and only `initialize()`, called by the singleton
+ * during pool creation, ever sets it. So this argument *is* the token's
+ * decimals, permanently, and it was travelling unverified.
+ *
  * Positional args differ by mode:
  *   bonding: token, name, symbol, decimals, supply, uri, virtual-stx, graduation-threshold, fee-receiver  (9 args)
  *   direct:  token, name, symbol, decimals, supply, uri, stx-seed, fee-receiver                           (8 args)
@@ -215,6 +300,8 @@ export function validatePoolStepMatchesRequest(
     feeReceiver: string;
     name: string;
     symbol: string;
+    decimals: string;
+    uri?: string;
     virtualStx?: string;
     graduationThreshold?: string;
     stxSeed?: string;
@@ -232,7 +319,10 @@ export function validatePoolStepMatchesRequest(
   const tokenArg = String(args[0]?.value);
   const nameArg = String(args[1]?.value);
   const symbolArg = String(args[2]?.value);
+  const decimalsArg = String(args[3]?.value);
   const supplyArg = String(args[4]?.value);
+  // An absent optional URI arrives as a null/undefined value, not "null".
+  const uriArg = args[5]?.value == null ? null : String(args[5].value);
   const feeReceiverArg = String(args[args.length - 1]?.value);
 
   const mismatches: string[] = [];
@@ -247,8 +337,18 @@ export function validatePoolStepMatchesRequest(
   if (symbolArg !== requested.symbol) {
     mismatches.push(`symbol: requested "${requested.symbol}", API returned "${symbolArg}"`);
   }
+  if (decimalsArg !== requested.decimals) {
+    mismatches.push(`decimals: requested ${requested.decimals}, API returned ${decimalsArg}`);
+  }
   if (supplyArg !== requested.supply) {
     mismatches.push(`supply: requested ${requested.supply}, API returned ${supplyArg}`);
+  }
+  const expectedUri = requested.uri ?? null;
+  if (uriArg !== expectedUri) {
+    mismatches.push(
+      `uri: requested ${expectedUri === null ? "none" : `"${expectedUri}"`}, ` +
+        `API returned ${uriArg === null ? "none" : `"${uriArg}"`}`
+    );
   }
   if (feeReceiverArg !== requested.feeReceiver) {
     mismatches.push(`fee-receiver: requested ${requested.feeReceiver}, API returned ${feeReceiverArg}`);
@@ -408,6 +508,82 @@ async function waitForConfirmation(
   throw new Error(`Timed out waiting for tx ${txid} after ${timeoutMs / 1000}s (last status: ${result.status})`);
 }
 
+/**
+ * Sender address to attribute a read-only call to. Read-only calls don't
+ * spend or sign anything, so any syntactically valid address works — the
+ * wallet address is preferred only so the node sees a consistent caller.
+ */
+async function readOnlySender(network: LaunkrNetwork): Promise<string> {
+  try {
+    return await getWalletAddress();
+  } catch {
+    return network === "mainnet"
+      ? "SP000000000000000000002Q6VF78"
+      : "ST000000000000000000002AMW42H";
+  }
+}
+
+/**
+ * FIX (biwasxyz review round 3, PR #414, gap #5): the singleton has a
+ * protocol-wide kill switch (`is-paused`) that every write path checks
+ * on-chain first — `check-not-paused` is the first thing `swap-and-burn`,
+ * the swaps and pool creation all run. Nothing in this skill ever read it,
+ * so a paused protocol was discovered only by broadcasting a transaction
+ * and paying the fee for an abort. It's one free read-only call.
+ */
+async function assertNotPaused(singleton: string, network: LaunkrNetwork): Promise<void> {
+  const result = await getHiroApi(network).callReadOnlyFunction(
+    singleton,
+    "is-paused",
+    [],
+    await readOnlySender(network)
+  );
+  // A failed read here shouldn't block the operation — the on-chain check is
+  // still authoritative. Only a definitive `true` stops us.
+  if (!result.okay) return;
+  if (unwrapCV(decodeCV(result.result ?? "")) === true) {
+    throw new Error(
+      `Refusing to proceed — the Launkr protocol is paused (${singleton} is-paused = true). ` +
+        `Every write would abort on-chain (ERR_PAUSED) after spending the transaction fee. ` +
+        `Retry once the protocol is unpaused.`
+    );
+  }
+}
+
+/**
+ * FIX (biwasxyz review round 3, PR #414, gap #2): `launch` and `create-pool`
+ * were changed to wait for confirmation precisely because broadcast is not
+ * the same as confirmed — but the swaps and the fee-receiver rotation still
+ * printed `success: true` the instant `callContract` returned a txid. For a
+ * slippage-guarded swap, which can and does abort on a post-condition, that
+ * left an agent parsing this JSON unable to tell "the trade happened" from
+ * "the trade is pending" from "the trade aborted on chain."
+ *
+ * Waiting is now the default everywhere, and the status fields say which
+ * question was actually answered. `--no-wait` keeps the old fire-and-forget
+ * behaviour for callers that want it, but labels it honestly: `broadcast`,
+ * not `success`.
+ */
+async function writeStatus(
+  txid: string,
+  network: LaunkrNetwork,
+  wait: boolean
+): Promise<Record<string, unknown>> {
+  process.stderr.write(`Tx broadcast: ${txid}\n`);
+  if (!wait) {
+    return {
+      broadcast: true,
+      confirmed: false,
+      note:
+        "Broadcast only — --no-wait was passed, so this transaction has NOT been confirmed " +
+        "on chain. It may still abort (slippage, post-condition, deadline). Poll explorerUrl " +
+        "before treating it as done.",
+    };
+  }
+  await waitForConfirmation(txid, network);
+  return { success: true, confirmed: true };
+}
+
 // ---------------------------------------------------------------------------
 // Program
 // ---------------------------------------------------------------------------
@@ -460,7 +636,16 @@ program
     "Required if --mode direct. Real STX to seed the pool in uSTX (min 100000000 = 100 STX)"
   )
   .option("--uri <uri>", "Optional token metadata URI")
+  .option(
+    "--decimals <n>",
+    "Token decimals (default 6, the protocol's documented tokenDecimals). Set permanently by the token's one-shot initialize() during pool creation",
+    "6"
+  )
   .option("--fee <fee>", "Fee preset (low|medium|high) or micro-STX amount")
+  .option(
+    "--allow-config-change",
+    "Proceed even if launkr.io/api/protocol reports contract addresses that differ from the ones pinned in this skill (use only after verifying a genuine redeploy on the explorer)"
+  )
   .action(async (opts) => {
     try {
       // FIX (biwasxyz review, PR #414, worth-addressing #9): validate --mode
@@ -488,6 +673,8 @@ program
         throw new Error("--stx-seed is required when --mode is direct");
       }
 
+      const decimals = assertValidDecimals(opts.decimals);
+
       // FIX (biwasxyz review, PR #414, blocker #2): the network that
       // actually gets signed/broadcast to is account.network (set by which
       // wallet is loaded, via the NETWORK env var at wallet-creation time)
@@ -499,7 +686,9 @@ program
       const account = await getAccount();
       const network = account.network;
       const { chainParam } = NET_CONFIG[network];
-      const { singleton, template } = await fetchProtocolConfig(network);
+      const { singleton, template } = await fetchProtocolConfig(network, {
+        allowConfigChange: opts.allowConfigChange,
+      });
 
       // -----------------------------------------------------------------------
       // Step 1 — Get the launch intent from the Launkr API
@@ -512,6 +701,7 @@ program
         name: opts.name,
         symbol: opts.symbol,
         supply: opts.supply,
+        decimals: String(decimals),
         mode,
         feeReceiver: opts.feeReceiver,
         ...(opts.uri && { uri: opts.uri }),
@@ -582,12 +772,28 @@ program
       // exact-arity check and the token-principal check): verify the API's
       // pool-creation args actually match what we asked for, before
       // spending any gas at all.
+      // FIX (biwasxyz review round 3, PR #414, gap #4): the principal derived
+      // from the address we actually deploy under plus the contract name we
+      // actually deploy — the only one that describes what ends up on chain.
+      // Everything downstream (the arg check, the output, the launkr.io link)
+      // now uses this rather than the API's `intent.tokenPrincipal`, which was
+      // reported to the user without ever being checked against it.
+      const derivedTokenPrincipal = `${account.address}.${deployStep.contractName}`;
+      if (intent.tokenPrincipal !== derivedTokenPrincipal) {
+        process.stderr.write(
+          `Warning: Launkr API reported tokenPrincipal "${intent.tokenPrincipal}" but the ` +
+            `deploy step actually produces "${derivedTokenPrincipal}" — reporting the latter.\n`
+        );
+      }
+
       validatePoolStepMatchesRequest(poolStep, {
         mode,
-        tokenPrincipal: `${account.address}.${deployStep.contractName}`,
+        tokenPrincipal: derivedTokenPrincipal,
         name: opts.name,
         symbol: opts.symbol,
         supply: opts.supply,
+        decimals: String(decimals),
+        uri: opts.uri,
         feeReceiver: opts.feeReceiver,
         virtualStx: opts.virtualStx,
         graduationThreshold: opts.graduationThreshold,
@@ -598,6 +804,10 @@ program
       // deploy source is really the approved template before spending gas
       // on it — see verifyDeploySourceMatchesTemplate for why.
       await verifyDeploySourceMatchesTemplate(deployStep.clarityCode, network, template);
+
+      // A paused protocol would let the deploy through and then abort pool
+      // creation, stranding a token. Check before either fee is spent.
+      await assertNotPaused(singleton, network);
 
       // -----------------------------------------------------------------------
       // Step 2 — Deploy the token contract (byte-for-byte copy of template)
@@ -663,12 +873,13 @@ program
 
       printJson({
         success: true,
-        tokenPrincipal: intent.tokenPrincipal,
+        confirmed: true,
+        tokenPrincipal: derivedTokenPrincipal,
         deployTxid: deployResult.txid,
         poolTxid: poolResult.txid,
         network,
         explorerUrl: getExplorerTxUrl(poolResult.txid, network),
-        launkrUrl: `https://launkr.io/token/${intent.tokenPrincipal}`,
+        launkrUrl: `https://launkr.io/token/${derivedTokenPrincipal}`,
         chainExplorerUrl: `https://explorer.hiro.so/txid/${poolResult.txid}?chain=${chainParam}`,
       });
     } catch (error) {
@@ -719,7 +930,16 @@ program
   .option("--graduation-threshold <uSTX>", "Required if --mode bonding. Real STX to collect before graduating")
   .option("--stx-seed <uSTX>", "Required if --mode direct. Real STX to seed the pool in uSTX")
   .option("--uri <uri>", "Optional token metadata URI")
+  .option(
+    "--decimals <n>",
+    "Token decimals (default 6, the protocol's documented tokenDecimals). Set permanently by the token's one-shot initialize() during pool creation",
+    "6"
+  )
   .option("--fee <fee>", "Fee preset (low|medium|high) or micro-STX amount")
+  .option(
+    "--allow-config-change",
+    "Proceed even if launkr.io/api/protocol reports contract addresses that differ from the ones pinned in this skill (use only after verifying a genuine redeploy on the explorer)"
+  )
   .action(async (opts) => {
     try {
       if (opts.mode !== "bonding" && opts.mode !== "direct") {
@@ -744,28 +964,50 @@ program
 
       const account = await getAccount();
       const network = account.network;
-      const { singleton } = await fetchProtocolConfig(network);
+      const { singleton } = await fetchProtocolConfig(network, {
+        allowConfigChange: opts.allowConfigChange,
+      });
       const [singletonAddr, singletonName] = singleton.split(".");
+      await assertNotPaused(singleton, network);
 
-      // FIX (biwasxyz review round 2, PR #414, "also worth fixing"): this
-      // hardcoded `uintCV(6)` while `launch` takes decimals from whatever
-      // the API's deploy step actually used. If those ever disagreed, this
-      // recovery path would silently create a differently-configured pool
-      // than `launch` would have. Reading it back from the already-deployed
-      // token is the only source that can't drift from what's actually on
-      // chain — it's not a parameter to get right, it's a fact to look up.
-      const decimalsResult = await getHiroApi(network).callReadOnlyFunction(
+      // FIX (biwasxyz review round 3, PR #414, blocker): round 2 replaced a
+      // hardcoded `uintCV(6)` here with a `get-decimals` read off the
+      // already-deployed token, reasoning that it's "not a parameter to get
+      // right, it's a fact to look up." That reasoning is inverted for this
+      // command specifically: the token's decimals are NOT set at deploy
+      // time. The byte-frozen template ships `(define-data-var
+      // token-decimals uint u0)`, and the only thing that ever sets it is
+      // the token's one-shot `initialize()` — which the singleton calls
+      // *during pool creation*, using this very argument.
+      //
+      // So on the exact state this command exists to recover from (token
+      // deployed, no pool yet), `get-decimals` returns u0, and round 2's fix
+      // fed that 0 straight back into create-pool-*, permanently
+      // initializing the token with 0 decimals — every balance off by a
+      // factor of a million, unfixable (`ERR_ALREADY_INITIALIZED`). Strictly
+      // worse than the hardcoded 6 it replaced. Take it as an explicit
+      // parameter, defaulted to the protocol constant.
+      const decimals = assertValidDecimals(opts.decimals);
+
+      // Guard the other direction: if the token IS already initialized, this
+      // pool creation cannot succeed, and the reason is worth stating up
+      // front rather than paying a fee to discover. `initialize()` mints the
+      // whole supply, so a non-zero total supply means it has already run.
+      const supplyResult = await getHiroApi(network).callReadOnlyFunction(
         opts.token,
-        "get-decimals",
+        "get-total-supply",
         [],
         account.address
       );
-      if (!decimalsResult.okay) {
-        throw new Error(`Could not read decimals from ${opts.token}: ${decimalsResult.cause}`);
-      }
-      const decimals = Number(unwrapCV(decodeCV(decimalsResult.result ?? "")));
-      if (!Number.isInteger(decimals)) {
-        throw new Error(`Unexpected get-decimals result from ${opts.token}: ${decimalsResult.result}`);
+      if (supplyResult.okay) {
+        const existingSupply = unwrapCV(decodeCV(supplyResult.result ?? ""));
+        if (existingSupply != null && String(existingSupply) !== "0") {
+          throw new Error(
+            `${opts.token} is already initialized (total supply ${String(existingSupply)}), so ` +
+              `it already has a pool — create-pool would abort with ERR_ALREADY_INITIALIZED. ` +
+              `Run \`get-pool --token ${opts.token}\` to inspect the existing pool.`
+          );
+        }
       }
 
       const uriArg = opts.uri ? someCV(stringUtf8CV(opts.uri)) : noneCV();
@@ -816,6 +1058,7 @@ program
 
       printJson({
         success: true,
+        confirmed: true,
         token: opts.token,
         poolTxid: result.txid,
         network,
@@ -849,11 +1092,21 @@ program
   .requiredOption("--token <principal>", "Full token principal")
   .requiredOption("--new-receiver <address>", "STX address to propose as the new fee-receiver")
   .option("--fee <fee>", "Fee preset (low|medium|high) or micro-STX amount")
+  .option(
+    "--no-wait",
+    "Print the txid as soon as it is broadcast instead of waiting for it to confirm on chain"
+  )
+  .option(
+    "--allow-config-change",
+    "Proceed even if launkr.io/api/protocol reports contract addresses that differ from the ones pinned in this skill (use only after verifying a genuine redeploy on the explorer)"
+  )
   .action(async (opts) => {
     try {
       const account = await getAccount();
       const network = account.network;
-      const { singleton } = await fetchProtocolConfig(network);
+      const { singleton } = await fetchProtocolConfig(network, {
+        allowConfigChange: opts.allowConfigChange,
+      });
       const [singletonAddr, singletonName] = singleton.split(".");
       const fee = await resolveFee(opts.fee, network, "contract_call");
 
@@ -867,7 +1120,7 @@ program
       });
 
       printJson({
-        success: true,
+        ...(await writeStatus(result.txid, network, opts.wait)),
         txid: result.txid,
         token: opts.token,
         newReceiver: opts.newReceiver,
@@ -889,11 +1142,21 @@ program
   )
   .requiredOption("--token <principal>", "Full token principal")
   .option("--fee <fee>", "Fee preset (low|medium|high) or micro-STX amount")
+  .option(
+    "--no-wait",
+    "Print the txid as soon as it is broadcast instead of waiting for it to confirm on chain"
+  )
+  .option(
+    "--allow-config-change",
+    "Proceed even if launkr.io/api/protocol reports contract addresses that differ from the ones pinned in this skill (use only after verifying a genuine redeploy on the explorer)"
+  )
   .action(async (opts) => {
     try {
       const account = await getAccount();
       const network = account.network;
-      const { singleton } = await fetchProtocolConfig(network);
+      const { singleton } = await fetchProtocolConfig(network, {
+        allowConfigChange: opts.allowConfigChange,
+      });
       const [singletonAddr, singletonName] = singleton.split(".");
       const fee = await resolveFee(opts.fee, network, "contract_call");
 
@@ -907,7 +1170,7 @@ program
       });
 
       printJson({
-        success: true,
+        ...(await writeStatus(result.txid, network, opts.wait)),
         txid: result.txid,
         token: opts.token,
         network,
@@ -933,21 +1196,18 @@ program
     "Full token principal in ADDRESS.contract-name format"
   )
   .option("--network <network>", "mainnet or testnet")
+  .option(
+    "--allow-config-change",
+    "Proceed even if launkr.io/api/protocol reports contract addresses that differ from the ones pinned in this skill (use only after verifying a genuine redeploy on the explorer)"
+  )
   .action(async (opts) => {
     try {
       const network = resolveNetwork(opts.network);
-      const { singleton } = await fetchProtocolConfig(network);
+      const { singleton } = await fetchProtocolConfig(network, {
+        allowConfigChange: opts.allowConfigChange,
+      });
 
-      let sender: string;
-      try {
-        sender = await getWalletAddress();
-      } catch {
-        // Fallback — any valid address works for read-only calls
-        sender =
-          network === "mainnet"
-            ? "SP000000000000000000002Q6VF78"
-            : "ST000000000000000000002AMW42H";
-      }
+      const sender = await readOnlySender(network);
 
       // FIX (biwasxyz review, PR #414, worth-addressing #7): use the shared
       // Hiro client (adds the API key header, avoiding rate limits) instead
@@ -1016,20 +1276,18 @@ program
   .requiredOption("--token <principal>", "Full token principal")
   .requiredOption("--stx-in <uSTX>", "uSTX to spend")
   .option("--network <network>", "mainnet or testnet")
+  .option(
+    "--allow-config-change",
+    "Proceed even if launkr.io/api/protocol reports contract addresses that differ from the ones pinned in this skill (use only after verifying a genuine redeploy on the explorer)"
+  )
   .action(async (opts) => {
     try {
       const network = resolveNetwork(opts.network);
-      const { singleton } = await fetchProtocolConfig(network);
+      const { singleton } = await fetchProtocolConfig(network, {
+        allowConfigChange: opts.allowConfigChange,
+      });
 
-      let sender: string;
-      try {
-        sender = await getWalletAddress();
-      } catch {
-        sender =
-          network === "mainnet"
-            ? "SP000000000000000000002Q6VF78"
-            : "ST000000000000000000002AMW42H";
-      }
+      const sender = await readOnlySender(network);
 
       const result = await getHiroApi(network).callReadOnlyFunction(
         singleton,
@@ -1074,20 +1332,18 @@ program
   .requiredOption("--token <principal>", "Full token principal")
   .requiredOption("--tokens-in <atomic>", "Atomic token units to sell")
   .option("--network <network>", "mainnet or testnet")
+  .option(
+    "--allow-config-change",
+    "Proceed even if launkr.io/api/protocol reports contract addresses that differ from the ones pinned in this skill (use only after verifying a genuine redeploy on the explorer)"
+  )
   .action(async (opts) => {
     try {
       const network = resolveNetwork(opts.network);
-      const { singleton } = await fetchProtocolConfig(network);
+      const { singleton } = await fetchProtocolConfig(network, {
+        allowConfigChange: opts.allowConfigChange,
+      });
 
-      let sender: string;
-      try {
-        sender = await getWalletAddress();
-      } catch {
-        sender =
-          network === "mainnet"
-            ? "SP000000000000000000002Q6VF78"
-            : "ST000000000000000000002AMW42H";
-      }
+      const sender = await readOnlySender(network);
 
       const result = await getHiroApi(network).callReadOnlyFunction(
         singleton,
@@ -1145,6 +1401,14 @@ program
     "Address to receive tokens (default: wallet address)"
   )
   .option("--fee <fee>", "Fee preset (low|medium|high) or micro-STX amount")
+  .option(
+    "--no-wait",
+    "Print the txid as soon as it is broadcast instead of waiting for it to confirm on chain"
+  )
+  .option(
+    "--allow-config-change",
+    "Proceed even if launkr.io/api/protocol reports contract addresses that differ from the ones pinned in this skill (use only after verifying a genuine redeploy on the explorer)"
+  )
   .action(async (opts) => {
     try {
       // FIX (biwasxyz review, PR #414, blocker #2) — see the identical note
@@ -1154,9 +1418,12 @@ program
       const account = await getAccount();
       const network = account.network;
       const { chainParam } = NET_CONFIG[network];
-      const { singleton } = await fetchProtocolConfig(network);
+      const { singleton } = await fetchProtocolConfig(network, {
+        allowConfigChange: opts.allowConfigChange,
+      });
       const recipient = opts.recipient ?? account.address;
       const [singletonAddr, singletonName] = singleton.split(".");
+      await assertNotPaused(singleton, network);
       const resolvedFee = await resolveFee(opts.fee, network, "contract_call");
 
       const result = await callContract(account, {
@@ -1204,7 +1471,7 @@ program
       });
 
       printJson({
-        success: true,
+        ...(await writeStatus(result.txid, network, opts.wait)),
         txid: result.txid,
         token: opts.token,
         stxIn: opts.stxIn,
@@ -1239,6 +1506,14 @@ program
   .option("--deadline <block>", "Max Stacks block height (default: no deadline)", "4294967295")
   .option("--recipient <address>", "Address to receive STX (default: wallet address)")
   .option("--fee <fee>", "Fee preset (low|medium|high) or micro-STX amount")
+  .option(
+    "--no-wait",
+    "Print the txid as soon as it is broadcast instead of waiting for it to confirm on chain"
+  )
+  .option(
+    "--allow-config-change",
+    "Proceed even if launkr.io/api/protocol reports contract addresses that differ from the ones pinned in this skill (use only after verifying a genuine redeploy on the explorer)"
+  )
   .action(async (opts) => {
     try {
       // FIX (biwasxyz review, PR #414, blocker #2) — see the identical note
@@ -1246,9 +1521,12 @@ program
       const account = await getAccount();
       const network = account.network;
       const { chainParam } = NET_CONFIG[network];
-      const { singleton } = await fetchProtocolConfig(network);
+      const { singleton } = await fetchProtocolConfig(network, {
+        allowConfigChange: opts.allowConfigChange,
+      });
       const recipient = opts.recipient ?? account.address;
       const [singletonAddr, singletonName] = singleton.split(".");
+      await assertNotPaused(singleton, network);
       const resolvedFee = await resolveFee(opts.fee, network, "contract_call");
 
       const result = await callContract(account, {
@@ -1290,12 +1568,195 @@ program
       });
 
       printJson({
-        success: true,
+        ...(await writeStatus(result.txid, network, opts.wait)),
         txid: result.txid,
         token: opts.token,
         tokensIn: opts.tokensIn,
         minStxOut: opts.minStxOut,
         recipient,
+        network,
+        explorerUrl: getExplorerTxUrl(result.txid, network),
+        chainExplorerUrl: `https://explorer.hiro.so/txid/${result.txid}?chain=${chainParam}`,
+      });
+    } catch (error) {
+      handleError(error);
+    }
+  });
+
+// ---------------------------------------------------------------------------
+// is-paused / quote-swap-and-burn / swap-and-burn
+// ---------------------------------------------------------------------------
+//
+// FIX (biwasxyz review round 3, PR #414, gap #5): SKILL.md documents all
+// three of these — the protocol-wide kill switch, the fee-free deflationary
+// buy-and-burn, and its quote — but none were reachable through this CLI, so
+// an agent following the skill's own docs had no way to call them. Signatures
+// below were read off the deployed singleton's contract interface, not
+// inferred from the prose.
+
+program
+  .command("is-paused")
+  .description(
+    "Check the protocol-wide kill switch. When true, every write (swaps, " +
+      "pool creation) aborts on chain. No wallet required."
+  )
+  .option("--network <network>", "mainnet or testnet")
+  .option(
+    "--allow-config-change",
+    "Proceed even if launkr.io/api/protocol reports contract addresses that differ from the ones pinned in this skill (use only after verifying a genuine redeploy on the explorer)"
+  )
+  .action(async (opts) => {
+    try {
+      const network = resolveNetwork(opts.network);
+      const { singleton } = await fetchProtocolConfig(network, {
+        allowConfigChange: opts.allowConfigChange,
+      });
+
+      const result = await getHiroApi(network).callReadOnlyFunction(
+        singleton,
+        "is-paused",
+        [],
+        await readOnlySender(network)
+      );
+      if (!result.okay) {
+        throw new Error(`is-paused failed: ${result.cause ?? result.result}`);
+      }
+
+      const paused = unwrapCV(decodeCV(result.result ?? "")) === true;
+      printJson({
+        paused,
+        singleton,
+        network,
+        note: paused
+          ? "Protocol is paused — all writes will abort on chain (ERR_PAUSED)."
+          : "Protocol is active.",
+      });
+    } catch (error) {
+      handleError(error);
+    }
+  });
+
+program
+  .command("quote-swap-and-burn")
+  .description(
+    "Simulate a swap-and-burn and return how many tokens would be burned. " +
+      "Graduated pools only. No wallet required. Use the result to set " +
+      "--min-tokens-burned in swap-and-burn."
+  )
+  .requiredOption("--token <principal>", "Full token principal")
+  .requiredOption("--stx-in <uSTX>", "uSTX to spend")
+  .option("--network <network>", "mainnet or testnet")
+  .option(
+    "--allow-config-change",
+    "Proceed even if launkr.io/api/protocol reports contract addresses that differ from the ones pinned in this skill (use only after verifying a genuine redeploy on the explorer)"
+  )
+  .action(async (opts) => {
+    try {
+      const network = resolveNetwork(opts.network);
+      const { singleton } = await fetchProtocolConfig(network, {
+        allowConfigChange: opts.allowConfigChange,
+      });
+
+      const result = await getHiroApi(network).callReadOnlyFunction(
+        singleton,
+        "quote-swap-and-burn",
+        [parsePrincipalCV(opts.token), uintCV(BigInt(opts.stxIn))],
+        await readOnlySender(network)
+      );
+      if (!result.okay) {
+        throw new Error(`quote-swap-and-burn failed: ${result.cause ?? result.result}`);
+      }
+
+      const unwrapped = unwrapCV(decodeCV(result.result ?? ""));
+      const tokensBurned = unwrapped == null ? null : String(unwrapped);
+
+      printJson({
+        token: opts.token,
+        stxIn: opts.stxIn,
+        tokensBurned,
+        network,
+        note:
+          tokensBurned === null
+            ? "Pool not found, still bonding, or stx-in is zero"
+            : `Use ${tokensBurned} (minus slippage tolerance) as --min-tokens-burned in swap-and-burn`,
+      });
+    } catch (error) {
+      handleError(error);
+    }
+  });
+
+program
+  .command("swap-and-burn")
+  .description(
+    "Spend STX to buy tokens and burn them immediately — fee-free, and the " +
+      "STX stays in the pool as protocol-owned liquidity. Graduated pools " +
+      "only (aborts with ERR_NOT_GRADUATED u217 on a bonding pool). Run " +
+      "quote-swap-and-burn first. Requires an unlocked wallet."
+  )
+  .requiredOption("--token <principal>", "Full token principal")
+  .requiredOption("--stx-in <uSTX>", "uSTX to spend")
+  .requiredOption(
+    "--min-tokens-burned <atomic>",
+    "Minimum tokens to burn — slippage guard (use quote-swap-and-burn first)"
+  )
+  .option("--deadline <block>", "Max Stacks block height (default: no deadline)", "4294967295")
+  .option("--fee <fee>", "Fee preset (low|medium|high) or micro-STX amount")
+  .option(
+    "--no-wait",
+    "Print the txid as soon as it is broadcast instead of waiting for it to confirm on chain"
+  )
+  .option(
+    "--allow-config-change",
+    "Proceed even if launkr.io/api/protocol reports contract addresses that differ from the ones pinned in this skill (use only after verifying a genuine redeploy on the explorer)"
+  )
+  .action(async (opts) => {
+    try {
+      const account = await getAccount();
+      const network = account.network;
+      const { chainParam } = NET_CONFIG[network];
+      const { singleton } = await fetchProtocolConfig(network, {
+        allowConfigChange: opts.allowConfigChange,
+      });
+      const [singletonAddr, singletonName] = singleton.split(".");
+      await assertNotPaused(singleton, network);
+      const resolvedFee = await resolveFee(opts.fee, network, "contract_call");
+
+      const result = await callContract(account, {
+        contractAddress: singletonAddr,
+        contractName: singletonName,
+        functionName: "swap-and-burn",
+        functionArgs: [
+          parsePrincipalCV(opts.token),
+          uintCV(BigInt(opts.stxIn)),
+          uintCV(BigInt(opts.minTokensBurned)),
+          uintCV(BigInt(opts.deadline)),
+        ],
+        // Two asset movements, per the contract source: the caller's STX in
+        // (`stx-transfer? stx-in caller current-contract`), and the burn of
+        // `dy` tokens from the singleton's own balance, which the contract
+        // performs under `(with-ft token-principal "strategy-token" dy)` —
+        // an outflow, so Deny mode requires it covered like any other send.
+        // There is no fee leg here, so no STX leaves the singleton.
+        postConditionMode: PostConditionMode.Deny,
+        postConditions: [
+          createStxPostCondition(account.address, "eq", BigInt(opts.stxIn)),
+          createContractFungiblePostCondition(
+            singleton,
+            opts.token,
+            LAUNKR_FT_ASSET_NAME,
+            "gte",
+            BigInt(opts.minTokensBurned)
+          ),
+        ],
+        ...(resolvedFee !== undefined && { fee: resolvedFee }),
+      });
+
+      printJson({
+        ...(await writeStatus(result.txid, network, opts.wait)),
+        txid: result.txid,
+        token: opts.token,
+        stxIn: opts.stxIn,
+        minTokensBurned: opts.minTokensBurned,
         network,
         explorerUrl: getExplorerTxUrl(result.txid, network),
         chainExplorerUrl: `https://explorer.hiro.so/txid/${result.txid}?chain=${chainParam}`,
