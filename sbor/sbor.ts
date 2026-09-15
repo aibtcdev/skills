@@ -31,7 +31,14 @@ type Latest = {
   fixing: string; methodologyVersion: string; basis: string;
   indices: Record<string, Index>;
   poxReference?: Record<string, unknown>;
-  externalReference?: { note: string; markets: unknown[] };
+  externalReference?: { note: string; markets: any[] };
+  context?: {
+    sofr?: { rate: number; effectiveDate: string; average30day?: number;
+             average90day?: number; average180day?: number; volumeBillions?: number };
+    prices?: { btcUsd: number; stxUsd: number };
+    sbtcSupply?: { sbtc: number };
+    chainHeight?: { burnBlockHeight: number | null; rewardCycle: number | null };
+  };
   notes: string[];
 };
 
@@ -94,11 +101,16 @@ const program = new Command();
 program.name("sbor").description("The benchmark lending rate for Stacks");
 
 program.command("rate")
-  .description("Current fixing, every currency or one")
+  .description("Current fixing, or the fixing for a past date")
   .option("--index <index>", "SBOR-USD | SBOR-BTC | SBOR-STX")
+  .option("--date <YYYY-MM-DD>", "a past date. Omit for the current fixing.")
   .action(async o => {
     checkIndex(o.index);
-    const d = await get<Latest>("/api/v1/latest.json");
+    if (o.date && !/^\d{4}-\d{2}-\d{2}$/.test(o.date))
+      die(`--date must be YYYY-MM-DD, got "${o.date}".`);
+    const d = o.date
+      ? await get<Latest>(`/api/v1/archive/${o.date}.json`)
+      : await get<Latest>("/api/v1/latest.json");
     if (o.index) {
       const ix = d.indices[o.index];
       return out(ix ? { ...summarise(ix), ...meta(d) } : absent(o.index, d));
@@ -223,15 +235,38 @@ program.command("history")
   });
 
 program.command("chains")
-  .description("Lending markets off Stacks, for comparison only")
-  .action(async () => {
+  .description("The same asset classes on other chains, and on the US repo market")
+  .option("--index <index>", "only markets comparable to this index")
+  .action(async o => {
+    checkIndex(o.index);
     const d = await get<Latest>("/api/v1/latest.json");
-    if (!d.externalReference) return out({ external: [], note: "No external reference in the current fixing.", ...meta(d) });
+    const all = d.externalReference?.markets ?? [];
+    const markets = o.index ? all.filter((m: any) => m.comparableTo === o.index) : all;
+    const sofr = d.context?.sofr;
+
     out({
-      stacks: Object.values(d.indices).map(ix => ({ index: ix.label, borrow: ix.borrow, supply: ix.supply })),
-      external: d.externalReference.markets,
-      note: d.externalReference.note,
-      warning: "Context only. These are never constituents of an SBOR index, come from DefiLlama rather than contract state, and are not on the same basis as the SBOR indices.",
+      stacks: Object.values(d.indices)
+        .filter(ix => !o.index || ix.label === o.index)
+        .map(ix => ({ index: ix.label, borrow: ix.borrow, supply: ix.supply })),
+      onChain: markets,
+      chainsCovered: [...new Set(markets.map((m: any) => String(m.venue).split(", ").pop()))],
+      /* SOFR is the cost of a dollar secured by US government debt. It is the
+         benchmark SBOR is modelled on, and the only meaningful comparison for a
+         dollar rate outside crypto entirely. */
+      offChain: sofr && (!o.index || o.index === "SBOR-USD") ? {
+        name: "SOFR",
+        rate: sofr.rate,
+        effectiveDate: sofr.effectiveDate,
+        average30day: sofr.average30day ?? null,
+        average90day: sofr.average90day ?? null,
+        average180day: sofr.average180day ?? null,
+        what: "The overnight cost of a dollar in the US repo market, secured by US government debt. Published by the Federal Reserve Bank of New York for the previous business day, so it does not move at weekends.",
+        howToRead: d.indices["SBOR-USD"]
+          ? `A dollar secured by bitcoin on Stacks costs ${d.indices["SBOR-USD"].borrow.toFixed(2)}% to borrow, against ${sofr.rate.toFixed(2)}% secured by Treasuries. Bitcoin is the riskier collateral, so a cheaper rate here reflects low utilisation rather than lower risk.`
+          : null
+      } : undefined,
+      note: d.externalReference?.note,
+      warning: "Context only. On-chain comparisons are never constituents of an SBOR index, come from DefiLlama rather than contract state, and are not on the same basis as the SBOR indices. One market is selected per chain: a venue publishing a borrow rate and utilisation is preferred over one that does not, and depth decides between those that publish both.",
       ...meta(d)
     });
   });
@@ -252,6 +287,18 @@ program.command("inversions")
         ? "This monitor is being validated. Report detections as observations, not as trades."
         : undefined,
       source: `${BASE}/api/v1/inversions.json`
+    });
+  });
+
+program.command("context")
+  .description("What the world looked like when this fixing was taken")
+  .action(async () => {
+    const d = await get<Latest>("/api/v1/latest.json");
+    if (!d.context) return out({ context: null, note: "No context in the current fixing.", ...meta(d) });
+    out({
+      ...d.context,
+      note: "Recorded alongside each fixing and never used in any calculation. It is kept so a past fixing can be read in the conditions of its day.",
+      ...meta(d)
     });
   });
 
