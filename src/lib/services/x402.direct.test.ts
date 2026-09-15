@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { createServer, type IncomingMessage, type ServerResponse, type Server } from "node:http";
 import { once } from "node:events";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { AuthType, PostConditionMode, deserializeTransaction } from "@stacks/transactions";
 import { getStacksChainId } from "../config/caip.js";
 import { getContracts } from "../config/contracts.js";
@@ -8,13 +11,18 @@ import { NETWORK, type Network } from "../config/networks.js";
 import { _testing as storageTesting } from "../utils/storage.js";
 import { InsufficientBalanceError } from "../utils/errors.js";
 import { X402_HEADERS, decodePaymentPayload } from "../utils/x402-protocol.js";
+import { _lockTesting, generateDedupKey } from "./x402-guards.js";
+import { existsSync, mkdirSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import {
   createApiClient,
+  DuplicatePaymentError,
   getDirectPaymentMetadata,
   mnemonicToAccount,
   parseDirectPaymentAmount,
   resolveDirectPaymentAsset,
+  resolveDirectPaymentPolicy,
   resolvePaymentMode,
+  SpendLimitError,
 } from "./x402.service.js";
 
 const TEST_MNEMONIC =
@@ -242,36 +250,86 @@ describe("resolveDirectPaymentAsset / parseDirectPaymentAmount", () => {
 
   test("amount must be a positive integer under the cap", () => {
     const sbtc = resolveDirectPaymentAsset(SBTC, network);
-    expect(parseDirectPaymentAmount("100", sbtc)).toBe(100n);
+    const policy = resolveDirectPaymentPolicy({});
+    expect(parseDirectPaymentAmount("100", sbtc, policy)).toBe(100n);
     for (const bad of ["0", "-1", "1.5", "1e3", "", "abc", "010", " 100", "100 "]) {
-      expect(() => parseDirectPaymentAmount(bad, sbtc)).toThrow(/positive integer/);
+      expect(() => parseDirectPaymentAmount(bad, sbtc, policy)).toThrow(/positive integer/);
     }
-    expect(() => parseDirectPaymentAmount("10001", sbtc)).toThrow(/X402_MAX_SATS_PER_PAYMENT/);
-    const prev = process.env.X402_MAX_SATS_PER_PAYMENT;
-    process.env.X402_MAX_SATS_PER_PAYMENT = "20000";
-    try {
-      expect(parseDirectPaymentAmount("10001", sbtc)).toBe(10001n);
-    } finally {
-      if (prev === undefined) delete process.env.X402_MAX_SATS_PER_PAYMENT;
-      else process.env.X402_MAX_SATS_PER_PAYMENT = prev;
-    }
-    expect(() => parseDirectPaymentAmount("1000001", { kind: "STX" })).toThrow(/X402_MAX_USTX_PER_PAYMENT/);
+    expect(() => parseDirectPaymentAmount("10001", sbtc, policy)).toThrow(/X402_MAX_SATS_PER_PAYMENT/);
+    const raised = resolveDirectPaymentPolicy({ X402_MAX_SATS_PER_PAYMENT: "20000" });
+    expect(parseDirectPaymentAmount("10001", sbtc, raised)).toBe(10001n);
+    expect(() => parseDirectPaymentAmount("1000001", { kind: "STX" }, policy)).toThrow(/X402_MAX_USTX_PER_PAYMENT/);
   });
 });
+
+describe("resolveDirectPaymentPolicy", () => {
+  test("applies defaults and honours overrides", () => {
+    const p = resolveDirectPaymentPolicy({});
+    expect(p.maxSatsPerPayment).toBe(10_000n);
+    expect(p.maxUstxPerPayment).toBe(1_000_000n);
+    expect(p.maxFeeUstx).toBe(100_000n);
+    expect(p.dedupTtlMs).toBe(900_000);
+    expect(p.spend).toEqual({ enabled: true, dailySats: 50_000n, dailyUstx: 10_000_000n });
+    const q = resolveDirectPaymentPolicy({
+      X402_DEDUP_TTL_SECONDS: "5",
+      SPEND_LIMIT_ENABLED: "false",
+      SPEND_LIMIT_DAILY_SATS: "123",
+      X402_DEDUP_STATE_FILE: "/tmp/a.json",
+    });
+    expect(q.dedupTtlMs).toBe(5000);
+    expect(q.spend.enabled).toBe(false);
+    expect(q.spend.dailySats).toBe(123n);
+    expect(q.dedupStateFile).toBe("/tmp/a.json");
+  });
+
+  test("rejects malformed values instead of falling back", () => {
+    expect(() => resolveDirectPaymentPolicy({ X402_MAX_SATS_PER_PAYMENT: "abc" })).toThrow(/X402_MAX_SATS_PER_PAYMENT/);
+    expect(() => resolveDirectPaymentPolicy({ X402_MAX_FEE_USTX: "-1" })).toThrow(/X402_MAX_FEE_USTX/);
+    expect(() => resolveDirectPaymentPolicy({ X402_DEDUP_TTL_SECONDS: "0" })).toThrow(/greater than zero/);
+    expect(() => resolveDirectPaymentPolicy({ SPEND_LIMIT_DAILY_USTX: "1.5" })).toThrow(/SPEND_LIMIT_DAILY_USTX/);
+    expect(() => resolveDirectPaymentPolicy({ X402_DEDUP_TTL_SECONDS: "99999999999" })).toThrow(/at most/);
+  });
+
+  test("dedup keys ignore key order and the payment-signature header", () => {
+    const base = { method: "get", url: "http://x/paid", payer: "SPX", payTo: "SPY", amount: "1", asset: "STX" };
+    const k1 = generateDedupKey({ ...base, params: { b: 2, a: { d: 1, c: 2 } }, headers: { "payment-signature": "one", Accept: "json" } });
+    const k2 = generateDedupKey({ ...base, method: "GET", params: { a: { c: 2, d: 1 }, b: 2 }, headers: { accept: "json", "payment-signature": "two" } });
+    expect(k1).toBe(k2);
+    expect(generateDedupKey({ ...base, params: { a: 1 } })).not.toBe(generateDedupKey({ ...base, params: { a: 2 } }));
+    expect(generateDedupKey({ ...base, amount: "2" })).not.toBe(generateDedupKey(base));
+  });
+});
+
+const ENV_KEYS = [
+  "CLIENT_MNEMONIC",
+  "X402_PAYMENT_MODE",
+  "X402_MAX_FEE_USTX",
+  "X402_MAX_SATS_PER_PAYMENT",
+  "X402_MAX_USTX_PER_PAYMENT",
+  "X402_DEDUP_TTL_SECONDS",
+  "X402_DEDUP_STATE_FILE",
+  "X402_SPEND_STATE_FILE",
+  "SPEND_LIMIT_ENABLED",
+  "SPEND_LIMIT_DAILY_SATS",
+  "SPEND_LIMIT_DAILY_USTX",
+];
 
 describe("createApiClient payment modes", () => {
   const savedEnv: Record<string, string | undefined> = {};
   let sender = "";
   let fake: Fake | null = null;
+  let stateDir = "";
 
   beforeEach(async () => {
-    for (const key of ["CLIENT_MNEMONIC", "X402_PAYMENT_MODE", "X402_MAX_FEE_USTX", "X402_MAX_SATS_PER_PAYMENT"]) {
+    for (const key of ENV_KEYS) {
       savedEnv[key] = process.env[key];
+      delete process.env[key];
     }
     process.env.CLIENT_MNEMONIC = TEST_MNEMONIC;
-    delete process.env.X402_PAYMENT_MODE;
-    delete process.env.X402_MAX_FEE_USTX;
-    delete process.env.X402_MAX_SATS_PER_PAYMENT;
+    // Fresh, isolated guard state per test: no test can see another's payments.
+    stateDir = await mkdtemp(path.join(tmpdir(), "x402-direct-"));
+    process.env.X402_DEDUP_STATE_FILE = path.join(stateDir, "dedup.json");
+    process.env.X402_SPEND_STATE_FILE = path.join(stateDir, "spend.json");
     sender = (await mnemonicToAccount(TEST_MNEMONIC, network)).address;
   });
 
@@ -284,6 +342,10 @@ describe("createApiClient payment modes", () => {
     for (const [key, value] of Object.entries(savedEnv)) {
       if (value === undefined) delete process.env[key];
       else process.env[key] = value;
+    }
+    if (stateDir) {
+      await rm(stateDir, { recursive: true, force: true });
+      stateDir = "";
     }
   });
 
@@ -520,6 +582,199 @@ describe("createApiClient payment modes", () => {
     const meta = getDirectPaymentMetadata(response);
     expect(meta.txStatus).toBe("abort_by_response");
     expect(meta.settlementState).toBe("failed");
+  });
+
+  test("an identical request from a second client is refused with the first txid (cross-call duplicate guard)", async () => {
+    process.env.X402_PAYMENT_MODE = "direct";
+    const f = await up();
+    const first = await createApiClient(f.origin, "test.dedup-1");
+    const response = await first.request({ method: "GET", url: "/paid", params: { slug: "stacks" } });
+    const firstTxid = getDirectPaymentMetadata(response).txid!;
+
+    const second = await createApiClient(f.origin, "test.dedup-2"); // fresh instance: fresh paymentAttempts entry
+    const failure = await rejection(second.request({ method: "GET", url: "/paid", params: { slug: "stacks" } }));
+    expect(failure).toBeInstanceOf(DuplicatePaymentError);
+    expect((failure as DuplicatePaymentError).txid).toBe(firstTxid);
+    expect(failure.message).toContain(firstTxid);
+    expect(f.paidRequests).toHaveLength(1);
+
+    // Persisted, keyed by digest only: no request content on disk.
+    const onDisk = await readFile(process.env.X402_DEDUP_STATE_FILE!, "utf8");
+    expect(onDisk).toContain(firstTxid);
+    expect(onDisk).not.toContain("slug");
+  });
+
+  test("the duplicate guard still holds after a failed paid replay (recorded before send)", async () => {
+    process.env.X402_PAYMENT_MODE = "direct";
+    const f = await up({ paid: { kind: "http", status: 500, body: { error: "boom" } } });
+    const first = await createApiClient(f.origin, "test.dedup-fail-1");
+    await rejection(first.request({ method: "GET", url: "/paid" }));
+    const second = await createApiClient(f.origin, "test.dedup-fail-2");
+    const failure = await rejection(second.request({ method: "GET", url: "/paid" }));
+    expect(failure).toBeInstanceOf(DuplicatePaymentError);
+    expect(f.paidRequests).toHaveLength(1);
+  });
+
+  test("a different request is not a duplicate; the guard clears after the TTL", async () => {
+    process.env.X402_PAYMENT_MODE = "direct";
+    process.env.X402_DEDUP_TTL_SECONDS = "1";
+    const f = await up();
+    const a = await createApiClient(f.origin, "test.dedup-a");
+    await a.request({ method: "GET", url: "/paid", params: { slug: "stacks" } });
+    const b = await createApiClient(f.origin, "test.dedup-b");
+    await b.request({ method: "GET", url: "/paid", params: { slug: "zest" } });
+    expect(f.paidRequests).toHaveLength(2);
+
+    await new Promise((r) => setTimeout(r, 1100));
+    const c = await createApiClient(f.origin, "test.dedup-c");
+    await c.request({ method: "GET", url: "/paid", params: { slug: "stacks" } });
+    expect(f.paidRequests).toHaveLength(3);
+  });
+
+  test("the daily spend ledger refuses once today's cap is reached, across client instances", async () => {
+    process.env.X402_PAYMENT_MODE = "direct";
+    process.env.SPEND_LIMIT_DAILY_SATS = "150"; // two 100-sat payments do not fit
+    const f = await up();
+    const a = await createApiClient(f.origin, "test.spend-a");
+    await a.request({ method: "GET", url: "/paid", params: { n: "1" } });
+    const b = await createApiClient(f.origin, "test.spend-b");
+    const failure = await rejection(b.request({ method: "GET", url: "/paid", params: { n: "2" } }));
+    expect(failure).toBeInstanceOf(SpendLimitError);
+    expect((failure as SpendLimitError).unit).toBe("sats");
+    expect((failure as SpendLimitError).remaining).toBe(50n);
+    expect(failure.message).toMatch(/SPEND_LIMIT_DAILY_SATS/);
+    expect(f.paidRequests).toHaveLength(1);
+  });
+
+  test("the spend ledger also meters gas in µSTX for an sBTC payment", async () => {
+    process.env.X402_PAYMENT_MODE = "direct";
+    process.env.SPEND_LIMIT_DAILY_USTX = "5000"; // exactly one 5000 µSTX fee fits
+    const f = await up();
+    const a = await createApiClient(f.origin, "test.spend-gas-a");
+    await a.request({ method: "GET", url: "/paid", params: { n: "1" } });
+    const b = await createApiClient(f.origin, "test.spend-gas-b");
+    const failure = await rejection(b.request({ method: "GET", url: "/paid", params: { n: "2" } }));
+    expect(failure).toBeInstanceOf(SpendLimitError);
+    expect((failure as SpendLimitError).unit).toBe("ustx");
+    expect(f.paidRequests).toHaveLength(1);
+  });
+
+  test("SPEND_LIMIT_ENABLED=false turns the ledger off", async () => {
+    process.env.X402_PAYMENT_MODE = "direct";
+    process.env.SPEND_LIMIT_ENABLED = "false";
+    process.env.SPEND_LIMIT_DAILY_SATS = "150";
+    const f = await up();
+    for (const n of ["1", "2", "3"]) {
+      const api = await createApiClient(f.origin, `test.spend-off-${n}`);
+      await api.request({ method: "GET", url: "/paid", params: { n } });
+    }
+    expect(f.paidRequests).toHaveLength(3);
+  });
+
+  test("two direct clients racing on the same request produce exactly one payment", async () => {
+    process.env.X402_PAYMENT_MODE = "direct";
+    const f = await up();
+    const a = await createApiClient(f.origin, "test.race-a");
+    const b = await createApiClient(f.origin, "test.race-b");
+    const results = await Promise.allSettled([
+      a.request({ method: "GET", url: "/paid", params: { slug: "stacks" } }),
+      b.request({ method: "GET", url: "/paid", params: { slug: "stacks" } }),
+    ]);
+    const fulfilled = results.filter((r) => r.status === "fulfilled");
+    const rejected = results.filter((r): r is PromiseRejectedResult => r.status === "rejected");
+    expect(fulfilled).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+    expect(rejected[0].reason).toBeInstanceOf(DuplicatePaymentError);
+    expect(f.paidRequests).toHaveLength(1);
+  });
+
+  test("a live lock held by another process refuses; a lease with no heartbeat refuses too, naming the holder", async () => {
+    process.env.X402_PAYMENT_MODE = "direct";
+    _lockTesting.setMaxWaitMs(600);
+    try {
+      const f = await up();
+      const [lockDir] = _lockTesting.lockDirsFor(resolveDirectPaymentPolicy(process.env));
+      expect(_lockTesting.lockDirsFor(resolveDirectPaymentPolicy(process.env))).toHaveLength(1); // same dir for both stores
+
+      // Live holder: fresh mtime, foreign owner token.
+      mkdirSync(lockDir, { recursive: true });
+      writeFileSync(path.join(lockDir, "owner"), "999999 deadbeefdeadbeef");
+      const blocked = await createApiClient(f.origin, "test.lock-live");
+      await expect(blocked.request({ method: "GET", url: "/paid" })).rejects.toThrow(/holding the guard lock/);
+      expect(f.paidRequests).toHaveLength(0);
+
+      // Dead holder: no heartbeat for two minutes → still refused (never reclaimed), with the pid and path.
+      const old = new Date(Date.now() - 120_000);
+      utimesSync(lockDir, old, old);
+      const stale = await createApiClient(f.origin, "test.lock-stale");
+      const failure = await rejection(stale.request({ method: "GET", url: "/paid" }));
+      expect(failure.message).toMatch(/no heartbeat/);
+      expect(failure.message).toMatch(/owner pid 999999 \(not running\)/);
+      expect(failure.message).toContain(lockDir);
+      expect(f.paidRequests).toHaveLength(0);
+
+      // Operator removes the dead lock → payment proceeds and the lock is released afterwards.
+      rmSync(lockDir, { recursive: true, force: true });
+      const api = await createApiClient(f.origin, "test.lock-cleared");
+      await api.request({ method: "GET", url: "/paid" });
+      expect(f.paidRequests).toHaveLength(1);
+      expect(existsSync(lockDir)).toBe(false);
+    } finally {
+      _lockTesting.setMaxWaitMs(15_000);
+    }
+  });
+
+  test("the dedup key is canonical over params order and ignores the payment header", async () => {
+    process.env.X402_PAYMENT_MODE = "direct";
+    const f = await up();
+    const a = await createApiClient(f.origin, "test.canon-a");
+    await a.request({ method: "GET", url: "/paid", params: { b: "2", a: "1" } });
+    const b = await createApiClient(f.origin, "test.canon-b");
+    await expect(b.request({ method: "GET", url: "/paid", params: { a: "1", b: "2" } })).rejects.toBeInstanceOf(
+      DuplicatePaymentError
+    );
+    expect(f.paidRequests).toHaveLength(1);
+  });
+
+  test("the spend ledger is written in the MCP server's spend-state.json shape", async () => {
+    process.env.X402_PAYMENT_MODE = "direct";
+    const f = await up();
+    const api = await createApiClient(f.origin, "test.ledger-shape");
+    await api.request({ method: "GET", url: "/paid" });
+    const ledger = JSON.parse(await readFile(process.env.X402_SPEND_STATE_FILE!, "utf8"));
+    const day = new Date().toISOString().slice(0, 10);
+    expect(ledger[sender][day]).toEqual({ ustx: 5000, sats: 100 });
+    expect(resolveDirectPaymentPolicy({}).spendStateFile.endsWith("/.aibtc/spend-state.json")).toBe(true);
+  });
+
+  test("a spend ledger written by the MCP server counts against today's cap", async () => {
+    process.env.X402_PAYMENT_MODE = "direct";
+    process.env.SPEND_LIMIT_DAILY_SATS = "150";
+    const day = new Date().toISOString().slice(0, 10);
+    await writeFile(process.env.X402_SPEND_STATE_FILE!, JSON.stringify({ [sender]: { [day]: { ustx: 0, sats: 100 } } }));
+    const f = await up();
+    const api = await createApiClient(f.origin, "test.ledger-mcp");
+    await expect(api.request({ method: "GET", url: "/paid" })).rejects.toBeInstanceOf(SpendLimitError);
+    expect(f.paidRequests).toHaveLength(0);
+  });
+
+  test("malformed guard state refuses the payment instead of reading as empty", async () => {
+    process.env.X402_PAYMENT_MODE = "direct";
+    const f = await up();
+    const day = new Date().toISOString().slice(0, 10);
+    for (const bad of ["[]", "null", "not json", JSON.stringify({ [sender]: { [day]: { sats: "lots", ustx: 0 } } })]) {
+      await writeFile(process.env.X402_SPEND_STATE_FILE!, bad);
+      const api = await createApiClient(f.origin, "test.ledger-corrupt");
+      await expect(api.request({ method: "GET", url: "/paid" })).rejects.toThrow(/Refusing to trust/);
+    }
+    expect(f.paidRequests).toHaveLength(0);
+  });
+
+  test("a malformed cap env fails at client creation in direct mode only", async () => {
+    process.env.X402_MAX_SATS_PER_PAYMENT = "lots";
+    await expect(createApiClient("http://127.0.0.1:1", "test.env-sponsored")).resolves.toBeDefined();
+    process.env.X402_PAYMENT_MODE = "direct";
+    await expect(createApiClient("http://127.0.0.1:1", "test.env-direct")).rejects.toThrow(/X402_MAX_SATS_PER_PAYMENT/);
   });
 
   test("an invalid X402_PAYMENT_MODE fails at client creation", async () => {

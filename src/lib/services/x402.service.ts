@@ -19,6 +19,19 @@ import {
 } from "@stacks/transactions";
 import { createFungiblePostCondition } from "../transactions/post-conditions.js";
 import {
+  checkDedup,
+  checkSpend,
+  DuplicatePaymentError,
+  generateDedupKey,
+  recordDedup,
+  recordSpend,
+  resolveDirectPaymentPolicy,
+  SpendLimitError,
+  withDirectPaymentLock,
+  type DirectPaymentPolicy,
+  type SpendUnit,
+} from "./x402-guards.js";
+import {
   decodePaymentRequired,
   decodePaymentPayload,
   encodePaymentPayload,
@@ -38,7 +51,6 @@ import { getWalletManager } from "./wallet-manager.js";
 import { formatStx, formatSbtc } from "../utils/formatting.js";
 import { getSbtcService } from "./sbtc.service.js";
 import { getHiroApi } from "./hiro-api.js";
-import { createHash } from "node:crypto";
 import { InsufficientBalanceError } from "../utils/errors.js";
 import { getContracts, parseContractId } from "../config/contracts.js";
 import { emitPaymentDiagnostic } from "../utils/x402-diagnostics.js";
@@ -75,25 +87,7 @@ export function resolvePaymentMode(raw = process.env.X402_PAYMENT_MODE): X402Pay
   return value as X402PaymentMode;
 }
 
-/**
- * Per-payment caps for direct mode. A malicious or misconfigured 402 must
- * not be able to name an arbitrary amount and have it signed automatically.
- * Cumulative (session/day) authorization is the calling tool's policy, not
- * enforced here.
- */
-function parseEnvBigInt(envName: string, fallback: bigint): bigint {
-  const raw = process.env[envName];
-  if (raw === undefined || raw.trim() === "") return fallback;
-  if (!/^\d+$/.test(raw.trim())) {
-    throw new Error(`${envName} must be a non-negative integer, got "${raw}"`);
-  }
-  return BigInt(raw.trim());
-}
-
-const DEFAULT_MAX_SATS_PER_PAYMENT = 10_000n;
-const DEFAULT_MAX_USTX_PER_PAYMENT = 1_000_000n; // 1 STX
-/** Fee ceiling for direct payments (micro-STX). Also bounded by the per-type clamp. */
-const DEFAULT_MAX_FEE_USTX = 100_000n; // 0.1 STX
+export { resolveDirectPaymentPolicy, DuplicatePaymentError, SpendLimitError, type DirectPaymentPolicy };
 
 /** Fee clamps by transaction type (micro-STX), mirrored from utils/fee.ts. */
 const DIRECT_FEE_CLAMPS = {
@@ -133,7 +127,11 @@ export function resolveDirectPaymentAsset(asset: string, network: Network): Dire
   );
 }
 
-export function parseDirectPaymentAmount(amount: string, asset: DirectPaymentAsset): bigint {
+export function parseDirectPaymentAmount(
+  amount: string,
+  asset: DirectPaymentAsset,
+  policy: DirectPaymentPolicy
+): bigint {
   const raw = typeof amount === "string" ? amount : "";
   if (!/^[1-9]\d*$/.test(raw)) {
     throw new Error(
@@ -143,10 +141,7 @@ export function parseDirectPaymentAmount(amount: string, asset: DirectPaymentAss
   const value = BigInt(raw);
   const isSbtc = asset.kind === "sBTC";
   const capEnv = isSbtc ? "X402_MAX_SATS_PER_PAYMENT" : "X402_MAX_USTX_PER_PAYMENT";
-  const cap = parseEnvBigInt(
-    capEnv,
-    isSbtc ? DEFAULT_MAX_SATS_PER_PAYMENT : DEFAULT_MAX_USTX_PER_PAYMENT
-  );
+  const cap = isSbtc ? policy.maxSatsPerPayment : policy.maxUstxPerPayment;
   if (value > cap) {
     throw new Error(
       `Direct x402 payment refused: ${value} ${isSbtc ? "sats" : "uSTX"} exceeds the per-payment cap of ` +
@@ -164,7 +159,8 @@ export function parseDirectPaymentAmount(amount: string, asset: DirectPaymentAss
  */
 async function resolveDirectPaymentFee(
   network: Network,
-  txType: keyof typeof DIRECT_FEE_CLAMPS
+  txType: keyof typeof DIRECT_FEE_CLAMPS,
+  policy: DirectPaymentPolicy
 ): Promise<bigint> {
   let medium: number;
   try {
@@ -180,7 +176,7 @@ async function resolveDirectPaymentFee(
     throw new Error(`Direct x402 payment refused: Stacks API returned an unusable ${txType} fee (${medium}).`);
   }
   const clamps = DIRECT_FEE_CLAMPS[txType];
-  const configuredCeiling = parseEnvBigInt("X402_MAX_FEE_USTX", DEFAULT_MAX_FEE_USTX);
+  const configuredCeiling = policy.maxFeeUstx;
   if (configuredCeiling < clamps.floor) {
     // A cap under the floor is a refusal, not a request to sign at the floor.
     throw new Error(
@@ -212,10 +208,13 @@ export interface DirectPaymentBuild {
  */
 export async function buildDirectPaymentTransaction(
   account: Account,
-  option: { asset: string; amount: string; payTo: string; maxTimeoutSeconds?: number }
+  option: { asset: string; amount: string; payTo: string; maxTimeoutSeconds?: number },
+  policy: DirectPaymentPolicy,
+  /** Request identity for the cross-process duplicate guard; omit to skip it (unit tests only). */
+  requestKey?: string
 ): Promise<DirectPaymentBuild> {
   const asset = resolveDirectPaymentAsset(option.asset, account.network);
-  const amount = parseDirectPaymentAmount(option.amount, asset);
+  const amount = parseDirectPaymentAmount(option.amount, asset, policy);
   const payTo = typeof option.payTo === "string" ? option.payTo : "";
   if (!/^S[PTMN][0-9A-Z]{28,41}$/.test(payTo)) {
     throw new Error(`Direct x402 payment refused: payTo "${option.payTo}" is not a standard Stacks principal.`);
@@ -229,8 +228,41 @@ export async function buildDirectPaymentTransaction(
     );
   }
 
+  // Everything from the duplicate check to the ledger write happens under one
+  // cross-process lock, so two direct clients racing on the same wallet
+  // cannot both see "no prior payment / budget available" and sign twice.
+  return withDirectPaymentLock(policy, async () => {
+  // Same request, same payer, same terms, signed within the TTL: refuse with
+  // the earlier txid. This is what stops "retry after an ambiguous failure"
+  // from paying twice — the per-instance guard cannot, since callers build a
+  // client per invocation.
+  if (requestKey) {
+    const prior = await checkDedup(requestKey, policy);
+    if (prior) {
+      const ageSeconds = Math.round((Date.now() - prior.timestamp) / 1000);
+      throw new DuplicatePaymentError(
+        `Direct x402 payment refused: an identical request was already paid ${ageSeconds}s ago ` +
+          `(txid ${prior.txid}). Check that transaction before paying again; the guard clears after ` +
+          `${Math.round(policy.dedupTtlMs / 1000)}s (X402_DEDUP_TTL_SECONDS).`,
+        prior.txid,
+        Date.now() - prior.timestamp
+      );
+    }
+  }
+
   const txType = asset.kind === "sBTC" ? "contract_call" : "token_transfer";
-  const fee = await resolveDirectPaymentFee(account.network, txType);
+  const fee = await resolveDirectPaymentFee(account.network, txType, policy);
+
+  // Cumulative rail: today's ledger for this wallet must have room for the
+  // price and the gas before anything is signed.
+  const spends: Array<{ unit: SpendUnit; amount: bigint }> =
+    asset.kind === "sBTC"
+      ? [
+          { unit: "sats", amount },
+          { unit: "ustx", amount: fee },
+        ]
+      : [{ unit: "ustx", amount: amount + fee }];
+  await checkSpend(account.address, spends, policy);
 
   const hiroApi = getHiroApi(account.network);
   let balances;
@@ -316,7 +348,14 @@ export async function buildDirectPaymentTransaction(
     });
   }
 
-  return { transaction, txid: transaction.txid(), fee, nonce, asset, amount };
+  // Record BEFORE the bytes leave the process: a crash between signing and the
+  // paid request must still leave a trace, because the server may broadcast.
+  const txid = transaction.txid();
+  if (requestKey) await recordDedup(requestKey, txid, policy);
+  await recordSpend(account.address, spends, policy);
+
+  return { transaction, txid, fee, nonce, asset, amount };
+  });
 }
 
 export type X402SettlementState = "submitted" | "confirmed" | "failed";
@@ -353,19 +392,6 @@ function describeHttpFailure(error: unknown): string {
   if (body.length > 2048) body = `${body.slice(0, 2048)}…`;
   return `HTTP ${response.status}: ${body}`;
 }
-
-// Transaction deduplication cache: {dedupKey -> {txid, timestamp}}
-const dedupCache: Map<string, { txid: string; timestamp: number }> = new Map();
-
-// Cleanup expired dedup entries every 5 minutes
-setInterval(() => {
-  const now = Date.now();
-  for (const [key, value] of dedupCache) {
-    if (now - value.timestamp > 60000) {
-      dedupCache.delete(key);
-    }
-  }
-}, 300000).unref();
 
 /**
  * Safe JSON transform - parses string responses without throwing
@@ -872,8 +898,10 @@ export async function mnemonicToAccount(
  */
 export async function createApiClient(baseUrl?: string, diagnosticTool = "x402.api-client"): Promise<AxiosInstance> {
   const url = baseUrl || API_URL;
-  // Resolved once per client so a bad value fails here, not mid-payment.
+  // Resolved once per client so a bad value fails here, not mid-payment —
+  // the mode and, in direct mode, every cap, fee and ledger setting.
   const paymentMode = resolvePaymentMode();
+  const directPolicy = paymentMode === "direct" ? resolveDirectPaymentPolicy() : null;
 
   // Get account (from managed wallet or env mnemonic)
   const account = await getAccount();
@@ -1029,9 +1057,30 @@ export async function createApiClient(baseUrl?: string, diagnosticTool = "x402.a
               )
             );
           }
-          // Standard fee-paying transfer; validation, caps and balance checks
-          // all live in the builder and fail closed.
-          directBuild = await buildDirectPaymentTransaction(account, selectedOption);
+          // Standard fee-paying transfer; validation, caps, balance checks and
+          // the duplicate/spend rails all live in the builder and fail closed.
+          const requestConfig = error.config ?? {};
+          const rawHeaders = requestConfig.headers as { toJSON?: () => Record<string, unknown> } | Record<string, unknown> | undefined;
+          const requestKey = generateDedupKey({
+            method: String(requestConfig.method ?? "get"),
+            url: new URL(String(requestConfig.url ?? ""), requestConfig.baseURL ?? url).toString(),
+            params: requestConfig.params,
+            data: typeof requestConfig.data === "string" ? safeJsonTransform(requestConfig.data) : requestConfig.data,
+            headers:
+              rawHeaders && typeof (rawHeaders as { toJSON?: unknown }).toJSON === "function"
+                ? (rawHeaders as { toJSON: () => Record<string, unknown> }).toJSON()
+                : (rawHeaders as Record<string, unknown> | undefined),
+            payer: account.address,
+            payTo: selectedOption.payTo,
+            amount: selectedOption.amount,
+            asset: selectedOption.asset,
+          });
+          directBuild = await buildDirectPaymentTransaction(
+            account,
+            selectedOption,
+            directPolicy as DirectPaymentPolicy,
+            requestKey
+          );
           transaction = directBuild.transaction;
         } else {
         // Build a sponsored signed transaction (relay pays gas; fee: 0n)
@@ -1227,6 +1276,8 @@ export async function createApiClient(baseUrl?: string, diagnosticTool = "x402.a
       } catch (paymentError) {
         if (
           paymentError instanceof InsufficientBalanceError ||
+          paymentError instanceof DuplicatePaymentError ||
+          paymentError instanceof SpendLimitError ||
           (paymentError instanceof Error &&
             (asMetadataTarget(paymentError).x402PaymentStatus ||
               asMetadataTarget(paymentError).x402PaymentId ||
@@ -1448,40 +1499,20 @@ export async function probeEndpoint(options: {
 }
 
 /**
- * Generate a stable deduplication key for a request
+ * Request deduplication lives in ./x402-guards.ts (persisted, TTL-bound) and
+ * is wired into direct mode. These wrappers keep the previous exports alive.
  */
-export function generateDedupKey(
-  method: string,
-  url: string,
-  params?: Record<string, string>,
-  data?: Record<string, unknown>
-): string {
-  const payload = JSON.stringify({ method, url, params, data });
-  return createHash('sha256').update(payload).digest('hex');
+export { generateDedupKey };
+
+/** @returns the prior txid if an identical request was paid within the TTL, else null */
+export async function checkDedupCache(key: string, policy = resolveDirectPaymentPolicy()): Promise<string | null> {
+  const prior = await checkDedup(key, policy);
+  return prior?.txid ?? null;
 }
 
-/**
- * Check if a request was recently processed (within 60s)
- * @returns txid if duplicate found, null otherwise
- */
-export function checkDedupCache(key: string): string | null {
-  const cached = dedupCache.get(key);
-  if (!cached) {
-    return null;
-  }
-  const now = Date.now();
-  if (now - cached.timestamp > 60000) {
-    dedupCache.delete(key);
-    return null;
-  }
-  return cached.txid;
-}
-
-/**
- * Record a transaction in the dedup cache
- */
-export function recordTransaction(key: string, txid: string): void {
-  dedupCache.set(key, { txid, timestamp: Date.now() });
+/** Record a signed payment for a request key. */
+export async function recordTransaction(key: string, txid: string, policy = resolveDirectPaymentPolicy()): Promise<void> {
+  await recordDedup(key, txid, policy);
 }
 
 /**

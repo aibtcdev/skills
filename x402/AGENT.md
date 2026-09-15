@@ -36,8 +36,9 @@ This agent handles x402 protocol operations: discovering and executing paid API 
 - Verify sBTC balance in the active wallet before `send-inbox-message` (cost is 100 satoshis per message)
 - Verify STX balance before executing endpoints that charge in STX
 - In `X402_PAYMENT_MODE=direct`, keep at least ~0.01 STX for gas even when the price is in sBTC; the client refuses to pay (nothing is signed) if the balance, fee or nonce cannot be confirmed, if the amount exceeds `X402_MAX_SATS_PER_PAYMENT` / `X402_MAX_USTX_PER_PAYMENT`, or if the endpoint asks for any asset other than native STX or the canonical sBTC token
-- Direct payments are capped per call, not cumulatively — decide how many paid calls a task may make before starting it
-- A direct-payment error that says "Settlement is ambiguous" means the signed transfer reached the server: check the named `txid` on the explorer before paying again
+- Direct payments are capped per call AND per wallet per UTC day (`SPEND_LIMIT_DAILY_SATS`, `SPEND_LIMIT_DAILY_USTX`, including gas); a task that will make many paid calls should be sized against today's remaining budget before it starts, and an operator can raise the caps but the agent cannot
+- Repeating an identical paid request within `X402_DEDUP_TTL_SECONDS` (default 15 min) is refused with the earlier `txid` — this is deliberate; vary a parameter for a genuinely new query, and never work around the guard by editing the state file
+- A direct-payment error that says "Settlement is ambiguous" means the signed transfer reached the server: check the named `txid` on the explorer before paying again (the duplicate guard will refuse an immediate retry for you)
 - Only HTTPS endpoints are allowed — `http://` URLs will be rejected
 - `scaffold-endpoint` and `scaffold-ai-endpoint` will error if the output directory already exists — check before running
 - `send-inbox-message` content is capped at 500 characters — truncate before calling
@@ -55,6 +56,8 @@ This agent handles x402 protocol operations: discovering and executing paid API 
 | "x402 payment failed: HTTP 422: {\"detail\":{\"error\":\"sponsored_unsupported\"}}" | The endpoint does not accept sponsored transactions | Re-run with `X402_PAYMENT_MODE=direct` (wallet needs STX for gas) |
 | "Direct x402 payment refused: ..." | A direct-mode guard fired before anything was signed (asset, amount cap, fee/nonce/balance read) | Read the message: raise the named cap only if the cost is expected; fund STX; never pay an endpoint that names an unknown asset |
 | "Settlement is ambiguous: check txid <txid> ..." | The paid request failed or timed out after the signed transfer was sent | Look up the txid on the explorer; retry only if it is absent from mempool and chain |
+| "an identical request was already paid Ns ago (txid ...)" | Duplicate guard: same request, payer and terms within the TTL | Verify that txid; if the earlier payment truly never happened, wait out the TTL or vary a parameter — do not edit the state file |
+| "would exceed today's remaining budget of N sats/ustx" | Daily spend ledger reached for this wallet | Stop paying for today, or have the operator raise `SPEND_LIMIT_DAILY_SATS` / `SPEND_LIMIT_DAILY_USTX` |
 | "Directory already exists at <path>" | Scaffold target directory already exists | Choose a different `--project-name` or remove existing directory |
 | "Project name must be lowercase with hyphens only" | Invalid project name format | Use kebab-case, e.g., `my-x402-api` |
 
