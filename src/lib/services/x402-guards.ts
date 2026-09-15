@@ -86,7 +86,10 @@ export function resolveDirectPaymentPolicy(env: NodeJS.ProcessEnv = process.env)
       `X402_DEDUP_TTL_SECONDS must be at most ${DIRECT_POLICY_DEFAULTS.maxDedupTtlSeconds} (30 days), got "${env.X402_DEDUP_TTL_SECONDS}"`
     );
   }
-  const spendEnabled = (env.SPEND_LIMIT_ENABLED ?? "true").trim().toLowerCase() !== "false";
+  // Exactly the MCP server's test (spend-limiter.ts: `!== "false"`). A looser
+  // parse here would let "False" disable this ledger while the MCP server,
+  // sharing the same file, still believed the wallet was capped.
+  const spendEnabled = env.SPEND_LIMIT_ENABLED !== "false";
   return {
     maxSatsPerPayment: parseEnvBigInt(env, "X402_MAX_SATS_PER_PAYMENT", DIRECT_POLICY_DEFAULTS.maxSatsPerPayment),
     maxUstxPerPayment: parseEnvBigInt(env, "X402_MAX_USTX_PER_PAYMENT", DIRECT_POLICY_DEFAULTS.maxUstxPerPayment),

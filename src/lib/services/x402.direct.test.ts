@@ -278,6 +278,10 @@ describe("resolveDirectPaymentPolicy", () => {
     });
     expect(q.dedupTtlMs).toBe(5000);
     expect(q.spend.enabled).toBe(false);
+    // Only the exact string "false" disables the ledger — same test as the MCP server.
+    for (const notFalse of ["False", "FALSE", " false", "0", "no"]) {
+      expect(resolveDirectPaymentPolicy({ SPEND_LIMIT_ENABLED: notFalse }).spend.enabled).toBe(true);
+    }
     expect(q.spend.dailySats).toBe(123n);
     expect(q.dedupStateFile).toBe("/tmp/a.json");
   });
