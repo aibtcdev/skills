@@ -263,6 +263,21 @@ Output:
 }
 ```
 
+## Payment mode
+
+`execute-endpoint` builds the payment transaction according to `X402_PAYMENT_MODE`:
+
+| Mode | Transaction | Wallet needs | Use when |
+|------|-------------|--------------|----------|
+| `sponsored` (default) | Sponsored, fee 0 — the server or the aibtc relay co-signs and pays gas | sBTC or STX for the price only | The endpoint settles through the aibtc sponsor relay |
+| `direct` | Standard transfer signed by the wallet alone, fee paid by the wallet | Price **plus** STX for gas (≤ 0.1 STX for sBTC, ≤ 0.003 STX for STX, clamped) | The endpoint verifies and broadcasts payments itself and answers sponsored bytes with `422 sponsored_unsupported` |
+
+```bash
+X402_PAYMENT_MODE=direct NETWORK=mainnet bun run x402/x402.ts execute-endpoint --url https://api.example.com/paid --auto-approve
+```
+
+Direct mode is fail-closed: it signs only native STX or the canonical sBTC token for the active network, refuses amounts above `X402_MAX_SATS_PER_PAYMENT` (default 10000) / `X402_MAX_USTX_PER_PAYMENT` (default 1000000), caps the fee at `X402_MAX_FEE_USTX` (default 100000; a cap below the per-type minimum fee is refused, not rounded up), rejects challenge terms that are not byte-exact (padded amounts, addresses or asset ids, an unparseable chain id, a non-positive `maxTimeoutSeconds`), and refuses to pay if the mempool fee, nonce or balance cannot be read from the Stacks API. Cumulative spend across calls is the caller's policy, not enforced here. The output's `payment` object then carries `mode`, `txid`, `txStatus` and `settlementState` (`submitted` → `confirmed` | `failed`) even when the server offers no payment-status route. `send-inbox-message` is unaffected by this setting.
+
 ## Notes
 
 - `execute-endpoint` and `probe-endpoint` require an unlocked wallet when the endpoint requires payment
