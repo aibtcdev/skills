@@ -39,7 +39,12 @@ a locked position, the other is the cost of a loan. They are different
 instruments.
 
 **Treat data older than 48 hours as stale.** Every payload carries a `fixing`
-timestamp. Past that, fall back to your own logic rather than acting on it.
+timestamp and every response carries `staleHours` and a `stale` flag. Past that,
+fall back to your own logic rather than acting on it.
+
+**Do not compare a Stacks rate with SOFR without saying why they differ.** A
+dollar costs less to borrow on Stacks than in the US repo market. That is low
+utilisation, not lower risk, and reporting it without that caveat is misleading.
 
 **Inversions during `validating` are not a signal.** The status field says so.
 Report them as observations, not as trades.
