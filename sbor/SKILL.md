@@ -1,315 +1,167 @@
-#!/usr/bin/env bun
-/**
- * sbor: the benchmark lending rate for Stacks.
- *
- * Read-only. No wallet, no keys, no funds. Reads the public SBOR endpoints and
- * prints a single JSON object to stdout, as every skill here does.
- *
- * https://sbor.xyz
- */
-import { Command } from "commander";
+---
+name: sbor
+description: SBOR, the benchmark lending rate for Stacks — get the current borrow and supply rate per currency, judge whether a rate you have been offered is above or below the market, list the venues behind a rate with their utilisation, read the history, compare Stacks with lending markets off-chain, and check for cross-venue inversions.
+metadata:
+  user-invocable: "false"
+  arguments: "rate | compare | markets | history | chains | inversions | context | method"
+  entry: "sbor/sbor.ts"
+  tags: "read-only, mainnet-only, defi, l2"
+  author: "sborxyz"
+---
 
-const BASE = process.env.SBOR_BASE || "https://sbor.xyz";
-const UA = "aibtc-skills-sbor/1.0";
+# sbor
 
-type Market = {
-  venue: string; asset: string; borrow: number; supply: number;
-  utilization?: number; protocolYield?: number; protocolYieldSource?: string;
-  nominalBorrow?: number; nominalSupply?: number;
-  depthUsd: number; weight: number; phaseIn?: number;
-};
-type Index = {
-  label: string; currency: string; headline: string;
-  borrow: number; supply: number;
-  allInSupply?: number; allInSupplyDiffers?: boolean;
-  venues: string[]; largestConstituentWeight: number;
-  markets: Market[];
-  termAverages?: Record<string, { borrow: number | null; supply: number | null } | null>;
-  seriesBegan?: string;
-};
-type Latest = {
-  fixing: string; methodologyVersion: string; basis: string;
-  indices: Record<string, Index>;
-  poxReference?: Record<string, unknown>;
-  externalReference?: { note: string; markets: any[] };
-  context?: {
-    sofr?: { rate: number; effectiveDate: string; average30day?: number;
-             average90day?: number; average180day?: number; volumeBillions?: number };
-    prices?: { btcUsd: number; stxUsd: number };
-    sbtcSupply?: { sbtc: number };
-    chainHeight?: { burnBlockHeight: number | null; rewardCycle: number | null };
-  };
-  notes: string[];
-};
+The benchmark lending rate for Stacks. Read from lending contract state,
+published daily as a public good at [sbor.xyz](https://sbor.xyz).
 
-const out = (o: unknown) => { console.log(JSON.stringify(o, null, 2)); };
-const die = (msg: string) => { console.log(JSON.stringify({ error: msg })); process.exit(1); };
+**No wallet. No keys. No funds. No rate limit.** This skill only reads a public
+endpoint, so it can be run freely and cannot lose anything.
 
-async function get<T>(path: string): Promise<T> {
-  let r: Response;
-  try {
-    r = await fetch(`${BASE}${path}`, { headers: { accept: "application/json", "user-agent": UA } });
-  } catch (e) {
-    die(`SBOR is unreachable at ${BASE}${path}: ${(e as Error).message}. Do not substitute an estimate.`);
-    throw e;
-  }
-  if (!r.ok) die(`SBOR responded ${r.status} for ${path}. Do not substitute an estimate.`);
-  return r.json() as Promise<T>;
+The data is licensed **CC BY 4.0**: free to use, including commercially, with no
+permission required and no licence to negotiate. Agents are explicitly welcome.
+
+## Why an agent wants this
+
+Any agent that lends, borrows, loops or routes on Stacks is making a decision
+about whether a rate is good. Without a benchmark there is nothing to judge it
+against, so the agent either takes the first offer or compares venues by hand in
+software.
+
+SBOR is the market rate. Borrowing above it means paying more than the market.
+Supplying below it means earning less.
+
+## Commands
+
+```bash
+bun run sbor/sbor.ts rate
+bun run sbor/sbor.ts rate --index SBOR-USD
+bun run sbor/sbor.ts rate --date 2026-09-01
+bun run sbor/sbor.ts compare --rate 4.2 --side borrow --index SBOR-USD
+bun run sbor/sbor.ts markets --index SBOR-USD
+bun run sbor/sbor.ts history --index SBOR-USD --days 30
+bun run sbor/sbor.ts chains --index SBOR-USD
+bun run sbor/sbor.ts inversions
+bun run sbor/sbor.ts context
+bun run sbor/sbor.ts method
+```
+
+### rate
+
+Current fixing, or any past one. Every currency index unless one is named.
+
+```bash
+bun run sbor/sbor.ts rate --index SBOR-BTC
+bun run sbor/sbor.ts rate --date 2026-09-01
+```
+
+Returns borrow, supply, the all-in supply figure where protocol yield applies,
+the venues covered and the weight of the largest one. With `--date` it reads the
+immutable archive for that day, which is never rewritten.
+
+### compare
+
+The one most agents want. Given a rate you have been offered, returns whether it
+is above or below the market and by how many basis points, plus the best
+constituent and its utilisation.
+
+```bash
+bun run sbor/sbor.ts compare --rate 4.2 --side borrow --index SBOR-USD
+```
+
+```json
+{
+  "index": "SBOR-USD",
+  "side": "borrow",
+  "offered": 4.2,
+  "benchmark": 2.34,
+  "differenceBps": 186,
+  "verdict": "above market",
+  "best": { "venue": "Granite", "asset": "USDCx", "rate": 1.46, "utilization": 23.64 }
 }
+```
 
-const INDICES = ["SBOR-USD", "SBOR-BTC", "SBOR-STX"];
-const checkIndex = (i?: string) => {
-  if (i && !INDICES.includes(i)) die(`Unknown index "${i}". Use one of: ${INDICES.join(", ")}.`);
-};
-const bps = (a: number, b: number) => Math.round((a - b) * 100);
-const staleHours = (iso: string) => (Date.now() - Date.parse(iso)) / 36e5;
+### markets
 
-const meta = (d: Latest) => ({
-  fixing: d.fixing,
-  methodologyVersion: d.methodologyVersion,
-  basis: d.basis,
-  staleHours: Number(staleHours(d.fixing).toFixed(1)),
-  stale: staleHours(d.fixing) > 48,
-  source: `${BASE}/api/v1/latest.json`
-});
+Every venue and asset behind an index, with borrow, supply, utilisation, depth
+and weight.
 
-const summarise = (ix: Index) => ({
-  index: ix.label,
-  borrow: ix.borrow,
-  supply: ix.supply,
-  ...(ix.allInSupplyDiffers ? {
-    allInSupply: ix.allInSupply,
-    allInSupplyNote: "Includes protocol yield carried by the asset itself. Not a lending rate. Do not add it to supply."
-  } : {}),
-  venues: ix.venues,
-  venueCount: ix.venues.length,
-  largestConstituentWeight: ix.largestConstituentWeight,
-  concentrationNote: ix.venues.length === 1
-    ? "One venue. This is a reading of that venue, not a market average."
-    : undefined
-});
+### history
 
-const absent = (label: string, d: Latest) => ({
-  index: label,
-  published: false,
-  reason: "The market could not be read, so SBOR omits the index rather than publishing a figure that is not real. Treat this as unknown, not as zero.",
-  publishedToday: Object.keys(d.indices),
-  ...meta(d)
-});
+Daily fixings. Withdrawn fixings are returned with their reason rather than
+silently omitted.
 
-const program = new Command();
-program.name("sbor").description("The benchmark lending rate for Stacks");
+### chains
 
-program.command("rate")
-  .description("Current fixing, or the fixing for a past date")
-  .option("--index <index>", "SBOR-USD | SBOR-BTC | SBOR-STX")
-  .option("--date <YYYY-MM-DD>", "a past date. Omit for the current fixing.")
-  .action(async o => {
-    checkIndex(o.index);
-    if (o.date && !/^\d{4}-\d{2}-\d{2}$/.test(o.date))
-      die(`--date must be YYYY-MM-DD, got "${o.date}".`);
-    const d = o.date
-      ? await get<Latest>(`/api/v1/archive/${o.date}.json`)
-      : await get<Latest>("/api/v1/latest.json");
-    if (o.index) {
-      const ix = d.indices[o.index];
-      return out(ix ? { ...summarise(ix), ...meta(d) } : absent(o.index, d));
-    }
-    const missing = INDICES.filter(l => !d.indices[l]);
-    out({
-      indices: Object.values(d.indices).map(summarise),
-      notPublished: missing.length ? missing.map(l => ({
-        index: l,
-        reason: "Market could not be read. Omitted rather than estimated. Treat as unknown, not zero."
-      })) : undefined,
-      poxReference: d.poxReference ? {
-        ...d.poxReference,
-        warning: "A staking yield on a locked position, not a lending rate. Never compare it with a borrow or supply rate."
-      } : undefined,
-      ...meta(d)
-    });
-  });
+The same asset class elsewhere. Currently **Ethereum, Base, Hyperliquid and
+Solana** on-chain, plus **SOFR** off-chain: the overnight cost of a dollar in the
+US repo market, secured by US government debt, which is the benchmark SBOR is
+modelled on.
 
-program.command("compare")
-  .description("Is a rate you have been offered above or below the market")
-  .requiredOption("--rate <number>", "the rate offered, as a percentage")
-  .requiredOption("--side <side>", "borrow | supply")
-  .requiredOption("--index <index>", "SBOR-USD | SBOR-BTC | SBOR-STX")
-  .action(async o => {
-    checkIndex(o.index);
-    if (!["borrow", "supply"].includes(o.side)) die(`--side must be borrow or supply.`);
-    const rate = Number(o.rate);
-    if (!Number.isFinite(rate)) die(`--rate must be a number, got "${o.rate}".`);
+```bash
+bun run sbor/sbor.ts chains --index SBOR-USD
+```
 
-    const d = await get<Latest>("/api/v1/latest.json");
-    const ix = d.indices[o.index];
-    if (!ix) return out(absent(o.index, d));
+Pass `--index` to see only what is comparable. SOFR appears for the dollar index
+only, because it is a dollar rate.
 
-    const side = o.side as "borrow" | "supply";
-    const bench = ix[side];
-    const diff = bps(rate, bench);
-    const worse = side === "borrow" ? diff > 0 : diff < 0;
+Context only, never part of an SBOR index. One market is selected per chain: a
+venue publishing a borrow rate and utilisation is preferred over one that does
+not, and depth decides between those that publish both.
 
-    const best = [...ix.markets].sort((a, b) =>
-      side === "borrow" ? a.borrow - b.borrow : b.supply - a.supply)[0];
+### inversions
 
-    out({
-      index: ix.label,
-      side,
-      offered: rate,
-      benchmark: bench,
-      differenceBps: diff,
-      verdict: Math.abs(diff) < 1 ? "at market" : worse ? "worse than market" : "better than market",
-      plain: Math.abs(diff) < 1
-        ? `At the market.`
-        : side === "borrow"
-          ? `${Math.abs(diff)} bps ${diff > 0 ? "above" : "below"} the market. You would be paying ${diff > 0 ? "more" : "less"} than the benchmark.`
-          : `${Math.abs(diff)} bps ${diff > 0 ? "above" : "below"} the market. You would be earning ${diff > 0 ? "more" : "less"} than the benchmark.`,
-      best: {
-        venue: best.venue, asset: best.asset, rate: best[side],
-        utilization: best.utilization ?? null,
-        capacityNote: best.utilization == null ? null
-          : best.utilization >= 90 ? "Above 90% utilised. The rate may not be drawable and withdrawals may be constrained."
-          : best.utilization <= 25 ? "Low utilisation, so there is unused capacity behind this rate."
-          : null
-      },
-      venues: ix.venues,
-      largestConstituentWeight: ix.largestConstituentWeight,
-      concentrationNote: ix.venues.length === 1
-        ? "One venue. This is a reading of that venue, not a market average."
-        : undefined,
-      ...meta(d)
-    });
-  });
+Cross-venue inversions: the same asset costing less to borrow at one venue than
+it pays to supply at another. Checked hourly. Carries a `status` field; while it
+reads `validating` the detection is still being proven.
 
-program.command("markets")
-  .description("Venues behind a rate, with utilisation and depth")
-  .option("--index <index>", "SBOR-USD | SBOR-BTC | SBOR-STX")
-  .action(async o => {
-    checkIndex(o.index);
-    const d = await get<Latest>("/api/v1/latest.json");
-    const entries = o.index
-      ? (d.indices[o.index] ? [d.indices[o.index]] : [])
-      : Object.values(d.indices);
-    if (!entries.length) return out(absent(o.index, d));
-    out({
-      markets: entries.flatMap(ix => ix.markets.map(m => ({
-        index: ix.label, venue: m.venue, asset: m.asset,
-        borrow: m.borrow, supply: m.supply,
-        utilization: m.utilization ?? null,
-        protocolYield: m.protocolYield ?? null,
-        protocolYieldSource: m.protocolYieldSource ?? null,
-        depthUsd: m.depthUsd, weight: m.weight
-      }))),
-      note: "Utilisation is the share of supplied capital currently borrowed. It is why a rate sits where it does. Protocol yield comes from the asset, not the loan, and is not part of the lending rate.",
-      ...meta(d)
-    });
-  });
+### context
 
-program.command("history")
-  .description("Daily fixings")
-  .requiredOption("--index <index>", "SBOR-USD | SBOR-BTC | SBOR-STX")
-  .option("--days <n>", "how far back, default 30", "30")
-  .action(async o => {
-    checkIndex(o.index);
-    const days = Number(o.days);
-    if (!Number.isFinite(days) || days < 1) die(`--days must be a positive number.`);
-    const h = await get<Record<string, any>[]>("/api/v1/history.json");
-    const cutoff = new Date(Date.now() - days * 864e5).toISOString().slice(0, 10);
-    const rows = h.filter(r => r.date >= cutoff && r[o.index]);
-    if (!rows.length) return out({ index: o.index, days, fixings: [], note: `No fixings for ${o.index} in the last ${days} days.` });
+What the world looked like when the fixing was taken: SOFR, spot BTC and STX
+prices, the total supply of sBTC read on-chain, and the Bitcoin block height.
 
-    const valid = rows.filter(r => !r[o.index].withdrawn && typeof r[o.index].borrow === "number");
-    out({
-      index: o.index, days, count: rows.length,
-      fixings: rows.map(r => r[o.index].withdrawn
-        ? { date: r.date, withdrawn: true, reason: r[o.index].reason }
-        : { date: r.date, borrow: r[o.index].borrow, supply: r[o.index].supply,
-            venues: r[o.index].venues ?? null,
-            methodologyVersion: r.methodologyVersion ?? null }),
-      meanBorrow: valid.length ? Number((valid.reduce((a, r) => a + r[o.index].borrow, 0) / valid.length).toFixed(2)) : null,
-      withdrawnCount: rows.length - valid.length,
-      note: "Withdrawn fixings stay in the record rather than being deleted, and are excluded from the mean. A change in methodologyVersion means the basis changed; compare across one with care.",
-      source: `${BASE}/api/v1/history.json`
-    });
-  });
+Recorded alongside every fixing and never used in any calculation. It is there so
+a past fixing can be read in the conditions of its day.
 
-program.command("chains")
-  .description("The same asset classes on other chains, and on the US repo market")
-  .option("--index <index>", "only markets comparable to this index")
-  .action(async o => {
-    checkIndex(o.index);
-    const d = await get<Latest>("/api/v1/latest.json");
-    const all = d.externalReference?.markets ?? [];
-    const markets = o.index ? all.filter((m: any) => m.comparableTo === o.index) : all;
-    const sofr = d.context?.sofr;
+### method
 
-    out({
-      stacks: Object.values(d.indices)
-        .filter(ix => !o.index || ix.label === o.index)
-        .map(ix => ({ index: ix.label, borrow: ix.borrow, supply: ix.supply })),
-      onChain: markets,
-      chainsCovered: [...new Set(markets.map((m: any) => String(m.venue).split(", ").pop()))],
-      /* SOFR is the cost of a dollar secured by US government debt. It is the
-         benchmark SBOR is modelled on, and the only meaningful comparison for a
-         dollar rate outside crypto entirely. */
-      offChain: sofr && (!o.index || o.index === "SBOR-USD") ? {
-        name: "SOFR",
-        rate: sofr.rate,
-        effectiveDate: sofr.effectiveDate,
-        average30day: sofr.average30day ?? null,
-        average90day: sofr.average90day ?? null,
-        average180day: sofr.average180day ?? null,
-        what: "The overnight cost of a dollar in the US repo market, secured by US government debt. Published by the Federal Reserve Bank of New York for the previous business day, so it does not move at weekends.",
-        howToRead: d.indices["SBOR-USD"]
-          ? `A dollar secured by bitcoin on Stacks costs ${d.indices["SBOR-USD"].borrow.toFixed(2)}% to borrow, against ${sofr.rate.toFixed(2)}% secured by Treasuries. Bitcoin is the riskier collateral, so a cheaper rate here reflects low utilisation rather than lower risk.`
-          : null
-      } : undefined,
-      note: d.externalReference?.note,
-      warning: "Context only. On-chain comparisons are never constituents of an SBOR index, come from DefiLlama rather than contract state, and are not on the same basis as the SBOR indices. One market is selected per chain: a venue publishing a borrow rate and utilisation is preferred over one that does not, and depth decides between those that publish both.",
-      ...meta(d)
-    });
-  });
+The full methodology and integration policy.
 
-program.command("inversions")
-  .description("Cross-venue inversions, checked hourly")
-  .action(async () => {
-    const v = await get<any>("/api/v1/inversions.json");
-    out({
-      status: v.status,
-      statusNote: v.statusNote,
-      checked: v.checked,
-      count: (v.inversions || []).length,
-      inversions: v.inversions,
-      minimumEdgeBps: v.minimumEdgeBps,
-      note: v.note,
-      warning: v.status === "validating"
-        ? "This monitor is being validated. Report detections as observations, not as trades."
-        : undefined,
-      source: `${BASE}/api/v1/inversions.json`
-    });
-  });
+## Indices
 
-program.command("context")
-  .description("What the world looked like when this fixing was taken")
-  .action(async () => {
-    const d = await get<Latest>("/api/v1/latest.json");
-    if (!d.context) return out({ context: null, note: "No context in the current fixing.", ...meta(d) });
-    out({
-      ...d.context,
-      note: "Recorded alongside each fixing and never used in any calculation. It is kept so a past fixing can be read in the conditions of its day.",
-      ...meta(d)
-    });
-  });
+| Index | Covers |
+|---|---|
+| `SBOR-USD` | dollar markets, USDCx and USDh |
+| `SBOR-BTC` | sBTC markets |
+| `SBOR-STX` | STX and stSTX markets |
 
-program.command("method")
-  .description("Full methodology and integration policy")
-  .action(async () => {
-    let r: Response;
-    try { r = await fetch(`${BASE}/llms.txt`, { headers: { "user-agent": UA } }); }
-    catch (e) { return die(`SBOR is unreachable: ${(e as Error).message}`); }
-    if (!r.ok) return die(`SBOR responded ${r.status} for /llms.txt`);
-    out({ methodology: await r.text(), source: `${BASE}/llms.txt` });
-  });
+Published beside them, never inside them: `poxReference`, the native bitcoin
+yield paid to STX stackers.
 
-program.parseAsync(process.argv).catch(e => die((e as Error).message));
+## What to know before acting on it
+
+**An index can be absent.** When a market cannot be read, SBOR omits the index
+rather than publishing a figure that is not real. `rate` returns an explanation
+rather than a zero. Treat absence as unknown, not as free.
+
+**Check concentration.** Every index carries `venues` and
+`largestConstituentWeight`. An index covering one venue is a reading of that
+venue, not a market average.
+
+**Utilisation explains the rate.** A cheap rate at 20% utilisation means unused
+capacity. A cheap rate at 99% means you cannot actually draw. Both are returned.
+
+**Protocol yield is not a lending rate.** stSTX carries staking yield from the
+asset itself. `supply` is the lending rate; `allInSupply` includes the protocol
+yield. Do not confuse them.
+
+**`poxReference` is a staking yield**, not a lending rate, and is never blended
+into an index.
+
+## Independence
+
+SBOR takes no payment from any venue it measures, is not affiliated with Stacks,
+the Stacks Foundation or any protocol in the index, and does not trade on its
+own rate. It publishes whatever the market does, including numbers unfavourable
+to the ecosystem.
+
+It is a statistic, not advice.
