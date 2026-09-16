@@ -10,7 +10,7 @@ import { getContracts } from "../config/contracts.js";
 import { NETWORK, type Network } from "../config/networks.js";
 import { _testing as storageTesting } from "../utils/storage.js";
 import { InsufficientBalanceError } from "../utils/errors.js";
-import { X402_HEADERS, decodePaymentPayload, derivePaymentIdentifier } from "../utils/x402-protocol.js";
+import { X402_HEADERS, decodePaymentPayload, derivePaymentIdentifier, type NetworkV2, type PaymentRequirementsV2 } from "../utils/x402-protocol.js";
 import { _lockTesting, generateDedupKey } from "./x402-guards.js";
 import { existsSync, mkdirSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import {
@@ -214,10 +214,11 @@ function decodeTx(paymentSignature: string) {
 // ---------------------------------------------------------------------------
 
 describe("selectStacksPaymentOption", () => {
-  const chain = getStacksChainId(network);
-  const sbtc = { scheme: "exact", network: chain, amount: "100", asset: SBTC, payTo: "SPX", maxTimeoutSeconds: 60 } as const;
-  const stx = { scheme: "exact", network: chain, amount: "300000", asset: "STX", payTo: "SPX", maxTimeoutSeconds: 60 } as const;
-  const evm = { ...stx, network: "eip155:8453" as never, asset: "0xusdc" };
+  const chain = getStacksChainId(network) as NetworkV2;
+  const sbtc: PaymentRequirementsV2 = { scheme: "exact", network: chain, amount: "100", asset: SBTC, payTo: "SPX", maxTimeoutSeconds: 60 };
+  const stx: PaymentRequirementsV2 = { scheme: "exact", network: chain, amount: "300000", asset: "STX", payTo: "SPX", maxTimeoutSeconds: 60 };
+  // A non-Stacks option: the type forbids it, the wire does not.
+  const evm: PaymentRequirementsV2 = { ...stx, network: "eip155:8453" as unknown as NetworkV2, asset: "0xusdc" };
 
   test("without a preference it is the first Stacks option, whatever its asset", () => {
     expect(selectStacksPaymentOption([sbtc, stx])).toBe(sbtc);
