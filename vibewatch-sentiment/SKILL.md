@@ -148,7 +148,7 @@ that never costs a second payment.)
 
 ## Networks
 
-`--network mainnet` (default) pays real sBTC on the live index. `--network testnet`
+`--network mainnet` (default) pays real sBTC on the live index; set `NETWORK=mainnet` too, since the wallet follows `NETWORK` (default testnet) and the payment engine refuses a network mismatch before signing. Payments are sponsored unless `X402_PAYMENT_MODE=direct` is set (see the `x402` skill), in which case the wallet also pays the STX fee. `--network testnet`
 targets the staging index, which advertises the canonical testnet sBTC
 (`SN3VMHXEN64ZZF71JQ5VESXDWTR301XTTXGF4J8F1.sbtc-token`); the shared engine
 currently pins a different testnet sBTC id (aibtcdev/skills#419), so paid

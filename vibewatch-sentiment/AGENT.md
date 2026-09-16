@@ -10,10 +10,11 @@ description: Stacks ecosystem community sentiment via the Vibewatch Stacks Vibe 
 
 - Free subcommands (`index`, `terms`, `reports`): none. No wallet, no funds.
 - Paid subcommands (`project`, `evidence`, `delta`): an unlocked wallet (the
-  `wallet` skill) holding sBTC for the advertised price. The shared payment
-  engine decides whether the transfer is sponsored; when it is not, also hold
-  a little STX for the transaction fee. Run `terms` first to see the current
-  price and accepted assets.
+  `wallet` skill) holding sBTC for the advertised price, with `NETWORK=mainnet`
+  set so the wallet matches the live index. Payments are sponsored by default;
+  with `X402_PAYMENT_MODE=direct` (see the `x402` skill) the wallet signs a
+  standard transfer and must also hold a little STX for the fee. Run `terms`
+  first to see the current price and accepted assets.
 
 ## When to invoke
 
@@ -61,10 +62,10 @@ description: Stacks ecosystem community sentiment via the Vibewatch Stacks Vibe 
 | `--project … is ambiguous` (free, before payment) | Prefix matched several projects | Use the exact slug |
 | `--week … has no completed report` (free, before payment) | Not a Monday with a completed report | Use one of the `week_start` values listed in the error, or from the free `reports` subcommand |
 | 422 on `delta` | `since` missing or unparsable | Pass an ISO-8601 `--since` (or omit it for the 24h default) |
-| 422 `sponsored_unsupported` (after a 402 challenge) | The index does not accept this payment shape | Pay with a different transfer; the 402 challenge states asset, amount and payTo. Do not re-run the same shape |
+| 422 `sponsored_unsupported` (after a 402 challenge) | The index does not accept sponsored transfers | Re-run with `X402_PAYMENT_MODE=direct` (wallet needs STX for the fee). Do not re-run in sponsored mode |
 | 402 `settlement_rejected` with `facilitator_reason` | The facilitator refused to settle; nothing was broadcast or charged | Read `facilitator_reason`. On a sponsored transfer, `client_insufficient_funds` can mean the relay's sponsor wallet ran dry rather than yours (aibtcdev/x402-sponsor-relay#432) — check your balance, then run again |
 | 402 `payment_replayed` | The signed payment was already used for a different resource or outside the server's idempotency window | Run the command again (a new payment) |
-| 409 `payment_in_flight` (`facilitator_reason: transaction_held`) | Sponsored transfers only: the relay is holding the payment; it usually broadcasts it on its own within ~10 minutes and the server then settles it under that signature | Wait the `Retry-After` seconds. This CLI signs afresh on every run, so re-running is a second payment (replaying the original signature would collect the first one; aibtcdev/skills#420) |
+| 409 `payment_in_flight` (`facilitator_reason: transaction_held`) | Sponsored transfers only: the relay is holding the payment; it usually broadcasts it on its own within ~10 minutes and the server then settles it under that signature | Wait the `Retry-After` seconds. Do not re-run while it is held. A re-run at the same nonce re-signs identical bytes under the same payment-identifier (aibtcdev/skills#427), but if the wallet's nonce has moved it is a new transfer and a second payment |
 | 409 `delivery_in_flight` | The paid response is being written for this payment | Wait `Retry-After`, run again — the same signed payment is served, not charged twice |
 | 429 `challenge_rate_limited` / `settlement_rate_limited` | Per-sender rate limit | Wait `Retry-After` |
 | 502 `facilitator_unavailable`, 503 `settlement_busy` / `too_many_pending_claims` | Settlement infrastructure hiccup; a payment may be pending | Wait `Retry-After`, run again; the server's durable ledger recovers a pending payment without double-charging |

@@ -70,7 +70,7 @@ async function resolveProjectSlug(
     throw new Error(`--project "${query}" is ambiguous: ${candidates.map((p) => p.slug).join(", ")}. Use the exact slug.`);
   }
   const known = projects.map((p) => `${p.slug} (${p.name})`).join(", ");
-  throw new Error(`--project "${query}" is not on the current panel. Panel slugs: ${known || "(index unavailable)"}`);
+  throw new Error(`--project "${query}" is not on the current panel. Panel slugs: ${known || "(the panel is empty on this index)"}`);
 }
 
 function normalizeWeek(raw: string | undefined): string {
@@ -270,7 +270,12 @@ program
             "Pass --allow-unscored to pay anyway.",
         );
       }
-      const days = Math.min(90, Math.max(1, Number.parseInt(options.days, 10) || 90));
+      // Reject rather than silently widen: `--days 0` or `--days abc` must not become a 90-day query.
+      const rawDays = String(options.days ?? "90").trim();
+      if (!/^\d+$/.test(rawDays) || Number(rawDays) < 1 || Number(rawDays) > 90) {
+        throw new Error(`--days must be an integer from 1 to 90, got "${options.days}"`);
+      }
+      const days = Number(rawDays);
       const path = `/api/v1/public/stacks-index/pro/projects/${resolved.slug}?days=${days}`;
       const output = await paidGet(baseUrl, path, "vibewatch-sentiment.project");
       printJson({
