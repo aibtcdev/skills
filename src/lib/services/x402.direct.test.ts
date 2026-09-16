@@ -22,6 +22,8 @@ import {
   resolveDirectPaymentAsset,
   resolveDirectPaymentPolicy,
   resolvePaymentMode,
+  resolvePreferredAsset,
+  selectStacksPaymentOption,
   SpendLimitError,
 } from "./x402.service.js";
 
@@ -37,6 +39,8 @@ const SBTC = getContracts(network).SBTC_TOKEN;
 
 interface FakeOptions {
   accept?: Partial<{ asset: string; amount: string; payTo: string; network: string; maxTimeoutSeconds: number }>;
+  /** Extra `accepts` entries appended after the first (each merged over the same defaults). */
+  acceptsAfter?: Array<Partial<{ asset: string; amount: string; payTo: string; network: string; maxTimeoutSeconds: number }>>;
   fees?: { contract_call: number; token_transfer: number } | "error";
   balances?: { stx: string; sbtc: string };
   nonce?: number;
@@ -138,17 +142,15 @@ async function startFake(sender: string, opts: FakeOptions = {}): Promise<Fake> 
             JSON.stringify({
               x402Version: 2,
               resource: { url: "http://example.test/paid" },
-              accepts: [
-                {
-                  scheme: "exact",
-                  network: getStacksChainId(network),
-                  amount: "100",
-                  asset: SBTC,
-                  payTo: sender,
-                  maxTimeoutSeconds: 60,
-                  ...(opts.accept ?? {}),
-                },
-              ],
+              accepts: [opts.accept ?? {}, ...(opts.acceptsAfter ?? [])].map((override) => ({
+                scheme: "exact",
+                network: getStacksChainId(network),
+                amount: "100",
+                asset: SBTC,
+                payTo: sender,
+                maxTimeoutSeconds: 60,
+                ...override,
+              })),
             })
           ).toString("base64")
         );
@@ -210,6 +212,43 @@ function decodeTx(paymentSignature: string) {
 }
 
 // ---------------------------------------------------------------------------
+
+describe("selectStacksPaymentOption", () => {
+  const chain = getStacksChainId(network);
+  const sbtc = { scheme: "exact", network: chain, amount: "100", asset: SBTC, payTo: "SPX", maxTimeoutSeconds: 60 } as const;
+  const stx = { scheme: "exact", network: chain, amount: "300000", asset: "STX", payTo: "SPX", maxTimeoutSeconds: 60 } as const;
+  const evm = { ...stx, network: "eip155:8453" as never, asset: "0xusdc" };
+
+  test("without a preference it is the first Stacks option, whatever its asset", () => {
+    expect(selectStacksPaymentOption([sbtc, stx])).toBe(sbtc);
+    expect(selectStacksPaymentOption([stx, sbtc])).toBe(stx);
+    expect(selectStacksPaymentOption([evm, stx])).toBe(stx);
+    expect(selectStacksPaymentOption([evm])).toBeNull();
+  });
+
+  test("a preference picks by asset regardless of order", () => {
+    expect(selectStacksPaymentOption([sbtc, stx], "STX")).toBe(stx);
+    expect(selectStacksPaymentOption([sbtc, stx], "sBTC")).toBe(sbtc);
+    expect(selectStacksPaymentOption([stx, sbtc], "sBTC")).toBe(sbtc);
+    // sBTC matches by contract id, STX only literally: an unrelated token is neither.
+    expect(selectStacksPaymentOption([{ ...stx, asset: "SP1.other-token" }], "STX")).toBeNull();
+    expect(selectStacksPaymentOption([{ ...stx, asset: "stx" }], "STX")?.asset).toBe("stx");
+  });
+
+  test("a preference the challenge does not offer selects nothing", () => {
+    expect(selectStacksPaymentOption([sbtc], "STX")).toBeNull();
+    expect(selectStacksPaymentOption([stx], "sBTC")).toBeNull();
+    expect(selectStacksPaymentOption([evm], "STX")).toBeNull();
+  });
+
+  test("resolvePreferredAsset canonicalizes case and rejects anything else", () => {
+    expect(resolvePreferredAsset(undefined)).toBeUndefined();
+    expect(resolvePreferredAsset("")).toBeUndefined();
+    expect(resolvePreferredAsset("stx")).toBe("STX");
+    expect(resolvePreferredAsset(" SBTC ")).toBe("sBTC");
+    expect(() => resolvePreferredAsset("BTC")).toThrow(/Allowed values: sBTC, STX/);
+  });
+});
 
 describe("resolvePaymentMode", () => {
   test("defaults to sponsored and accepts direct", () => {
@@ -449,6 +488,67 @@ describe("createApiClient payment modes", () => {
     expect(auth.authType).toBe(AuthType.Standard);
     expect(auth.spendingCondition.fee).toBe(3000n);
     expect(tx.payload.payloadType).toBe(0); // TokenTransfer
+  });
+
+  test("with two Stacks options the default still pays the first (sBTC)", async () => {
+    process.env.X402_PAYMENT_MODE = "direct";
+    const f = await up({ acceptsAfter: [{ asset: "STX", amount: "300000" }] });
+    const api = await createApiClient(f.origin, "test.two-options-default");
+    await api.request({ method: "GET", url: "/paid" });
+
+    const { tx, payload } = decodeTx(f.paidRequests[0]);
+    expect(payload.accepted.asset).toBe(SBTC);
+    expect(tx.payload.payloadType).toBe(2); // ContractCall: sbtc-token transfer
+  });
+
+  test("preferredAsset STX pays the STX option even when sBTC is listed first", async () => {
+    process.env.X402_PAYMENT_MODE = "direct";
+    const f = await up({ acceptsAfter: [{ asset: "STX", amount: "300000" }] });
+    const api = await createApiClient(f.origin, "test.prefer-stx", { preferredAsset: "STX" });
+    await api.request({ method: "GET", url: "/paid" });
+
+    const { auth, tx, payload } = decodeTx(f.paidRequests[0]);
+    expect(payload.accepted.asset).toBe("STX");
+    expect(payload.accepted.amount).toBe("300000");
+    expect(auth.authType).toBe(AuthType.Standard);
+    expect(tx.payload.payloadType).toBe(0); // TokenTransfer
+  });
+
+  test("preferredAsset sBTC pays sBTC when STX is listed first", async () => {
+    process.env.X402_PAYMENT_MODE = "direct";
+    const f = await up({ accept: { asset: "STX", amount: "300000" }, acceptsAfter: [{ asset: SBTC, amount: "100" }] });
+    const api = await createApiClient(f.origin, "test.prefer-sbtc", { preferredAsset: "sBTC" });
+    await api.request({ method: "GET", url: "/paid" });
+
+    const { tx, payload } = decodeTx(f.paidRequests[0]);
+    expect(payload.accepted.asset).toBe(SBTC);
+    expect(tx.payload.payloadType).toBe(2);
+  });
+
+  test("preferredAsset the challenge does not offer fails before any network call", async () => {
+    process.env.X402_PAYMENT_MODE = "direct";
+    const f = await up(); // sBTC only
+    const api = await createApiClient(f.origin, "test.prefer-missing", { preferredAsset: "STX" });
+    await expect(api.request({ method: "GET", url: "/paid" })).rejects.toThrow(/does not accept STX on Stacks/);
+    expect(f.paidRequests).toHaveLength(0);
+    expect(f.hiroHits).toEqual([]);
+  });
+
+  test("preferredAsset applies to the sponsored path too", async () => {
+    const f = await up({ acceptsAfter: [{ asset: "STX", amount: "300000" }] });
+    const api = await createApiClient(f.origin, "test.sponsored-prefer-stx", { preferredAsset: "STX" });
+    await api.request({ method: "GET", url: "/paid" });
+
+    const { auth, tx, payload } = decodeTx(f.paidRequests[0]);
+    expect(payload.accepted.asset).toBe("STX");
+    expect(auth.authType).toBe(AuthType.Sponsored);
+    expect(tx.payload.payloadType).toBe(0);
+  });
+
+  test("an invalid preferredAsset fails when the client is created", async () => {
+    await expect(createApiClient("http://127.0.0.1:1", "test.bad-asset", { preferredAsset: "BTC" as never })).rejects.toThrow(
+      /Invalid preferred payment asset/
+    );
   });
 
   test("X402_MAX_FEE_USTX lowers the fee ceiling", async () => {

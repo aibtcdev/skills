@@ -27,12 +27,11 @@ Two tiers:
   Fear & Greed overlay, weekly message/author counts, rolling themes,
   governance votes, and the weekly-report archive. No wallet, no key.
 - **Paid** (`project`, `evidence`, `delta`) — depth per query over x402,
-  settled on Stacks: 100 sats sBTC per query (the discovery document also
-  advertises an STX price for clients that can't hold sBTC; this skill pays
-  with the first asset the shared engine can sign, which is sBTC). Answers
-  "what changed, why, and where's the receipt": per-project daily series, the
-  public posts backing each weekly theme, and changes-since deltas for
-  polling loops.
+  settled on Stacks: 100 sats sBTC or 300000 µSTX (0.3 STX) per query. The
+  402 challenge lists both, sBTC first; this skill pays sBTC unless you pass
+  `--asset STX` (see [Payment](#payment)). Answers "what changed, why, and
+  where's the receipt": per-project daily series, the public posts backing
+  each weekly theme, and changes-since deltas for polling loops.
 
 ## Subcommands
 
@@ -73,6 +72,7 @@ week-over-week change.
 
 ```bash
 bun run vibewatch-sentiment/vibewatch-sentiment.ts project --project "Zest Protocol" --days 30
+bun run vibewatch-sentiment/vibewatch-sentiment.ts project --project "Zest Protocol" --days 30 --asset STX
 ```
 
 One panel project's daily composite series (≤90 days) plus its current score
@@ -94,6 +94,7 @@ local check and surfaces the index's own refusal — nothing is paid either way.
 
 ```bash
 bun run vibewatch-sentiment/vibewatch-sentiment.ts evidence --week 2026-08-24
+bun run vibewatch-sentiment/vibewatch-sentiment.ts evidence --week 2026-08-24 --asset STX
 ```
 
 Receipts behind one weekly report's themes: links to the public posts backing
@@ -106,6 +107,7 @@ marked `no_public_evidence` — private community content is never exposed.
 
 ```bash
 bun run vibewatch-sentiment/vibewatch-sentiment.ts delta --since 2026-09-01T00:00:00Z
+bun run vibewatch-sentiment/vibewatch-sentiment.ts delta --since 2026-09-01T00:00:00Z --asset STX
 ```
 
 What changed since a timestamp (hour-bucketed): per-project score moves with
@@ -143,7 +145,21 @@ the skill's own `endpoint`, `network`, and `payment_receipt`:
 Standard x402 flow via the shared payment engine: the first request answers
 402 with payment terms, the wallet signs, the retry carries the payment, and
 the response includes a `payment_receipt` with the on-chain txid. One run,
-one payment. Running the same command again is a new query and a new
+one payment.
+
+**Choosing the asset.** The index's 402 challenge advertises two Stacks
+options, in this order: `100` sats of sBTC (`SM3VDXK3WZZSA84XXFKAFAF15NNZX32CTSG82JFQ4.sbtc-token`)
+and `300000` µSTX (0.3 STX) — check `terms` for the current list. The shared
+engine's default rule is *first Stacks option*, so a paid subcommand pays
+sBTC unless told otherwise. `--asset STX` (on `project`, `evidence`, `delta`)
+makes the engine select the STX option instead — a wallet holding STX but no
+sBTC can pay the index without ever touching sBTC. `--asset sBTC` is the
+default and can be passed explicitly. If the challenge does not offer the
+asset you asked for, the run fails before anything is signed and names the
+assets that were offered. The `payment.asset` and `payment.amount` fields in
+the paid response confirm which option settled. Any other client should do
+the same explicitly: select the `accepts[]` entry by `asset`, not by
+position (Vibewatch-io/vibewatch-mcp#16). Running the same command again is a new query and a new
 payment — there is no free re-read window across runs. (The server does hold
 a 10-minute idempotency window keyed on the *signed payment itself*, which the
 engine uses internally if the retry that carries a payment has to be resent;

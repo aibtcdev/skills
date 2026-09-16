@@ -10,9 +10,10 @@ description: Stacks ecosystem community sentiment via the Vibewatch Stacks Vibe 
 
 - Free subcommands (`index`, `terms`, `reports`): none. No wallet, no funds.
 - Paid subcommands (`project`, `evidence`, `delta`): an unlocked wallet (the
-  `wallet` skill) holding sBTC for the advertised price, with `NETWORK=mainnet`
-  set so the wallet matches the live index. Payments are sponsored by default
-  and the live index accepts them (since 2026-09-16), so no STX is needed for gas;
+  `wallet` skill) holding the advertised price in the asset you pay with —
+  sBTC by default, or STX with `--asset STX` — with `NETWORK=mainnet` set so
+  the wallet matches the live index. Payments are sponsored by default and the
+  live index accepts them (since 2026-09-16), so no STX is needed for gas;
   with `X402_PAYMENT_MODE=direct` (see the `x402` skill) the wallet signs a
   standard transfer and must also hold a little STX for the fee. Run `terms`
   first to see the current price and accepted assets.
@@ -39,6 +40,16 @@ description: Stacks ecosystem community sentiment via the Vibewatch Stacks Vibe 
 4. `delta` for change detection since a timestamp; it is hour-bucketed, so
    polling more than hourly re-reads the same bucket.
 
+## Paying in STX instead of sBTC
+
+The 402 lists sBTC first and STX second, and the engine pays the first
+Stacks option by default. Pass `--asset STX` to any paid subcommand to pay
+the STX option (0.3 STX at the time of writing; read `terms`). Pick by what
+the wallet holds: a wallet with STX and no sBTC must pass `--asset STX`,
+otherwise the engine tries to sign an sBTC transfer it cannot fund. In direct
+mode the STX fee comes on top of the STX price. The run fails free, before
+signing, if the challenge does not offer the asset you asked for.
+
 ## Cost guardrails
 
 - Check `terms` once per session before the first paid call; do not assume
@@ -53,6 +64,10 @@ description: Stacks ecosystem community sentiment via the Vibewatch Stacks Vibe 
   still answers 402 after a payment, the run fails with the relay's canonical
   payment status in the error; read it before deciding to re-run (a re-run is
   a second payment).
+- Settlement latency: the index verifies the payment on-chain before serving,
+  so a paid run takes as long as one Stacks confirmation. Agents paying in
+  September 2026 saw the paid payload arrive under 60 s after broadcast;
+  budget a minute per paid call and do not re-run while a call is in flight.
 
 ## Error handling
 
@@ -71,7 +86,8 @@ description: Stacks ecosystem community sentiment via the Vibewatch Stacks Vibe 
 | 409 `delivery_in_flight` | The paid response is being written for this payment | Wait `Retry-After`, run again — the same signed payment is served, not charged twice |
 | 429 `challenge_rate_limited` / `settlement_rate_limited` | Per-sender rate limit | Wait `Retry-After` |
 | 502 `facilitator_unavailable`, 503 `settlement_busy` / `too_many_pending_claims` | Settlement infrastructure hiccup; a payment may be pending | Wait `Retry-After`, run again; the server's durable ledger recovers a pending payment without double-charging |
-| `Insufficient sBTC balance` (before signing) | Wallet cannot cover the advertised price | Fund the wallet or stay on the free tier |
+| `Insufficient sBTC balance` (before signing) | Wallet cannot cover the advertised sBTC price | Fund the wallet, pay with `--asset STX` if it holds STX, or stay on the free tier |
+| `The endpoint does not accept <asset> on Stacks` (before signing) | The 402 did not list the `--asset` you asked for | Use one of the assets named in the error (read `terms`) |
 | Top-level `txid: null` + `txidNote` (only when calling the raw endpoint through `execute_x402_endpoint` instead of this skill) | The MCP wrapper looks for `txid` / `payment_txid` at the top level of the body; the index reports the settlement in `payment.txid` and in the standard `payment-response` header | Not a failed payment. Read `payment.txid` (or `payment_receipt.transaction` from this skill) — that is the receipt to verify on Hiro |
 | `suppressed` entries in any payload | Data withheld by the index's k-anonymity floor | Report "withheld", never "zero" |
 
