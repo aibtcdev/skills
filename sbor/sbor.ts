@@ -10,7 +10,16 @@
 import { Command } from "commander";
 
 const BASE = process.env.SBOR_BASE || "https://sbor.xyz";
-const UA = "aibtc-skills-sbor/1.0";
+const UA = "aibtc-skills-sbor/1.1";
+const TIMEOUT_MS = 10_000;
+
+/* Tagged mainnet-only: SBOR reads Stacks mainnet contracts and has no testnet
+   equivalent, so a testnet run would silently return mainnet numbers. */
+const NETWORK = process.env.NETWORK;
+if (NETWORK && NETWORK !== "mainnet") {
+  console.log(JSON.stringify({ error: `SBOR is mainnet only. NETWORK is "${NETWORK}". There is no testnet fixing, and returning mainnet rates on a testnet run would be misleading.` }));
+  process.exit(1);
+}
 
 type Market = {
   venue: string; asset: string; borrow: number; supply: number;
@@ -48,9 +57,15 @@ const die = (msg: string) => { console.log(JSON.stringify({ error: msg })); proc
 async function get<T>(path: string): Promise<T> {
   let r: Response;
   try {
-    r = await fetch(`${BASE}${path}`, { headers: { accept: "application/json", "user-agent": UA } });
+    r = await fetch(`${BASE}${path}`, {
+      headers: { accept: "application/json", "user-agent": UA },
+      signal: AbortSignal.timeout(TIMEOUT_MS)
+    });
   } catch (e) {
-    die(`SBOR is unreachable at ${BASE}${path}: ${(e as Error).message}. Do not substitute an estimate.`);
+    const msg = (e as Error).name === "TimeoutError"
+      ? `SBOR did not respond within ${TIMEOUT_MS / 1000}s at ${BASE}${path}`
+      : `SBOR is unreachable at ${BASE}${path}: ${(e as Error).message}`;
+    die(`${msg}. Do not substitute an estimate.`);
     throw e;
   }
   if (!r.ok) die(`SBOR responded ${r.status} for ${path}. Do not substitute an estimate.`);
@@ -62,16 +77,44 @@ const checkIndex = (i?: string) => {
   if (i && !INDICES.includes(i)) die(`Unknown index "${i}". Use one of: ${INDICES.join(", ")}.`);
 };
 const bps = (a: number, b: number) => Math.round((a - b) * 100);
-const staleHours = (iso: string) => (Date.now() - Date.parse(iso)) / 36e5;
 
-const meta = (d: Latest) => ({
-  fixing: d.fixing,
-  methodologyVersion: d.methodologyVersion,
-  basis: d.basis,
-  staleHours: Number(staleHours(d.fixing).toFixed(1)),
-  stale: staleHours(d.fixing) > 48,
-  source: `${BASE}/api/v1/latest.json`
-});
+const STALE_AFTER_HOURS = 48;
+/* Returns null when the timestamp cannot be parsed, which must be treated as
+   unusable rather than as fresh. A NaN comparison is false, so an unparsed
+   timestamp would otherwise read as not stale. */
+const staleHours = (iso: string): number | null => {
+  const t = Date.parse(iso);
+  return Number.isFinite(t) ? (Date.now() - t) / 36e5 : null;
+};
+
+const meta = (d: Latest) => {
+  const age = staleHours(d.fixing);
+  return {
+    fixing: d.fixing,
+    methodologyVersion: d.methodologyVersion,
+    basis: d.basis,
+    staleHours: age === null ? null : Number(age.toFixed(1)),
+    stale: age === null ? true : age > STALE_AFTER_HOURS,
+    staleNote: age === null
+      ? "The fixing timestamp could not be parsed. Treat this data as unusable."
+      : age > STALE_AFTER_HOURS
+        ? `The last fixing is ${age.toFixed(1)} hours old. Rates may have moved.`
+        : undefined,
+    methodologyNote: "SBOR is young: the series began 2026-09-01 and the methodology has been revised as gaps were found. Every fixing records the version that produced it, and changes are published as documented steps rather than smoothed over. Read methodologyVersion before comparing fixings across dates.",
+    source: `${BASE}/api/v1/latest.json`
+  };
+};
+
+/* Anything that produces a verdict an agent may act on must refuse to do so on
+   data it cannot stand behind. Reporting commands may still return with a
+   warning; compare may not. */
+function requireFresh(d: Latest){
+  const age = staleHours(d.fixing);
+  if (age === null)
+    die(`The fixing timestamp "${d.fixing}" could not be parsed, so the age of this data is unknown. Refusing to return a verdict. Fall back to your own logic.`);
+  if (age > STALE_AFTER_HOURS)
+    die(`The last fixing is ${age.toFixed(1)} hours old, past the ${STALE_AFTER_HOURS} hour limit. Refusing to return a verdict on stale data. Fall back to your own logic.`);
+}
 
 const summarise = (ix: Index) => ({
   index: ix.label,
@@ -108,6 +151,10 @@ program.command("rate")
     checkIndex(o.index);
     if (o.date && !/^\d{4}-\d{2}-\d{2}$/.test(o.date))
       die(`--date must be YYYY-MM-DD, got "${o.date}".`);
+    /* The archive does not go back to the first fixing. Point the caller at the
+       index rather than letting them guess and get a 404. */
+    if (o.date && o.date < "2026-09-03")
+      die(`The daily archive starts 2026-09-03. For what is available, read ${BASE}/api/v1/archive-index.json.`);
     const d = o.date
       ? await get<Latest>(`/api/v1/archive/${o.date}.json`)
       : await get<Latest>("/api/v1/latest.json");
@@ -132,26 +179,53 @@ program.command("rate")
 
 program.command("compare")
   .description("Is a rate you have been offered above or below the market")
-  .requiredOption("--rate <number>", "the rate offered, as a percentage")
+  .requiredOption("--rate <number>", "the rate offered, as a percentage. 4.2 means 4.2%.")
   .requiredOption("--side <side>", "borrow | supply")
   .requiredOption("--index <index>", "SBOR-USD | SBOR-BTC | SBOR-STX")
   .action(async o => {
     checkIndex(o.index);
-    if (!["borrow", "supply"].includes(o.side)) die(`--side must be borrow or supply.`);
-    const rate = Number(o.rate);
+    if (!["borrow", "supply"].includes(o.side)) die(`--side must be borrow or supply, got "${o.side}".`);
+
+    /* This command returns a verdict an agent may act on before borrowing, so
+       every input and every field it depends on is checked before any verdict
+       is produced. A wrong verdict here is worse than no verdict. */
+    const raw = String(o.rate ?? "").trim();
+    if (raw === "") die(`--rate is required and cannot be empty.`);
+    const rate = Number(raw);
     if (!Number.isFinite(rate)) die(`--rate must be a number, got "${o.rate}".`);
+    if (rate <= 0 || rate > 100)
+      die(`--rate must be a percentage between 0 and 100, got ${rate}. ` +
+          `4.2% is "--rate 4.2", not 0.042 and not 420.`);
+
+    /* A fraction passed as a percentage cannot be detected with certainty,
+       because rates this low genuinely occur: stSTX supply on Zest was 0.09%
+       today. Rejecting everything below half a percent would refuse real
+       questions. So it is accepted and flagged, loudly enough that an agent
+       reading either the verdict or the plain sentence cannot miss it. */
+    const looksLikeFraction = rate < 0.5;
 
     const d = await get<Latest>("/api/v1/latest.json");
+    requireFresh(d);
+
     const ix = d.indices[o.index];
-    if (!ix) return out(absent(o.index, d));
+    if (!ix)
+      die(`${o.index} is not published in the current fixing, so there is no benchmark to compare against. ` +
+          `When a market cannot be read, SBOR omits the index rather than publishing a figure that is not real. ` +
+          `Treat this as unknown, not as zero. Published today: ${Object.keys(d.indices).join(", ")}.`);
 
     const side = o.side as "borrow" | "supply";
     const bench = ix[side];
-    const diff = bps(rate, bench);
-    const worse = side === "borrow" ? diff > 0 : diff < 0;
+    if (typeof bench !== "number" || !Number.isFinite(bench))
+      die(`${o.index} has no published ${side} rate in the current fixing, so there is nothing to compare against. Treat this as unknown, not as zero.`);
 
-    const best = [...ix.markets].sort((a, b) =>
-      side === "borrow" ? a.borrow - b.borrow : b.supply - a.supply)[0];
+    const diff = bps(rate, bench);
+    if (!Number.isFinite(diff))
+      die(`Could not compute a difference from offered ${rate} against benchmark ${bench}. Refusing to return a verdict.`);
+
+    const worse = side === "borrow" ? diff > 0 : diff < 0;
+    const best = [...ix.markets]
+      .filter(m => typeof m[side] === "number" && Number.isFinite(m[side]))
+      .sort((a, b) => side === "borrow" ? a.borrow - b.borrow : b.supply - a.supply)[0];
 
     out({
       index: ix.label,
@@ -160,23 +234,27 @@ program.command("compare")
       benchmark: bench,
       differenceBps: diff,
       verdict: Math.abs(diff) < 1 ? "at market" : worse ? "worse than market" : "better than market",
-      plain: Math.abs(diff) < 1
+      ...(looksLikeFraction && {
+        unitsWarning: `--rate was given as ${rate}, which is ${rate}%, not ${rate * 100}%. Rates this low do occur, so this has been treated as ${rate}% and answered. If you meant ${rate * 100}%, pass --rate ${rate * 100} and read the verdict again. Do not act on this result until you have checked which you meant.`
+      }),
+      plain: (looksLikeFraction ? `Check units first: this was read as ${rate}%, not ${rate * 100}%. ` : "") + (Math.abs(diff) < 1
         ? `At the market.`
         : side === "borrow"
           ? `${Math.abs(diff)} bps ${diff > 0 ? "above" : "below"} the market. You would be paying ${diff > 0 ? "more" : "less"} than the benchmark.`
-          : `${Math.abs(diff)} bps ${diff > 0 ? "above" : "below"} the market. You would be earning ${diff > 0 ? "more" : "less"} than the benchmark.`,
-      best: {
+          : `${Math.abs(diff)} bps ${diff > 0 ? "above" : "below"} the market. You would be earning ${diff > 0 ? "more" : "less"} than the benchmark.`),
+      best: best ? {
         venue: best.venue, asset: best.asset, rate: best[side],
         utilization: best.utilization ?? null,
         capacityNote: best.utilization == null ? null
           : best.utilization >= 90 ? "Above 90% utilised. The rate may not be drawable and withdrawals may be constrained."
           : best.utilization <= 25 ? "Low utilisation, so there is unused capacity behind this rate."
           : null
-      },
+      } : null,
       venues: ix.venues,
+      venueCount: ix.venues.length,
       largestConstituentWeight: ix.largestConstituentWeight,
       concentrationNote: ix.venues.length === 1
-        ? "One venue. This is a reading of that venue, not a market average."
+        ? "One venue. This is a reading of that venue, not a market average, whatever the constituent weights are."
         : undefined,
       ...meta(d)
     });
@@ -220,6 +298,23 @@ program.command("history")
     if (!rows.length) return out({ index: o.index, days, fixings: [], note: `No fixings for ${o.index} in the last ${days} days.` });
 
     const valid = rows.filter(r => !r[o.index].withdrawn && typeof r[o.index].borrow === "number");
+
+    /* A mean across a methodology change averages two different definitions of
+       the same number. SBOR revised its methodology several times in the first
+       fortnight, so a single mean over that window is close to meaningless.
+       Report per version instead and let the caller decide. */
+    const byVersion: Record<string, { count: number; meanBorrow: number | null; first: string; last: string }> = {};
+    for (const r of valid) {
+      const v = r.methodologyVersion ?? "unknown";
+      (byVersion[v] ||= { count: 0, meanBorrow: 0, first: r.date, last: r.date });
+      byVersion[v].count += 1;
+      byVersion[v].meanBorrow = (byVersion[v].meanBorrow ?? 0) + r[o.index].borrow;
+      byVersion[v].last = r.date;
+    }
+    for (const v of Object.keys(byVersion))
+      byVersion[v].meanBorrow = Number(((byVersion[v].meanBorrow ?? 0) / byVersion[v].count).toFixed(2));
+
+    const versions = Object.keys(byVersion);
     out({
       index: o.index, days, count: rows.length,
       fixings: rows.map(r => r[o.index].withdrawn
@@ -227,9 +322,16 @@ program.command("history")
         : { date: r.date, borrow: r[o.index].borrow, supply: r[o.index].supply,
             venues: r[o.index].venues ?? null,
             methodologyVersion: r.methodologyVersion ?? null }),
-      meanBorrow: valid.length ? Number((valid.reduce((a, r) => a + r[o.index].borrow, 0) / valid.length).toFixed(2)) : null,
+      methodologyVersionsInWindow: versions,
+      byMethodologyVersion: byVersion,
+      meanBorrow: versions.length === 1 && valid.length
+        ? Number((valid.reduce((a, r) => a + r[o.index].borrow, 0) / valid.length).toFixed(2))
+        : null,
+      meanBorrowNote: versions.length > 1
+        ? `This window spans ${versions.length} methodology versions (${versions.join(", ")}), so no single mean is given. Use byMethodologyVersion, or narrow --days to stay within one version.`
+        : undefined,
       withdrawnCount: rows.length - valid.length,
-      note: "Withdrawn fixings stay in the record rather than being deleted, and are excluded from the mean. A change in methodologyVersion means the basis changed; compare across one with care.",
+      note: "Withdrawn fixings stay in the record rather than being deleted, and are excluded from every mean. A change in methodologyVersion means the basis changed.",
       source: `${BASE}/api/v1/history.json`
     });
   });
