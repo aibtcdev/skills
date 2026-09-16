@@ -162,6 +162,13 @@ describe("serializeClarityValue", () => {
     expect(hex.length).toBeGreaterThan(0);
   });
 
+  test("produces the Clarity wire encoding and round-trips", () => {
+    // 0x01 = uint type prefix, then 16 big-endian bytes
+    expect(serializeClarityValue(createUint(1))).toBe("0100000000000000000000000000000001");
+    const cv = createUint(42);
+    expect(deserializeClarityValue(serializeClarityValue(cv))).toEqual(cv);
+  });
+
   test("different values produce different hex", () => {
     const hex1 = serializeClarityValue(createUint(1));
     const hex2 = serializeClarityValue(createUint(2));
