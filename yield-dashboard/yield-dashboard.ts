@@ -19,7 +19,7 @@ import {
   contractPrincipalCV,
   standardPrincipalCV,
   uintCV,
-  serializeCV,
+  cvToHex,
 } from "@stacks/transactions";
 import { NETWORK, getApiBaseUrl } from "../src/lib/config/networks.js";
 import { getWalletAddress } from "../src/lib/services/x402.service.js";
@@ -99,14 +99,11 @@ function decodeTupleField(hex: string, field: string): bigint | null {
 
 function encodePrincipal(principal: string): string {
   const [addr, name] = principal.split(".");
-  return (
-    "0x" +
-    Buffer.from(serializeCV(contractPrincipalCV(addr, name))).toString("hex")
-  );
+  return cvToHex(contractPrincipalCV(addr, name));
 }
 
 function encodeUint(n: number): string {
-  return "0x" + Buffer.from(serializeCV(uintCV(n))).toString("hex");
+  return cvToHex(uintCV(n));
 }
 
 function formatBtc(sats: number): string {
@@ -182,12 +179,7 @@ async function readZestPosition(
             aTokContract,
             aTokName,
             "ft-get-balance",
-            [
-              "0x" +
-                Buffer.from(
-                  serializeCV(standardPrincipalCV(walletAddress))
-                ).toString("hex"),
-            ]
+            [cvToHex(standardPrincipalCV(walletAddress))]
           );
           if (balRes.okay) {
             const balCv = hexToCV(
@@ -337,10 +329,7 @@ async function readStackingPosition(
   };
 
   try {
-    // serializeCV returns a hex string in stacks.js v7 (bytes in older versions).
-    const serialized = serializeCV(standardPrincipalCV(walletAddress)) as string | Uint8Array;
-    const principalArg =
-      "0x" + (typeof serialized === "string" ? serialized : Buffer.from(serialized).toString("hex"));
+    const principalArg = cvToHex(standardPrincipalCV(walletAddress));
     const poxRes = await fetch(`${HIRO_API}/v2/pox`);
     if (!poxRes.ok) throw new Error(`API ${poxRes.status} for /v2/pox`);
     const { contract_id: poxContractId } = (await poxRes.json()) as { contract_id: string };

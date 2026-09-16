@@ -128,7 +128,9 @@ export function clarityToJSON(cv: ClarityValue): unknown {
  * Serialize a ClarityValue to hex string
  */
 export function serializeClarityValue(cv: ClarityValue): string {
-  return Buffer.from(serializeCV(cv)).toString("hex");
+  // stacks.js v7 serializeCV already returns hex; wrapping it in Buffer.from
+  // would hex-encode the hex text a second time.
+  return serializeCV(cv);
 }
 
 /**

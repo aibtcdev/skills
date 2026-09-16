@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
 import { Command } from "commander";
-import { principalCV, serializeCV, deserializeCV, cvToJSON } from "@stacks/transactions";
+import { principalCV, cvToHex, deserializeCV, cvToJSON } from "@stacks/transactions";
 
 // ─── Configuration ───────────────────────────────────────────────────────────
 
@@ -431,11 +431,9 @@ async function scanZest(
       ENDPOINTS.zestContract;
 
     // get-user-reserve-data takes two principal args: user and asset
-    const serializedUser = Buffer.from(serializeCV(principalCV(address))).toString("hex");
-    const serializedAsset = Buffer.from(serializeCV(principalCV(ENDPOINTS.zestStxAsset))).toString("hex");
     const body = JSON.stringify({
       sender: address,
-      arguments: [`0x${serializedUser}`, `0x${serializedAsset}`],
+      arguments: [cvToHex(principalCV(address)), cvToHex(principalCV(ENDPOINTS.zestStxAsset))],
     });
 
     const resp = await fetchWithTimeout(
