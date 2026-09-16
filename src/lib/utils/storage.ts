@@ -572,6 +572,17 @@ export async function setStacksApiUrl(url: string): Promise<void> {
 }
 
 /**
+ * Test-only hooks. `overrideStacksApiUrl` points every Hiro client at a
+ * fake server without touching ~/.aibtc/config.json; pass `null` to restore
+ * the on-disk value on the next read.
+ */
+export const _testing = {
+  overrideStacksApiUrl(url: string | null): void {
+    _cachedStacksApiUrl = url === null ? undefined : url;
+  },
+};
+
+/**
  * Remove custom Stacks API URL from config and clear in-memory cache.
  */
 export async function clearStacksApiUrl(): Promise<void> {

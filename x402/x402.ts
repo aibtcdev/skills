@@ -13,6 +13,7 @@ import {
   createApiClient,
   createPlainClient,
   getCanonicalPaymentMetadata,
+  getDirectPaymentMetadata,
   probeEndpoint,
   getAccount,
   getWalletAddress,
@@ -40,18 +41,30 @@ interface ParsedUrl {
 
 function buildCanonicalPaymentOutput(value: unknown): Record<string, unknown> | undefined {
   const metadata = getCanonicalPaymentMetadata(value);
+  const direct = getDirectPaymentMetadata(value);
+  // Direct-mode payments always report their txid and settlement state, even
+  // when the server offers no canonical payment-status hint.
+  const directOutput = direct.mode
+    ? {
+        mode: direct.mode,
+        txid: direct.txid,
+        txStatus: direct.txStatus,
+        settlementState: direct.settlementState,
+      }
+    : undefined;
   if (!metadata.paymentStatus || !metadata.paymentDecision || !metadata.paymentId) {
-    return undefined;
+    return directOutput;
   }
 
   return {
+    ...directOutput,
     status: metadata.paymentStatus.status,
     terminalReason: metadata.paymentStatus.terminalReason,
     action: metadata.paymentDecision.action,
     guidance: metadata.paymentDecision.guidance,
     paymentId: metadata.paymentId,
     checkUrl: metadata.checkUrl,
-    txid: metadata.paymentStatus.txid,
+    txid: metadata.paymentStatus.txid ?? direct.txid,
   };
 }
 

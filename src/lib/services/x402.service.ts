@@ -15,7 +15,24 @@ import {
   principalCV,
   noneCV,
   PostConditionMode,
+  type StacksTransactionWire,
 } from "@stacks/transactions";
+import { createFungiblePostCondition } from "../transactions/post-conditions.js";
+import {
+  checkDedup,
+  checkSpend,
+  clearDedup,
+  DuplicatePaymentError,
+  generateDedupKey as generatePaymentRequestKey,
+  recordDedup,
+  recordSpend,
+  releaseSpend,
+  resolveDirectPaymentPolicy,
+  SpendLimitError,
+  withDirectPaymentLock,
+  type DirectPaymentPolicy,
+  type SpendUnit,
+} from "./x402-guards.js";
 import {
   decodePaymentRequired,
   decodePaymentPayload,
@@ -44,7 +61,8 @@ import { emitPaymentDiagnostic } from "../utils/x402-diagnostics.js";
 // Track payment attempts per client instance (auto-cleanup via WeakMap)
 const paymentAttempts: WeakMap<AxiosInstance, number> = new WeakMap();
 
-// Transaction deduplication cache: {dedupKey -> {txid, timestamp}}
+// Legacy in-memory dedup cache behind the deprecated exports at the bottom of
+// this file. Direct mode uses the persisted guard in ./x402-guards.ts instead.
 const dedupCache: Map<string, { txid: string; timestamp: number }> = new Map();
 
 // Cleanup expired dedup entries every 5 minutes
@@ -56,6 +74,372 @@ setInterval(() => {
     }
   }
 }, 300000).unref();
+
+// ============================================================================
+// Payment mode (X402_PAYMENT_MODE)
+// ============================================================================
+
+/**
+ * How the payment transaction is built.
+ *
+ * - `sponsored` (default): fee 0, sponsored flag set, the server or the aibtc
+ *   relay co-signs and pays gas. Unchanged from every earlier release.
+ * - `direct`: a standard fee-paying transfer signed by the sender alone. Works
+ *   against servers that verify + broadcast payments themselves and reject
+ *   sponsored bytes (`422 sponsored_unsupported`). The wallet must hold STX
+ *   for gas. Only this mode applies the caps, asset allowlist and pre-flight
+ *   checks below — the sponsored path is byte-for-byte what it was.
+ */
+export type X402PaymentMode = "sponsored" | "direct";
+
+const PAYMENT_MODES: ReadonlySet<string> = new Set(["sponsored", "direct"]);
+
+export function resolvePaymentMode(raw = process.env.X402_PAYMENT_MODE): X402PaymentMode {
+  const value = (raw ?? "").trim().toLowerCase() || "sponsored";
+  if (!PAYMENT_MODES.has(value)) {
+    throw new Error(
+      `Invalid X402_PAYMENT_MODE "${raw}". Allowed values: sponsored (default), direct.`
+    );
+  }
+  return value as X402PaymentMode;
+}
+
+export { resolveDirectPaymentPolicy, DuplicatePaymentError, SpendLimitError, type DirectPaymentPolicy };
+
+/** Fee clamps by transaction type (micro-STX), mirrored from utils/fee.ts. */
+const DIRECT_FEE_CLAMPS = {
+  contract_call: { floor: 3000n, ceiling: 100_000n },
+  token_transfer: { floor: 180n, ceiling: 3000n },
+} as const;
+
+/** Hard upper bound on the paid replay when the 402 does not say otherwise. */
+const DEFAULT_PAID_REQUEST_TIMEOUT_MS = 120_000;
+/** How long to poll Hiro for the txid after a paid 2xx with no canonical status. */
+const DIRECT_CONFIRMATION_POLL_MS = 10_000;
+
+export type DirectPaymentAsset =
+  | { kind: "STX" }
+  | { kind: "sBTC"; contractId: string; assetName: "sbtc-token" };
+
+/**
+ * Exact allowlist of assets a direct payment will sign for. Anything that is
+ * not native STX or the canonical sBTC token for the wallet's network is
+ * rejected before any network call — a 402 must never be able to route the
+ * sender's key at an arbitrary contract.
+ */
+export function resolveDirectPaymentAsset(asset: string, network: Network): DirectPaymentAsset {
+  // No normalization: the challenge terms go into the payment header verbatim,
+  // so anything that needs trimming to match is refused rather than reshaped.
+  // The native token symbol alone is matched case-insensitively, as
+  // detectTokenType does for the sponsored path.
+  const raw = typeof asset === "string" ? asset : "";
+  if (/^stx$/i.test(raw)) {
+    return { kind: "STX" };
+  }
+  const canonical = getContracts(network).SBTC_TOKEN;
+  if (raw === canonical || raw === `${canonical}::sbtc-token`) {
+    return { kind: "sBTC", contractId: canonical, assetName: "sbtc-token" };
+  }
+  throw new Error(
+    `Direct x402 payment refused: endpoint asks for asset "${raw || "(empty)"}" but this client ` +
+      `only signs native STX or the canonical sBTC token ${canonical} on ${network}.`
+  );
+}
+
+export function parseDirectPaymentAmount(
+  amount: string,
+  asset: DirectPaymentAsset,
+  policy: DirectPaymentPolicy
+): bigint {
+  const raw = typeof amount === "string" ? amount : "";
+  if (!/^[1-9]\d*$/.test(raw)) {
+    throw new Error(
+      `Direct x402 payment refused: amount must be a positive integer in atomic units, got "${amount}".`
+    );
+  }
+  const value = BigInt(raw);
+  const isSbtc = asset.kind === "sBTC";
+  const capEnv = isSbtc ? "X402_MAX_SATS_PER_PAYMENT" : "X402_MAX_USTX_PER_PAYMENT";
+  const cap = isSbtc ? policy.maxSatsPerPayment : policy.maxUstxPerPayment;
+  if (value > cap) {
+    throw new Error(
+      `Direct x402 payment refused: ${value} ${isSbtc ? "sats" : "uSTX"} exceeds the per-payment cap of ` +
+        `${cap}. If this cost is expected, raise ${capEnv}.`
+    );
+  }
+  return value;
+}
+
+/**
+ * Fail-closed fee for a direct payment: the medium mempool tier, clamped to
+ * the per-type range and to X402_MAX_FEE_USTX. If Hiro cannot be reached no
+ * fee is guessed — the payment is refused rather than signed with a number
+ * that may never confirm.
+ */
+async function resolveDirectPaymentFee(
+  network: Network,
+  txType: keyof typeof DIRECT_FEE_CLAMPS,
+  policy: DirectPaymentPolicy
+): Promise<bigint> {
+  let medium: number;
+  try {
+    const fees = await getHiroApi(network).getMempoolFees();
+    medium = fees[txType].medium_priority;
+  } catch (error) {
+    throw new Error(
+      `Direct x402 payment refused: could not fetch mempool fees from the Stacks API ` +
+        `(${error instanceof Error ? error.message : String(error)}).`
+    );
+  }
+  if (!Number.isFinite(medium) || medium < 0) {
+    throw new Error(`Direct x402 payment refused: Stacks API returned an unusable ${txType} fee (${medium}).`);
+  }
+  const clamps = DIRECT_FEE_CLAMPS[txType];
+  const configuredCeiling = policy.maxFeeUstx;
+  if (configuredCeiling < clamps.floor) {
+    // A cap under the floor is a refusal, not a request to sign at the floor.
+    throw new Error(
+      `Direct x402 payment refused: X402_MAX_FEE_USTX=${configuredCeiling} is below the minimum ` +
+        `${txType} fee of ${clamps.floor} µSTX. Raise the cap or use X402_PAYMENT_MODE=sponsored.`
+    );
+  }
+  const ceiling = configuredCeiling < clamps.ceiling ? configuredCeiling : clamps.ceiling;
+  const raw = BigInt(Math.ceil(medium));
+  if (raw < clamps.floor) return clamps.floor;
+  if (raw > ceiling) return ceiling;
+  return raw;
+}
+
+export interface DirectPaymentBuild {
+  transaction: StacksTransactionWire;
+  txid: string;
+  fee: bigint;
+  nonce: bigint;
+  asset: DirectPaymentAsset;
+  amount: bigint;
+  /** What was booked on the daily ledger, and on which UTC day, so it can be released. */
+  spends: Array<{ unit: SpendUnit; amount: bigint }>;
+  spendDay: string;
+}
+
+/**
+ * Failures that happen before a single request byte reaches the server: the
+ * name did not resolve, the connection was refused, or TLS verification
+ * failed (headers, including the payment, are only sent after the handshake).
+ * Anything else — a reset, a timeout, an HTTP status — may have reached the
+ * server and stays ambiguous.
+ */
+const NOT_SENT_ERROR_CODES: ReadonlySet<string> = new Set([
+  "ENOTFOUND",
+  "EAI_AGAIN",
+  "ECONNREFUSED",
+  "ERR_INVALID_URL",
+  "CERT_HAS_EXPIRED",
+  "DEPTH_ZERO_SELF_SIGNED_CERT",
+  "SELF_SIGNED_CERT_IN_CHAIN",
+  "UNABLE_TO_VERIFY_LEAF_SIGNATURE",
+  "ERR_TLS_CERT_ALTNAME_INVALID",
+]);
+
+export function requestWasNeverSent(error: unknown): boolean {
+  const e = error as { response?: unknown; code?: unknown; cause?: { code?: unknown } } | null;
+  if (!e || e.response) return false;
+  const code = typeof e.code === "string" ? e.code : typeof e.cause?.code === "string" ? e.cause.code : "";
+  return NOT_SENT_ERROR_CODES.has(code);
+}
+
+/**
+ * Build (sign, do not broadcast) a standard fee-paying transfer for a 402
+ * challenge. Validates asset and amount, checks balances, fetches a
+ * mempool-aware nonce, and pins the exact sBTC amount with a deny-mode
+ * post-condition. Every step fails closed.
+ */
+export async function buildDirectPaymentTransaction(
+  account: Account,
+  option: { asset: string; amount: string; payTo: string; maxTimeoutSeconds?: number },
+  policy: DirectPaymentPolicy,
+  /** Request identity for the cross-process duplicate guard; omit to skip it (unit tests only). */
+  requestKey?: string
+): Promise<DirectPaymentBuild> {
+  const asset = resolveDirectPaymentAsset(option.asset, account.network);
+  const amount = parseDirectPaymentAmount(option.amount, asset, policy);
+  const payTo = typeof option.payTo === "string" ? option.payTo : "";
+  if (!/^S[PTMN][0-9A-Z]{28,41}$/.test(payTo)) {
+    throw new Error(`Direct x402 payment refused: payTo "${option.payTo}" is not a standard Stacks principal.`);
+  }
+  if (
+    option.maxTimeoutSeconds !== undefined &&
+    !(typeof option.maxTimeoutSeconds === "number" && Number.isFinite(option.maxTimeoutSeconds) && option.maxTimeoutSeconds > 0)
+  ) {
+    throw new Error(
+      `Direct x402 payment refused: maxTimeoutSeconds "${String(option.maxTimeoutSeconds)}" is not a positive number.`
+    );
+  }
+
+  // Everything from the duplicate check to the ledger write happens under one
+  // cross-process lock, so two direct clients racing on the same wallet
+  // cannot both see "no prior payment / budget available" and sign twice.
+  return withDirectPaymentLock(policy, async () => {
+  // Same request, same payer, same terms, signed within the TTL: refuse with
+  // the earlier txid. This is what stops "retry after an ambiguous failure"
+  // from paying twice — the per-instance guard cannot, since callers build a
+  // client per invocation.
+  if (requestKey) {
+    const prior = await checkDedup(requestKey, policy);
+    if (prior) {
+      const ageSeconds = Math.round((Date.now() - prior.timestamp) / 1000);
+      throw new DuplicatePaymentError(
+        `Direct x402 payment refused: an identical request was already paid ${ageSeconds}s ago ` +
+          `(txid ${prior.txid}). Check that transaction before paying again; the guard clears after ` +
+          `${Math.round(policy.dedupTtlMs / 1000)}s (X402_DEDUP_TTL_SECONDS).`,
+        prior.txid,
+        Date.now() - prior.timestamp
+      );
+    }
+  }
+
+  const txType = asset.kind === "sBTC" ? "contract_call" : "token_transfer";
+  const fee = await resolveDirectPaymentFee(account.network, txType, policy);
+
+  // Cumulative rail: today's ledger for this wallet must have room for the
+  // price and the gas before anything is signed.
+  const spends: Array<{ unit: SpendUnit; amount: bigint }> =
+    asset.kind === "sBTC"
+      ? [
+          { unit: "sats", amount },
+          { unit: "ustx", amount: fee },
+        ]
+      : [{ unit: "ustx", amount: amount + fee }];
+  await checkSpend(account.address, spends, policy);
+
+  const hiroApi = getHiroApi(account.network);
+  let balances;
+  try {
+    balances = await hiroApi.getAccountBalances(account.address);
+  } catch (error) {
+    throw new Error(
+      `Direct x402 payment refused: could not read the wallet balance from the Stacks API ` +
+        `(${error instanceof Error ? error.message : String(error)}).`
+    );
+  }
+  const stxBalance = BigInt(balances.stx?.balance ?? "0");
+  const stxRequired = asset.kind === "STX" ? amount + fee : fee;
+  if (stxBalance < stxRequired) {
+    const shortfall = stxRequired - stxBalance;
+    throw new InsufficientBalanceError(
+      `Insufficient STX for a direct x402 payment: need ${formatStx(stxRequired.toString())} ` +
+        `(${asset.kind === "STX" ? `${formatStx(amount.toString())} payment + ` : ""}${formatStx(fee.toString())} gas), ` +
+        `have ${formatStx(stxBalance.toString())} (shortfall: ${formatStx(shortfall.toString())}). ` +
+        `Direct payments need STX for gas even when the price is in sBTC.`,
+      "STX",
+      stxBalance.toString(),
+      stxRequired.toString(),
+      shortfall.toString()
+    );
+  }
+  if (asset.kind === "sBTC") {
+    const key = `${asset.contractId}::${asset.assetName}`;
+    const sbtcBalance = BigInt(balances.fungible_tokens?.[key]?.balance ?? "0");
+    if (sbtcBalance < amount) {
+      const shortfall = amount - sbtcBalance;
+      throw new InsufficientBalanceError(
+        `Insufficient sBTC for a direct x402 payment: need ${formatSbtc(amount.toString())}, ` +
+          `have ${formatSbtc(sbtcBalance.toString())} (shortfall: ${formatSbtc(shortfall.toString())}).`,
+        "sBTC",
+        sbtcBalance.toString(),
+        amount.toString(),
+        shortfall.toString()
+      );
+    }
+  }
+
+  // Mempool-aware nonce, fetched explicitly so a Stacks API failure refuses
+  // the payment instead of silently falling back to the confirmed nonce.
+  let nonce: bigint;
+  try {
+    const info = await hiroApi.getNonceInfo(account.address);
+    nonce = BigInt(info.possible_next_nonce);
+  } catch (error) {
+    throw new Error(
+      `Direct x402 payment refused: could not fetch the account nonce from the Stacks API ` +
+        `(${error instanceof Error ? error.message : String(error)}).`
+    );
+  }
+
+  const networkName = getStacksNetwork(account.network);
+  let transaction: StacksTransactionWire;
+  if (asset.kind === "sBTC") {
+    const { address: contractAddress, name: contractName } = parseContractId(asset.contractId);
+    transaction = await makeContractCall({
+      contractAddress,
+      contractName,
+      functionName: "transfer",
+      functionArgs: [uintCV(amount), principalCV(account.address), principalCV(payTo), noneCV()],
+      senderKey: account.privateKey,
+      network: networkName,
+      postConditionMode: PostConditionMode.Deny,
+      postConditions: [
+        createFungiblePostCondition(account.address, asset.contractId, asset.assetName, "eq", amount),
+      ],
+      fee,
+      nonce,
+    });
+  } else {
+    transaction = await makeSTXTokenTransfer({
+      recipient: payTo,
+      amount,
+      senderKey: account.privateKey,
+      network: networkName,
+      memo: "",
+      fee,
+      nonce,
+    });
+  }
+
+  // Record BEFORE the bytes leave the process: a crash between signing and the
+  // paid request must still leave a trace, because the server may broadcast.
+  const txid = transaction.txid();
+  if (requestKey) await recordDedup(requestKey, txid, policy);
+  const spendDay = await recordSpend(account.address, spends, policy);
+
+  return { transaction, txid, fee, nonce, asset, amount, spends, spendDay };
+  });
+}
+
+export type X402SettlementState = "submitted" | "confirmed" | "failed";
+
+/** Direct-mode metadata attached to the paid response (or the error). */
+export interface DirectPaymentMetadata {
+  mode?: X402PaymentMode;
+  txid?: string;
+  txStatus?: string;
+  settlementState?: X402SettlementState;
+}
+
+export function getDirectPaymentMetadata(target: unknown): DirectPaymentMetadata {
+  const source = asMetadataTarget(target);
+  return {
+    mode: source.x402PaymentMode as X402PaymentMode | undefined,
+    txid: typeof source.x402Txid === "string" ? source.x402Txid : undefined,
+    txStatus: typeof source.x402TxStatus === "string" ? source.x402TxStatus : undefined,
+    settlementState: source.x402SettlementState as X402SettlementState | undefined,
+  };
+}
+
+function describeHttpFailure(error: unknown): string {
+  const response = (error as { response?: { status?: number; data?: unknown } })?.response;
+  if (!response) {
+    return error instanceof Error ? error.message : String(error);
+  }
+  let body: string;
+  try {
+    body = typeof response.data === "string" ? response.data : JSON.stringify(response.data);
+  } catch {
+    body = String(response.data);
+  }
+  if (body.length > 2048) body = `${body.slice(0, 2048)}…`;
+  return `HTTP ${response.status}: ${body}`;
+}
 
 /**
  * Safe JSON transform - parses string responses without throwing
@@ -562,6 +946,10 @@ export async function mnemonicToAccount(
  */
 export async function createApiClient(baseUrl?: string, diagnosticTool = "x402.api-client"): Promise<AxiosInstance> {
   const url = baseUrl || API_URL;
+  // Resolved once per client so a bad value fails here, not mid-payment —
+  // the mode and, in direct mode, every cap, fee and ledger setting.
+  const paymentMode = resolvePaymentMode();
+  const directPolicy = paymentMode === "direct" ? resolveDirectPaymentPolicy() : null;
 
   // Get account (from managed wallet or env mnemonic)
   const account = await getAccount();
@@ -703,12 +1091,53 @@ export async function createApiClient(baseUrl?: string, diagnosticTool = "x402.a
           );
         }
 
+        let transaction: StacksTransactionWire;
+        let directBuild: DirectPaymentBuild | null = null;
+        let directRequestKey: string | null = null;
+        if (paymentMode === "direct") {
+          // The generic mismatch guard above lets an unparseable chain id through
+          // (null !== network is skipped). Direct mode signs a real chain-bound
+          // transaction, so the challenge must name this wallet's network exactly.
+          if (paymentNetwork !== account.network) {
+            return Promise.reject(
+              new Error(
+                `Direct x402 payment refused: endpoint network "${selectedOption.network}" is not ` +
+                  `the wallet's network (${account.network}).`
+              )
+            );
+          }
+          // Standard fee-paying transfer; validation, caps, balance checks and
+          // the duplicate/spend rails all live in the builder and fail closed.
+          const requestConfig = error.config ?? {};
+          const rawHeaders = requestConfig.headers as { toJSON?: () => Record<string, unknown> } | Record<string, unknown> | undefined;
+          const requestKey = generatePaymentRequestKey({
+            method: String(requestConfig.method ?? "get"),
+            url: new URL(String(requestConfig.url ?? ""), requestConfig.baseURL ?? url).toString(),
+            params: requestConfig.params,
+            data: typeof requestConfig.data === "string" ? safeJsonTransform(requestConfig.data) : requestConfig.data,
+            headers:
+              rawHeaders && typeof (rawHeaders as { toJSON?: unknown }).toJSON === "function"
+                ? (rawHeaders as { toJSON: () => Record<string, unknown> }).toJSON()
+                : (rawHeaders as Record<string, unknown> | undefined),
+            payer: account.address,
+            payTo: selectedOption.payTo,
+            amount: selectedOption.amount,
+            asset: selectedOption.asset,
+          });
+          directBuild = await buildDirectPaymentTransaction(
+            account,
+            selectedOption,
+            directPolicy as DirectPaymentPolicy,
+            requestKey
+          );
+          directRequestKey = requestKey;
+          transaction = directBuild.transaction;
+        } else {
         // Build a sponsored signed transaction (relay pays gas; fee: 0n)
         const tokenType = detectTokenType(selectedOption.asset);
         const amount = BigInt(selectedOption.amount);
         const networkName = getStacksNetwork(account.network);
 
-        let transaction;
         if (tokenType === "sBTC") {
           const contracts = getContracts(account.network);
           const { address: contractAddress, name: contractName } = parseContractId(
@@ -742,6 +1171,7 @@ export async function createApiClient(baseUrl?: string, diagnosticTool = "x402.a
             fee: 0n,
           });
         }
+        }
 
         const txHex = "0x" + transaction.serialize();
 
@@ -766,8 +1196,85 @@ export async function createApiClient(baseUrl?: string, diagnosticTool = "x402.a
         const originalRequest = error.config;
         originalRequest.headers = originalRequest.headers || {};
         originalRequest.headers[X402_HEADERS.PAYMENT_SIGNATURE] = encodedPayload;
+        if (directBuild) {
+          // Honour the 402's maxTimeoutSeconds: a paid replay that outlives it
+          // is ambiguous (the server may still broadcast), never "safe to retry".
+          const advertisedMs =
+            typeof selectedOption.maxTimeoutSeconds === "number" && selectedOption.maxTimeoutSeconds > 0
+              ? selectedOption.maxTimeoutSeconds * 1000
+              : DEFAULT_PAID_REQUEST_TIMEOUT_MS;
+          originalRequest.timeout = Math.min(
+            originalRequest.timeout || DEFAULT_PAID_REQUEST_TIMEOUT_MS,
+            advertisedMs
+          );
+        }
 
-        const paidResponse = await axiosInstance.request(originalRequest);
+        let paidResponse;
+        try {
+          paidResponse = await axiosInstance.request(originalRequest);
+        } catch (requestError) {
+          const detail = describeHttpFailure(requestError);
+          if (directBuild && directRequestKey && requestWasNeverSent(requestError)) {
+            // The server was never reached, so the signed transfer never left
+            // the process and cannot be broadcast. Undo the guard records so a
+            // retry is not refused and today's budget is not consumed.
+            const build = directBuild;
+            const policy = directPolicy as DirectPaymentPolicy;
+            let released = true;
+            try {
+              await clearDedup(directRequestKey, build.txid, policy);
+              await releaseSpend(account.address, build.spends, build.spendDay, policy);
+            } catch {
+              released = false;
+            }
+            return Promise.reject(
+              new Error(
+                `x402 payment failed: the paid request never reached the server (${detail}). ` +
+                  `Nothing was sent or paid; the signed transfer ${build.txid} was discarded.` +
+                  (released
+                    ? ""
+                    : ` The duplicate guard / spend ledger could not be updated, so an immediate retry may be refused.`)
+              )
+            );
+          }
+          // The signed transfer has left the process. Whether the server broadcast
+          // it is unknown from here, so say so and hand back the txid instead of
+          // hiding the server's answer (skills #417).
+          // Sponsored keeps its historical "x402 payment failed: …" prefix; only
+          // the detail after it changes (server status + body instead of the bare
+          // axios message). Direct gets an explicit ambiguity message + txid.
+          const failure = new Error(
+            directBuild
+              ? `x402 paid request failed after the signed transfer was sent (${detail}). ` +
+                `Settlement is ambiguous: check txid ${directBuild.txid} on the explorer before paying again.`
+              : `x402 payment failed: ${detail}`
+          );
+          if (directBuild) {
+            const meta = asMetadataTarget(failure);
+            meta.x402PaymentMode = paymentMode;
+            meta.x402Txid = directBuild.txid;
+            meta.x402SettlementState = "submitted";
+          }
+          return Promise.reject(failure);
+        }
+        if (directBuild) {
+          const meta = asMetadataTarget(paidResponse);
+          meta.x402PaymentMode = paymentMode;
+          meta.x402Txid = directBuild.txid;
+          meta.x402SettlementState = "submitted";
+        }
+        // A 2xx means the server received the payment and delivered: the
+        // outcome is no longer ambiguous, so an identical request from here on
+        // is a new purchase, not a retry. Keep the record only when the
+        // canonical status says the payment failed (below).
+        const settleDedup = async () => {
+          if (!directBuild || !directRequestKey) return;
+          try {
+            await clearDedup(directRequestKey, directBuild.txid, directPolicy as DirectPaymentPolicy);
+          } catch {
+            // Leaving the record only makes the guard stricter for its TTL.
+          }
+        };
         const paymentStatusBaseUrl = resolvePaymentStatusBaseUrl(
           originalRequest,
           paymentRequired.resource?.url ?? url
@@ -785,6 +1292,24 @@ export async function createApiClient(baseUrl?: string, diagnosticTool = "x402.a
             paymentId: paymentIdentifier,
             action: "canonical_status_unavailable_after_paid_response",
           });
+          if (directBuild) {
+            // A 2xx is delivery, not settlement. Look at the chain briefly and
+            // report what it says; "pending" stays "submitted".
+            const confirmation = await pollTransactionConfirmation(
+              directBuild.txid,
+              account.network,
+              DIRECT_CONFIRMATION_POLL_MS
+            );
+            const meta = asMetadataTarget(paidResponse);
+            meta.x402TxStatus = confirmation.status;
+            meta.x402SettlementState =
+              confirmation.status === "success"
+                ? "confirmed"
+                : confirmation.status === "pending"
+                  ? "submitted"
+                  : "failed";
+          }
+          await settleDedup();
           return paidResponse;
         }
 
@@ -809,12 +1334,14 @@ export async function createApiClient(baseUrl?: string, diagnosticTool = "x402.a
         );
 
         if (outcome.action === "success" || outcome.action === "poll") {
+          await settleDedup();
           return paidResponse;
         }
 
         const canonicalError = new Error(
           "x402 payment failed after the paid request returned. " +
-            formatCanonicalPaymentStatusForError(paymentStatusBaseUrl, canonicalStatus, outcome)
+            formatCanonicalPaymentStatusForError(paymentStatusBaseUrl, canonicalStatus, outcome) +
+            (directBuild ? `\ndirectTxid: ${directBuild.txid}` : "")
         );
         attachCanonicalPaymentMetadata(
           asMetadataTarget(canonicalError),
@@ -822,14 +1349,26 @@ export async function createApiClient(baseUrl?: string, diagnosticTool = "x402.a
           canonicalStatus,
           outcome
         );
+        if (directBuild) {
+          // The signed transfer already left the process; keep its identity on
+          // the error even when the canonical status omits a txid.
+          const meta = asMetadataTarget(canonicalError);
+          meta.x402PaymentMode = paymentMode;
+          meta.x402Txid = directBuild.txid;
+          meta.x402SettlementState = "submitted";
+        }
         return Promise.reject(
           canonicalError
         );
       } catch (paymentError) {
         if (
-          paymentError instanceof Error &&
-          (asMetadataTarget(paymentError).x402PaymentStatus ||
-            asMetadataTarget(paymentError).x402PaymentId)
+          paymentError instanceof InsufficientBalanceError ||
+          paymentError instanceof DuplicatePaymentError ||
+          paymentError instanceof SpendLimitError ||
+          (paymentError instanceof Error &&
+            (asMetadataTarget(paymentError).x402PaymentStatus ||
+              asMetadataTarget(paymentError).x402PaymentId ||
+              asMetadataTarget(paymentError).x402Txid))
         ) {
           return Promise.reject(paymentError);
         }
@@ -1048,6 +1587,8 @@ export async function probeEndpoint(options: {
 
 /**
  * Generate a stable deduplication key for a request
+ * @deprecated In-memory and unused by the payment flow. Direct-mode payments
+ * use the persisted guard in ./x402-guards.ts (`generateDedupKey` there).
  */
 export function generateDedupKey(
   method: string,
@@ -1062,6 +1603,7 @@ export function generateDedupKey(
 /**
  * Check if a request was recently processed (within 60s)
  * @returns txid if duplicate found, null otherwise
+ * @deprecated See `generateDedupKey`.
  */
 export function checkDedupCache(key: string): string | null {
   const cached = dedupCache.get(key);
@@ -1078,6 +1620,7 @@ export function checkDedupCache(key: string): string | null {
 
 /**
  * Record a transaction in the dedup cache
+ * @deprecated See `generateDedupKey`.
  */
 export function recordTransaction(key: string, txid: string): void {
   dedupCache.set(key, { txid, timestamp: Date.now() });

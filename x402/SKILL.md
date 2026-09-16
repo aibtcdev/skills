@@ -263,6 +263,32 @@ Output:
 }
 ```
 
+## Payment mode
+
+`execute-endpoint` builds the payment transaction according to `X402_PAYMENT_MODE`:
+
+| Mode | Transaction | Wallet needs | Use when |
+|------|-------------|--------------|----------|
+| `sponsored` (default) | Sponsored, fee 0 — the server or the aibtc relay co-signs and pays gas | sBTC or STX for the price only | The endpoint settles through the aibtc sponsor relay |
+| `direct` | Standard transfer signed by the wallet alone, fee paid by the wallet | Price **plus** STX for gas (≤ 0.1 STX for sBTC, ≤ 0.003 STX for STX, clamped) | The endpoint verifies and broadcasts payments itself and answers sponsored bytes with `422 sponsored_unsupported` |
+
+```bash
+X402_PAYMENT_MODE=direct NETWORK=mainnet bun run x402/x402.ts execute-endpoint --url https://api.example.com/paid --auto-approve
+```
+
+Direct mode is fail-closed: it signs only native STX or the canonical sBTC token for the active network, refuses amounts above `X402_MAX_SATS_PER_PAYMENT` (default 10000) / `X402_MAX_USTX_PER_PAYMENT` (default 1000000), caps the fee at `X402_MAX_FEE_USTX` (default 100000; a cap below the per-type minimum fee is refused, not rounded up), rejects challenge terms that are not byte-exact (padded amounts, addresses or asset ids, an unparseable chain id, a non-positive `maxTimeoutSeconds`), and refuses to pay if the mempool fee, nonce or balance cannot be read from the Stacks API. All of these settings are parsed when the client is created, so a typo fails before any 402 is answered.
+
+Two persisted rails sit below the per-payment caps, because callers create a client per invocation and a retry after an ambiguous failure would otherwise pay twice:
+
+- **Duplicate guard** — an identical request (method, URL, params, body, payer, payTo, amount, asset) is refused with the earlier `txid` instead of signed again while the earlier payment's outcome is unknown: the paid request failed or timed out after it was sent, the process crashed mid-flight, the canonical status reported a failure, or the earlier call is still in flight. The record is written before the signed bytes are sent and expires after `X402_DEDUP_TTL_SECONDS` (default 900). Once the server answers the paid request with a 2xx, the record is cleared, so repeat purchases of the same endpoint (polling a price feed, say) are paid normally. If the paid request never reached the server (DNS failure, connection refused, TLS verification failure), the record and the ledger entry are both released, because nothing was sent. State: `~/.aibtc/x402-dedup.json` (digests and txids only; override with `X402_DEDUP_STATE_FILE`).
+- **Daily spend ledger** — per wallet, per UTC day, in both units: `SPEND_LIMIT_DAILY_SATS` (default 50000) and `SPEND_LIMIT_DAILY_USTX` (default 10000000, i.e. 10 STX; gas for sBTC payments is metered here). This is the aibtc MCP server's own ledger — same file (`~/.aibtc/spend-state.json`), same shape, same env names — so a wallet used by both tools has one daily cap, not two. Exactly `SPEND_LIMIT_ENABLED=false` disables it (the MCP server's test; no other spelling counts). Override the file with `X402_SPEND_STATE_FILE`. Until the MCP server takes the same lock around its own read-modify-write of this file, a payment from each tool in the same instant can lose one update, so the shared cap is best-effort in that window rather than a hard rail.
+
+Check → sign → record runs under a cross-process lock (`~/.aibtc/x402-guards.lock`), so two direct clients started at once cannot both pay for the same request. A live holder refreshes the lock every 10 s. A lock with no heartbeat for 60 s is reclaimed automatically only when its holder is provably gone (its pid no longer exists on this host, or it is this process's own pid from a previous run, as after a container restart); the reclaim itself is serialized through `x402-guards.lock.reclaim`. Otherwise the payment is refused, naming the holder pid and path; remove the directory yourself only once you have confirmed that process is gone. A guard file that exists but cannot be trusted (unparseable, wrong shape, malformed entry) also refuses the payment; move it aside deliberately rather than deleting evidence of a prior payment.
+
+Direct mode takes its nonce from the Stacks API (`possible_next_nonce`) and does not consult the shared nonce tracker used by other write skills. Avoid running a direct x402 payment at the same moment as another write from the same wallet (a transfer or contract call that has reserved a nonce but not yet broadcast): both can pick the same nonce, and one of the two transactions is rejected.
+
+The output's `payment` object then carries `mode`, `txid`, `txStatus` and `settlementState` (`submitted` → `confirmed` | `failed`) even when the server offers no payment-status route. `send-inbox-message` is unaffected by this setting.
+
 ## Notes
 
 - `execute-endpoint` and `probe-endpoint` require an unlocked wallet when the endpoint requires payment
