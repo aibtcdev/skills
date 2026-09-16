@@ -11,7 +11,7 @@
  */
 
 import { Command } from "commander";
-import { createApiClient } from "../src/lib/services/x402.service.js";
+import { createApiClient, resolvePreferredAsset, type X402PaymentAsset } from "../src/lib/services/x402.service.js";
 import { printJson, handleError } from "../src/lib/utils/cli.js";
 
 // ---------------------------------------------------------------------------
@@ -95,6 +95,19 @@ async function resolveReportWeek(baseUrl: string, week: string): Promise<string>
   );
 }
 
+// The index's 402 lists sBTC first and STX second. The engine's default is
+// "first Stacks option", so without a preference every paid call is an sBTC
+// transfer; --asset STX makes the engine pick the STX option instead. A bad
+// value fails here, before the free preflight and before any wallet access
+// (asked for by four Tier 1 winners and Vibewatch-io/vibewatch-mcp#16).
+function normalizeAsset(raw: string | undefined): X402PaymentAsset {
+  try {
+    return resolvePreferredAsset(raw ?? "sBTC") ?? "sBTC";
+  } catch {
+    throw new Error(`--asset must be sBTC or STX, got "${raw}"`);
+  }
+}
+
 function normalizeSince(raw: string | undefined): string {
   const fallback = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
   if (!raw) return fallback;
@@ -125,8 +138,13 @@ function decodePaymentReceipt(header: unknown): Record<string, unknown> | undefi
   }
 }
 
-async function paidGet(baseUrl: string, path: string, tool: string): Promise<Record<string, unknown>> {
-  const api = await createApiClient(baseUrl, tool);
+async function paidGet(
+  baseUrl: string,
+  path: string,
+  tool: string,
+  asset: X402PaymentAsset,
+): Promise<Record<string, unknown>> {
+  const api = await createApiClient(baseUrl, tool, { preferredAsset: asset });
   const response = await api.request({ method: "GET", url: path });
   const output: Record<string, unknown> = {
     ...(typeof response.data === "object" && response.data !== null ? response.data : {}),
@@ -252,10 +270,12 @@ program
     "pay even when the free index shows no current score for the project (the paid series may be empty)",
     false,
   )
+  .option("--asset <asset>", "pay with sBTC (default) or STX; the 402 lists both", "sBTC")
   .option("--network <network>", "mainnet | testnet", "mainnet")
   .action(async (options) => {
     try {
       const { network, baseUrl } = resolveHost(options.network);
+      const asset = normalizeAsset(options.asset);
       const query = normalizeProjectQuery(options.project);
       // One free read resolves the slug BEFORE any payment is signed.
       const resolved = await resolveProjectSlug(baseUrl, query);
@@ -277,7 +297,7 @@ program
       }
       const days = Number(rawDays);
       const path = `/api/v1/public/stacks-index/pro/projects/${resolved.slug}?days=${days}`;
-      const output = await paidGet(baseUrl, path, "vibewatch-sentiment.project");
+      const output = await paidGet(baseUrl, path, "vibewatch-sentiment.project", asset);
       printJson({
         ...output,
         project: {
@@ -302,14 +322,16 @@ program
     "Paid. The receipts behind one weekly report's themes: links to the public posts (with attributed excerpts for X posts) that back each theme. Primary-source trail for citing sentiment claims. --week is a week_start from the free reports subcommand.",
   )
   .requiredOption("--week <YYYY-MM-DD>", "the report's week_start (a Monday; list them with the free reports subcommand)")
+  .option("--asset <asset>", "pay with sBTC (default) or STX; the 402 lists both", "sBTC")
   .option("--network <network>", "mainnet | testnet", "mainnet")
   .action(async (options) => {
     try {
       const { network, baseUrl } = resolveHost(options.network);
+      const asset = normalizeAsset(options.asset);
       // One free read confirms the week BEFORE any payment is signed.
       const week = await resolveReportWeek(baseUrl, normalizeWeek(options.week));
       const path = `/api/v1/public/stacks-index/pro/evidence/${week}`;
-      const output = await paidGet(baseUrl, path, "vibewatch-sentiment.evidence");
+      const output = await paidGet(baseUrl, path, "vibewatch-sentiment.evidence", asset);
       printJson({ ...output, network });
     } catch (error) {
       handleError(error);
@@ -326,13 +348,15 @@ program
     "Paid. What changed since a timestamp (hour-bucketed): per-project score moves with baselines, ecosystem composite then/now, current themes, and reports published since. Built for polling agents — defaults to the last 24h.",
   )
   .option("--since <iso>", "ISO-8601 timestamp (default: 24h ago; clamped to the last 90 days)")
+  .option("--asset <asset>", "pay with sBTC (default) or STX; the 402 lists both", "sBTC")
   .option("--network <network>", "mainnet | testnet", "mainnet")
   .action(async (options) => {
     try {
       const { network, baseUrl } = resolveHost(options.network);
+      const asset = normalizeAsset(options.asset);
       const since = normalizeSince(options.since);
       const path = `/api/v1/public/stacks-index/pro/delta?since=${encodeURIComponent(since)}`;
-      const output = await paidGet(baseUrl, path, "vibewatch-sentiment.delta");
+      const output = await paidGet(baseUrl, path, "vibewatch-sentiment.delta", asset);
       printJson({ ...output, network });
     } catch (error) {
       handleError(error);
