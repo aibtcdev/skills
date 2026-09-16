@@ -1,6 +1,6 @@
 {
-  "version": "0.42.0",
-  "generated": "2026-09-09T03:45:09.477Z",
+  "version": "0.43.1",
+  "generated": "2026-09-16T13:58:52.117Z",
   "skills": [
     {
       "name": "agent-lookup",
@@ -2376,13 +2376,17 @@
     },
     {
       "name": "stacking",
-      "description": "STX stacking operations on Stacks — query PoX cycle info, check stacking status, lock STX to earn BTC rewards (stack-stx), and extend an existing stacking lock period. Write operations require an unlocked wallet.",
+      "description": "PoX-5 STX staking on Stacks — query cycle state and staking status, list signer managers, stake / update / unstake STX with a signer manager, and check or claim sBTC rewards. Write operations require an unlocked wallet.",
       "entry": "stacking/stacking.ts",
       "arguments": [
         "get-pox-info",
         "get-stacking-status",
+        "list-signers",
         "stack-stx",
-        "extend-stacking"
+        "extend-stacking",
+        "unstake-stx",
+        "get-rewards",
+        "claim-rewards"
       ],
       "requires": [
         "wallet"
@@ -2398,8 +2402,12 @@
       "mcpTools": [
         "get_pox_info",
         "get_stacking_status",
+        "list_stacking_signers",
         "stack_stx",
-        "extend_stacking"
+        "extend_stacking",
+        "unstake_stx",
+        "get_stacking_rewards",
+        "claim_stacking_rewards"
       ]
     },
     {

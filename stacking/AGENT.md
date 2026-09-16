@@ -1,75 +1,75 @@
 ---
 name: stacking-agent
 skill: stacking
-description: STX stacking operations on Stacks — query PoX cycle info, check stacking status, lock STX to earn BTC rewards, and extend an existing stacking lock period.
+description: PoX-5 STX staking on Stacks — cycle state, staking status, signer managers, stake / update / unstake, and sBTC reward claims.
 ---
 
 # Stacking Agent
 
-This agent handles Proof of Transfer (PoX) stacking operations on the Stacks blockchain. Stacking locks STX tokens for a specified number of reward cycles to earn Bitcoin rewards. Read operations (`get-pox-info`, `get-stacking-status`) work without a wallet. Write operations (`stack-stx`, `extend-stacking`) require an unlocked wallet and a valid Bitcoin reward address.
+Handles STX staking on PoX-5. A stake locks STX with a **signer manager** contract for a number of reward cycles; rewards accrue in sBTC to the manager and are claimed per cycle. Read subcommands need no wallet. Writes need an unlocked wallet and always confirm pox-5 is the active PoX contract before signing.
 
 ## Prerequisites
 
-- **Check `activePoxContract` from `get-pox-info` first.** If it is not `...pox-4` (mainnet runs pox-5 since Epoch 4.0), write operations are unsupported and refuse without sending a transaction; only the read operations are usable
-
-- Wallet unlocked via `bun run wallet/wallet.ts unlock` (for `stack-stx` and `extend-stacking` only)
-- Sufficient STX balance to meet the minimum stacking threshold (check with `get-pox-info`)
-- A Bitcoin reward address expressed as version byte + hashbytes hex (not base58check)
-- `--start-burn-height` must fall within the prepare phase of the current PoX cycle
-- `--lock-period` between 1 and 12 cycles; each mainnet cycle is approximately 2 weeks
+- Wallet unlocked via `bun run wallet/wallet.ts unlock` (for `stack-stx`, `extend-stacking`, `unstake-stx`, `claim-rewards`)
+- `NETWORK=mainnet` for mainnet staking (default is testnet)
+- STX for the lock amount plus the transaction fee; `extend-stacking` increases draw on **unlocked** STX only
+- A signer manager contract id, chosen with `list-signers`
 
 ## Decision Logic
 
 | Goal | Subcommand |
 |------|-----------|
-| Check current cycle, min stacking amount, timing | `get-pox-info` — returns cycle data and BTC block timing |
-| Verify if an address is currently stacking | `get-stacking-status` — returns lock amount, unlock height, cycles |
-| Lock STX to earn BTC rewards | `stack-stx` — requires BTC reward address and burn height |
-| Extend an existing stacking commitment | `extend-stacking` — adds cycles to current lock period |
+| Cycle, burn height, prepare-phase timing | `get-pox-info` |
+| Is an address staking, with whom, until when | `get-stacking-status` |
+| Pick a signer manager | `list-signers` (add `--with-payout-info` to see who supports on-chain claims) |
+| Start staking | `stack-stx` |
+| Extend, add STX, switch manager, change payout | `extend-stacking` (any combination in one call) |
+| Stop early | `unstake-stx` (unlocks at the start of next cycle) |
+| See claimable rewards for a cycle | `get-rewards` |
+| Collect rewards for a cycle | `claim-rewards` |
 
 ## Safety Checks
 
-- Before `stack-stx`: run `get-pox-info` to confirm `minAmountUstx` — stacking below the threshold is rejected
-- Before `stack-stx`: verify `--start-burn-height` is within `nextCycle.prepare_phase_start_block_height` window
-- Before `stack-stx`: STX will be locked for the full `--lock-period` — funds cannot be withdrawn until `unlockHeight`
-- Before `extend-stacking`: confirm current stacking is active via `get-stacking-status`; can only extend, not cancel
-- Bitcoin address version values: `0`=P2PKH, `1`=P2SH, `4`=P2WPKH, `5`=P2WSH, `6`=P2TR
-- Bitcoin hashbytes length: 20 bytes (hex 40 chars) for P2PKH/P2SH/P2WPKH; 32 bytes (hex 64 chars) for P2WSH/P2TR
+- Before any write: `get-pox-info`; if `inPreparePhase` is true, wait until `nextCycleStartHeight` — writes are refused during the prepare phase
+- Before `stack-stx`: `get-stacking-status` must show `staking: false`; otherwise use `extend-stacking`
+- Before `stack-stx`: confirm the manager's own terms (allowlists, minimums, required `--btc-reward-address`). A stake the manager refuses aborts on chain and still costs the fee
+- `--num-cycles` locks STX for up to 96 cycles (~4 years); STX cannot be moved until `unlockBurnHeight` unless `unstake-stx` is called, which still waits for the next cycle
+- `claim-rewards` may send **two** transactions (manager pull, then staker claim); check `get-rewards` first and only claim when `unclaimedSatsBeforeFees` > 0 and `stakerClaim` is not `none`
+- Never pass both `--btc-reward-address` and `--signer-calldata-hex`
 
 ## Error Handling
 
 | Error message | Cause | Fix |
 |--------------|-------|-----|
-| "Stacking writes are disabled: this network's active PoX contract is ...pox-5" | pox-5 replaced the pox-4 stacking functions this skill calls | Do not retry; stacking via this skill is unavailable until pox-5 staking support lands |
+| "pox-5 refuses ... during the prepare phase" | Burn height is in the last 100 blocks of the cycle | Retry at or after the burn height named in the error |
+| "... is already staking ... Use extend_stacking" | Address has a stake | Use `extend-stacking` |
+| "... is not staking" | No stake to update / unstake / look up | Use `stack-stx`, or pass `--signer-manager` for past rewards |
+| "... is not a registered pox-5 signer manager" | Wrong or unregistered contract id | Pick one from `list-signers` |
+| "Insufficient STX" / "Insufficient unlocked STX" | Balance too low | Fund the wallet or reduce the amount |
+| "Nothing to update" | `extend-stacking` with no changes | Pass at least one change |
+| "unstaking would not unlock it sooner" | Stake already ends next cycle | No action needed |
+| "has no on-chain staker claim" | Manager pays off-chain | Do not retry; contact the manager |
+| "No unclaimed rewards" | Nothing earned or already claimed for that cycle | Check another cycle with `get-rewards` |
+| "Stacking writes are disabled: this network's active PoX contract is ..." | A newer PoX contract replaced pox-5 | Do not retry; the skill needs updating |
 | "Could not confirm the active PoX contract from the Stacks API" | `/v2/pox` unreachable; writes fail closed | Retry later |
-| "No active wallet found. Specify --wallet-id." | Wallet session expired or not unlocked | Run `bun run wallet/wallet.ts unlock` |
-| "--pox-address-version must be a non-negative integer" | Invalid version byte passed | Use 0, 1, 4, 5, or 6 matching your BTC address type |
-| "--start-burn-height must be a positive integer" | Non-integer or zero burn height | Pass a valid positive BTC block height |
-| "--lock-period must be an integer between 1 and 12" | Lock period out of range | Use 1–12 cycles |
-| "--extend-count must be an integer between 1 and 12" | Extend count out of range | Use 1–12 additional cycles |
 
 ## Output Handling
 
-- `get-pox-info`: use `nextCycle.prepare_phase_start_block_height` as `--start-burn-height` for `stack-stx`
-- `get-pox-info`: `minAmountUstx` is the minimum to pass to `--amount` in `stack-stx`
-- `get-stacking-status`: `stacked: true` confirms active stacking; `unlockHeight` is the BTC block when STX unlocks
-- `stack-stx`: `txid` and `explorerUrl` confirm the lock transaction; `lockPeriod` and `startBurnHeight` echo inputs
-- `extend-stacking`: `txid` confirms the extension; `extendCount` echoes the number of additional cycles added
+- `get-pox-info`: `inPreparePhase`, `nextCycleStartHeight` gate writes
+- `get-stacking-status`: `staking`, `stake.signerManager`, `stake.unlockBurnHeight`, `balance.unlockedUstx`
+- `list-signers`: `signers[].signerManager` feeds `--signer-manager`
+- Writes: `txid` and `explorerUrl`; `unlockCycle` / `unlockBurnHeight` give the new unlock point
+- `get-rewards`: `unclaimedSatsBeforeFees`, `stakerClaim`, `next`
+- `claim-rewards`: `txid` of the staker claim, `managerPull.txid` when a pull was sent first
 
 ## Example Invocations
 
 ```bash
-# Get current PoX cycle info and minimum stacking amount
-bun run stacking/stacking.ts get-pox-info
-
-# Check stacking status for the active wallet
-bun run stacking/stacking.ts get-stacking-status
-
-# Stack 100,000 STX for 6 cycles using a P2WPKH Bitcoin address
-bun run stacking/stacking.ts stack-stx \
-  --amount 100000000000 \
-  --pox-address-version 4 \
-  --pox-address-hashbytes <20-byte-hex> \
-  --start-burn-height <prepare-phase-block> \
-  --lock-period 6
+NETWORK=mainnet bun run stacking/stacking.ts get-pox-info
+NETWORK=mainnet bun run stacking/stacking.ts list-signers --with-payout-info
+NETWORK=mainnet bun run stacking/stacking.ts stack-stx \
+  --signer-manager SP8HK160YD5GHXP69VGA0TC7AQJ1X4CDW3XVERSE.xverse-signer-manager-2 \
+  --amount 1000000000 --num-cycles 6
+NETWORK=mainnet bun run stacking/stacking.ts get-rewards --reward-cycle 144
+NETWORK=mainnet bun run stacking/stacking.ts claim-rewards --reward-cycle 144
 ```
