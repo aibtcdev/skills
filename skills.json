@@ -1,6 +1,6 @@
 {
   "version": "0.42.0",
-  "generated": "2026-08-05T17:10:11.807Z",
+  "generated": "2026-09-16T18:38:04.232Z",
   "skills": [
     {
       "name": "agent-lookup",
@@ -2183,6 +2183,30 @@
         "get_rune_utxos",
         "transfer_rune"
       ]
+    },
+    {
+      "name": "sbor",
+      "description": "SBOR, the benchmark lending rate for Stacks. Get the current borrow and supply rate per currency, judge whether a rate you have been offered is above or below the market, list the venues behind a rate with their utilisation, read the history, compare Stacks with lending markets off-chain, and check for cross-venue inversions.",
+      "entry": "sbor/sbor.ts",
+      "arguments": [
+        "rate",
+        "compare",
+        "markets",
+        "history",
+        "chains",
+        "inversions",
+        "context",
+        "method"
+      ],
+      "requires": [],
+      "tags": [
+        "read-only",
+        "mainnet-only",
+        "defi",
+        "l2"
+      ],
+      "userInvocable": false,
+      "author": "sborxyz"
     },
     {
       "name": "sbtc",
