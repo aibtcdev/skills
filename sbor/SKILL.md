@@ -1,6 +1,6 @@
 ---
 name: sbor
-description: SBOR, the benchmark lending rate for Stacks: get the current borrow and supply rate per currency, judge whether a rate you have been offered is above or below the market, list the venues behind a rate with their utilisation, read the history, compare Stacks with lending markets off-chain, and check for cross-venue inversions.
+description: SBOR, the benchmark lending rate for Stacks. Get the current borrow and supply rate per currency, judge whether a rate you have been offered is above or below the market, list the venues behind a rate with their utilisation, read the history, compare Stacks with lending markets off-chain, and check for cross-venue inversions.
 metadata:
   user-invocable: "false"
   arguments: "rate | compare | markets | history | chains | inversions | context | method"
