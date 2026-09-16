@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.43.1](https://github.com/aibtcdev/skills/compare/skills-v0.43.0...skills-v0.43.1) (2026-09-16)
+
+
+### Bug Fixes
+
+* **src:** stop double hex-encoding Clarity read-only arguments ([#426](https://github.com/aibtcdev/skills/issues/426)) ([df69485](https://github.com/aibtcdev/skills/commit/df69485bf626b2bc521b6074deac286bbcb1e466))
+* **stacking:** refuse writes when pox-4 is not the active PoX contract; read pox-5 staking status ([#424](https://github.com/aibtcdev/skills/issues/424)) ([3746472](https://github.com/aibtcdev/skills/commit/3746472413584e1467a2d5491e26d1c11d1682f9))
+
 ## [0.43.0](https://github.com/aibtcdev/skills/compare/skills-v0.42.0...skills-v0.43.0) (2026-09-16)
 
 
