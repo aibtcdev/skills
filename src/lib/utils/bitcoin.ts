@@ -427,3 +427,35 @@ export function deriveTaprootKeyPair(
     internalPubKeyBytes,
   };
 }
+
+/**
+ * Decode a Bitcoin address into the `{ version, hashbytes }` pox-addr tuple used by
+ * Stacks contracts (sBTC withdrawals, PoX signer-manager payout addresses).
+ */
+export function btcAddressToPoxAddr(
+  address: string,
+  network: Network
+): { version: number; hashbytesHex: string } {
+  const decoded = btc
+    .Address(network === "mainnet" ? btc.NETWORK : btc.TEST_NETWORK)
+    .decode(address);
+
+  if (decoded.type === "tr" && decoded.pubkey) {
+    return { version: 0x06, hashbytesHex: Buffer.from(decoded.pubkey).toString("hex") };
+  }
+
+  switch (decoded.type) {
+    case "pkh":
+      return { version: 0x00, hashbytesHex: Buffer.from(decoded.hash).toString("hex") };
+    case "sh":
+      return { version: 0x01, hashbytesHex: Buffer.from(decoded.hash).toString("hex") };
+    case "wpkh":
+      return { version: 0x04, hashbytesHex: Buffer.from(decoded.hash).toString("hex") };
+    case "wsh":
+      return { version: 0x05, hashbytesHex: Buffer.from(decoded.hash).toString("hex") };
+    default:
+      throw new Error(
+        "Unsupported BTC address type. Supported: P2PKH, P2SH, P2WPKH, P2WSH, P2TR."
+      );
+  }
+}
