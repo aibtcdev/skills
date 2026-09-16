@@ -20,7 +20,7 @@ import {
 import {
   encodePaymentPayload,
   decodePaymentResponse,
-  generatePaymentIdentifier,
+  derivePaymentIdentifier,
   buildPaymentIdentifierExtension,
   X402_HEADERS,
   type PaymentRequiredV2,
@@ -537,7 +537,7 @@ export async function executeInboxWithRetry(
         network,
         contentHash
       );
-      paymentIdentifier = generatePaymentIdentifier();
+      paymentIdentifier = derivePaymentIdentifier(txHex);
       emitPaymentDiagnostic({
         event: "payment.accepted",
         tool: diagnosticTool,
