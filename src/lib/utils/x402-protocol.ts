@@ -4,7 +4,7 @@
  * No external x402 SDK dependency — all logic is self-contained.
  */
 
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import type { TrackedPaymentState } from "@aibtc/tx-schemas/core/enums";
 
 // ===== Types =====
@@ -137,6 +137,24 @@ export interface PaymentIdentifierExtension {
 /** Generate a unique client-side idempotency key for relay dedup. */
 export function generatePaymentIdentifier(): string {
   const hex = randomUUID().replace(/-/g, "");
+  return `pay_${hex}`;
+}
+
+/**
+ * Idempotency key bound to the signed payment itself: the same transaction
+ * bytes always yield the same identifier, in any process.
+ *
+ * Stacks signatures are deterministic, so re-signing an identical transfer at
+ * the same nonce (a retry after a failed paid request, or a second CLI run
+ * before the first broadcast) reproduces the exact bytes already submitted.
+ * A fresh random identifier on that payload is rejected by resource servers
+ * that bound the payload to its first identifier, and the relay loses track
+ * of both (skills #420). Different transactions still get different keys.
+ * Same `pay_` + 32 hex shape as `generatePaymentIdentifier`.
+ */
+export function derivePaymentIdentifier(txHex: string): string {
+  const normalized = txHex.replace(/^0x/i, "").toLowerCase();
+  const hex = createHash("sha256").update(Buffer.from(normalized, "hex")).digest("hex").slice(0, 32);
   return `pay_${hex}`;
 }
 

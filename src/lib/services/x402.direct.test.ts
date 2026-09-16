@@ -10,7 +10,7 @@ import { getContracts } from "../config/contracts.js";
 import { NETWORK, type Network } from "../config/networks.js";
 import { _testing as storageTesting } from "../utils/storage.js";
 import { InsufficientBalanceError } from "../utils/errors.js";
-import { X402_HEADERS, decodePaymentPayload } from "../utils/x402-protocol.js";
+import { X402_HEADERS, decodePaymentPayload, derivePaymentIdentifier } from "../utils/x402-protocol.js";
 import { _lockTesting, generateDedupKey } from "./x402-guards.js";
 import { existsSync, mkdirSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import {
@@ -378,6 +378,22 @@ describe("createApiClient payment modes", () => {
     });
     // The sponsored path never touches the Stacks API.
     expect(f.hiroHits).toEqual([]);
+  });
+
+  test("re-signing the same payment in a new client reuses its payment-identifier (skills #420)", async () => {
+    const f = await up();
+    for (const n of ["1", "2"]) {
+      const api = await createApiClient(f.origin, `test.pid-${n}`);
+      await api.request({ method: "GET", url: "/paid" });
+    }
+    expect(f.paidRequests).toHaveLength(2);
+    const [first, second] = f.paidRequests.map((sig) => decodeTx(sig).payload);
+    // Deterministic signing: same transfer, same nonce, same bytes...
+    expect(second.payload.transaction).toBe(first.payload.transaction);
+    // ...so the idempotency key must match too, and be derived from those bytes.
+    const idOf = (p: typeof first) => (p.extensions as Record<string, { info: { id: string } }>)["payment-identifier"].info.id;
+    expect(idOf(second)).toBe(idOf(first));
+    expect(idOf(first)).toBe(derivePaymentIdentifier(first.payload.transaction));
   });
 
   // Runs before any other direct test on purpose: the Hiro client caches

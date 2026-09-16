@@ -38,7 +38,7 @@ import {
   decodePaymentPayload,
   encodePaymentPayload,
   buildPaymentIdentifierExtension,
-  generatePaymentIdentifier,
+  derivePaymentIdentifier,
   X402_HEADERS,
 } from "../utils/x402-protocol.js";
 import {
@@ -1175,7 +1175,7 @@ export async function createApiClient(baseUrl?: string, diagnosticTool = "x402.a
 
         const txHex = "0x" + transaction.serialize();
 
-        const paymentIdentifier = generatePaymentIdentifier();
+        const paymentIdentifier = derivePaymentIdentifier(txHex);
         emitPaymentDiagnostic({
           event: "payment.accepted",
           tool: diagnosticTool,
