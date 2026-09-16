@@ -1,7 +1,7 @@
 ---
 name: sbor
 skill: sbor
-description: Rules for using the sbor skill: when to call it before a lending action, how to read a verdict, and when to refuse rather than act on it.
+description: Rules for using the sbor skill. When to call it before a lending action, how to read a verdict, and when to refuse rather than act on it.
 ---
 
 # sbor: subagent rules
