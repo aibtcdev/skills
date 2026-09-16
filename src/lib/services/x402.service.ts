@@ -40,6 +40,7 @@ import {
   buildPaymentIdentifierExtension,
   derivePaymentIdentifier,
   X402_HEADERS,
+  type PaymentRequirementsV2,
 } from "../utils/x402-protocol.js";
 import {
   extractTxidFromPaymentSignature,
@@ -105,6 +106,61 @@ export function resolvePaymentMode(raw = process.env.X402_PAYMENT_MODE): X402Pay
 }
 
 export { resolveDirectPaymentPolicy, DuplicatePaymentError, SpendLimitError, type DirectPaymentPolicy };
+
+// ============================================================================
+// Payment asset selection
+// ============================================================================
+
+/**
+ * Which of a 402 challenge's Stacks options to pay with.
+ *
+ * A server may advertise several `accepts` entries on the same network, e.g.
+ * 100 sats of sBTC first and 300000 µSTX second (the Vibewatch Stacks Vibe
+ * Index does). The engine's historical rule is "first `stacks:` option", so
+ * a wallet holding only STX would have signed an sBTC transfer it could not
+ * fund. `preferredAsset` picks by asset instead; the default is unchanged.
+ */
+export type X402PaymentAsset = "sBTC" | "STX";
+
+const PAYMENT_ASSETS: ReadonlySet<string> = new Set(["sBTC", "STX"]);
+
+export interface CreateApiClientOptions {
+  /** Pay with this asset when the challenge offers it; unset = first Stacks option. */
+  preferredAsset?: X402PaymentAsset;
+}
+
+export function resolvePreferredAsset(raw: string | undefined): X402PaymentAsset | undefined {
+  const value = (raw ?? "").trim();
+  if (!value) return undefined;
+  const canonical = value.toLowerCase() === "sbtc" ? "sBTC" : value.toUpperCase() === "STX" ? "STX" : value;
+  if (!PAYMENT_ASSETS.has(canonical)) {
+    throw new Error(`Invalid preferred payment asset "${raw}". Allowed values: sBTC, STX.`);
+  }
+  return canonical as X402PaymentAsset;
+}
+
+/**
+ * Pick the challenge option to pay. Without a preference: the first
+ * `stacks:` option (the rule every earlier release used). With one: the first
+ * `stacks:` option whose asset is that token — native `STX` literally, sBTC
+ * by the same contract-id test the transaction builders use. Returns null
+ * when no Stacks option exists, or none carries the preferred asset; the
+ * caller reports what was offered.
+ */
+export function selectStacksPaymentOption(
+  accepts: readonly PaymentRequirementsV2[],
+  preferredAsset?: X402PaymentAsset
+): PaymentRequirementsV2 | null {
+  const stacksOptions = accepts.filter((opt) => typeof opt.network === "string" && opt.network.startsWith("stacks:"));
+  if (!preferredAsset) return stacksOptions[0] ?? null;
+  const matches = (opt: PaymentRequirementsV2) => {
+    if (typeof opt.asset !== "string") return false;
+    return preferredAsset === "STX"
+      ? opt.asset.trim().toUpperCase() === "STX"
+      : detectTokenType(opt.asset) === "sBTC";
+  };
+  return stacksOptions.find(matches) ?? null;
+}
 
 /** Fee clamps by transaction type (micro-STX), mirrored from utils/fee.ts. */
 const DIRECT_FEE_CLAMPS = {
@@ -944,11 +1000,17 @@ export async function mnemonicToAccount(
  * Create an API client with x402 payment interceptor.
  * Creates a fresh client instance per call with max-1-payment-attempt guard.
  */
-export async function createApiClient(baseUrl?: string, diagnosticTool = "x402.api-client"): Promise<AxiosInstance> {
+export async function createApiClient(
+  baseUrl?: string,
+  diagnosticTool = "x402.api-client",
+  options: CreateApiClientOptions = {}
+): Promise<AxiosInstance> {
   const url = baseUrl || API_URL;
   // Resolved once per client so a bad value fails here, not mid-payment —
-  // the mode and, in direct mode, every cap, fee and ledger setting.
+  // the mode, the preferred asset and, in direct mode, every cap, fee and
+  // ledger setting.
   const paymentMode = resolvePaymentMode();
+  const preferredAsset = resolvePreferredAsset(options.preferredAsset);
   const directPolicy = paymentMode === "direct" ? resolveDirectPaymentPolicy() : null;
 
   // Get account (from managed wallet or env mnemonic)
@@ -1068,12 +1130,23 @@ export async function createApiClient(baseUrl?: string, diagnosticTool = "x402.a
           );
         }
 
-        // Select first Stacks-compatible payment option
-        const selectedOption = paymentRequired.accepts.find(
-          (opt) => opt.network?.startsWith("stacks:")
-        );
+        // Select the Stacks payment option: the first one by default, or the
+        // first carrying the caller's preferred asset.
+        const selectedOption = selectStacksPaymentOption(paymentRequired.accepts, preferredAsset);
 
         if (!selectedOption) {
+          if (preferredAsset && paymentRequired.accepts.some((opt) => opt.network?.startsWith("stacks:"))) {
+            const assets = paymentRequired.accepts
+              .filter((opt) => opt.network?.startsWith("stacks:"))
+              .map((opt) => opt.asset)
+              .join(", ");
+            return Promise.reject(
+              new Error(
+                `The endpoint does not accept ${preferredAsset} on Stacks. Offered assets: ${assets}. ` +
+                  `Pay with one of those or drop the asset preference.`
+              )
+            );
+          }
           const networks = paymentRequired.accepts.map((a) => a.network).join(", ");
           return Promise.reject(
             new Error(`No compatible Stacks payment option found. Available networks: ${networks}`)
