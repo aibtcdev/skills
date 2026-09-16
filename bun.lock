@@ -1,5 +1,6 @@
 {
   "lockfileVersion": 1,
+  "configVersion": 0,
   "workspaces": {
     "": {
       "name": "@aibtc/skills",
@@ -12,10 +13,10 @@
         "@scure/bip32": "^1.6.2",
         "@scure/bip39": "^2.0.1",
         "@scure/btc-signer": "^2.0.1",
-        "@stacks/common": "^7.3.1",
-        "@stacks/encryption": "^7.3.1",
-        "@stacks/network": "^7.3.1",
-        "@stacks/transactions": "^7.3.1",
+        "@stacks/common": "^7.6.0",
+        "@stacks/encryption": "^7.6.0",
+        "@stacks/network": "^7.6.0",
+        "@stacks/transactions": "^7.6.0",
         "@stacks/wallet-sdk": "^7.2.0",
         "alex-sdk": "^3.2.1",
         "axios": "^1.13.2",
@@ -59,15 +60,15 @@
 
     "@stacks/auth": ["@stacks/auth@7.3.1", "", { "dependencies": { "@noble/secp256k1": "1.7.1", "@stacks/common": "^7.3.1", "@stacks/encryption": "^7.3.1", "@stacks/network": "^7.3.1", "@stacks/profile": "^7.3.1", "cross-fetch": "^3.1.5", "jsontokens": "^4.0.1" } }, "sha512-8zjQrnthhymJruSWYuP17IRx+c0k8LrOZYH9DRyaTzjEZ+pbvsRUM9v7hH1aGr2LG94BI9249qXpCtGWorVI+g=="],
 
-    "@stacks/common": ["@stacks/common@7.3.1", "", {}, "sha512-29ANTFcSSlXnGQlgDVWg7OQ74lgQhu3x8JkeN19Q+UE/1lbQrzcctgPHG74XHjWNp8NPBqskUYA8/HLgIKuKNQ=="],
+    "@stacks/common": ["@stacks/common@7.6.0", "", {}, "sha512-VUW8WDmZP4wXUNWVvpFerV+7LQ0PqIn8YOs8AjSUMA7ZOXIRLxJHoKxjfiHzJqazy7KlyryPW4kSNBCr7tLqhQ=="],
 
     "@stacks/connect": ["@stacks/connect@7.10.2", "", { "dependencies": { "@stacks/auth": "^7.0.0", "@stacks/common": "^7.0.0", "@stacks/connect-ui": "6.6.0", "@stacks/network": "^7.0.0", "@stacks/network-v6": "npm:@stacks/network@^6.16.0", "@stacks/profile": "^7.0.0", "@stacks/transactions": "^7.0.0", "@stacks/transactions-v6": "npm:@stacks/transactions@^6.16.0", "jsontokens": "^4.0.1" } }, "sha512-fQcdayBgq9XZnX4rqQxa//Gx9c0ycrmrZT9dZ01uHDlIr/ZxwU18d5A3hyYv4F7LQYQQkFr9htpVTlH0RSqWUw=="],
 
     "@stacks/connect-ui": ["@stacks/connect-ui@6.6.0", "", { "dependencies": { "@stencil/core": "^2.17.1" } }, "sha512-uc22RH99umYzB94h5LiKPtGu34IBGrwUb3TfijGb2ZMudaMCiv/Fr1jjZKfQW5MRmexnbAEmGZpFlQKinCcsUA=="],
 
-    "@stacks/encryption": ["@stacks/encryption@7.3.1", "", { "dependencies": { "@noble/hashes": "1.1.5", "@noble/secp256k1": "1.7.1", "@scure/bip39": "1.1.0", "@stacks/common": "^7.3.1", "base64-js": "^1.5.1", "bs58": "^5.0.0", "ripemd160-min": "^0.0.6", "varuint-bitcoin": "^1.1.2" } }, "sha512-hCY61gd4PVr5LUZKOuzWfPLmuPrIGEapd1LkMintToJ+F3R/x0T+iIJVnJf2Y1l0cJsc4Xxq/TWCBeEAfybScg=="],
+    "@stacks/encryption": ["@stacks/encryption@7.6.0", "", { "dependencies": { "@noble/hashes": "1.1.5", "@noble/secp256k1": "1.7.1", "@scure/bip39": "1.1.0", "@stacks/common": "^7.6.0", "base64-js": "^1.5.1", "bs58": "^5.0.0", "ripemd160-min": "^0.0.6", "varuint-bitcoin": "^1.1.2" } }, "sha512-1D2yazEcC5blc/xZkCPXQRbiAozXiVisLdxdFF3bVvNocUZ7yWkW7SOhhNve8RJ0Yf0XBkG6IbnBa3F1vyOyXA=="],
 
-    "@stacks/network": ["@stacks/network@7.3.1", "", { "dependencies": { "@stacks/common": "^7.3.1", "cross-fetch": "^3.1.5" } }, "sha512-dQjhcwkz8lihSYSCUMf7OYeEh/Eh0++NebDtXbIB3pHWTvNCYEH7sxhYTB1iyunurv31/QEi0RuWdlfXK/BjeA=="],
+    "@stacks/network": ["@stacks/network@7.6.0", "", { "dependencies": { "@stacks/common": "^7.6.0", "cross-fetch": "^3.1.5" } }, "sha512-Blm85nsEbvJoFIFaDp0QE9WMC0Hf+o3Yb0oIDwWu3PPgpVSdndb/bJQUeT6eJTs0ibS26A2E/5d5L0fb4Ff/lA=="],
 
     "@stacks/network-v6": ["@stacks/network@6.17.0", "", { "dependencies": { "@stacks/common": "^6.16.0", "cross-fetch": "^3.1.5" } }, "sha512-numHbfKjwco/rbkGPOEz8+FcJ2nBnS/tdJ8R422Q70h3SiA9eqk9RjSzB8p4JP8yW1SZvW+eihADHfMpBuZyfw=="],
 
@@ -77,7 +78,7 @@
 
     "@stacks/storage": ["@stacks/storage@7.3.1", "", { "dependencies": { "@stacks/auth": "^7.3.1", "@stacks/common": "^7.3.1", "@stacks/encryption": "^7.3.1", "@stacks/network": "^7.3.1", "base64-js": "^1.5.1", "jsontokens": "^4.0.1" } }, "sha512-AvbZJkc97LZ0icpIWeZpUgtSQS3Nsd3M16GYAJcHDqsBdsCtlwoSzsEwrcwrxZ1CFsWMnz3Te9xCNqUjoQ+CcA=="],
 
-    "@stacks/transactions": ["@stacks/transactions@7.3.1", "", { "dependencies": { "@noble/hashes": "1.1.5", "@noble/secp256k1": "1.7.1", "@stacks/common": "^7.3.1", "@stacks/network": "^7.3.1", "c32check": "^2.0.0", "lodash.clonedeep": "^4.5.0" } }, "sha512-ufnC1BPrOKz5b5gxxdseP3vBrFq1+qx1L6t+J/QnjXULyWdkhtS+LBEqRw2bL5qNteMvU2GhqPgFtYQPzolGbw=="],
+    "@stacks/transactions": ["@stacks/transactions@7.6.0", "", { "dependencies": { "@noble/hashes": "1.1.5", "@noble/secp256k1": "1.7.1", "@stacks/common": "^7.6.0", "@stacks/network": "^7.6.0", "c32check": "^2.0.0", "lodash.clonedeep": "^4.5.0" } }, "sha512-s7F7eJtQVnZoB79j8pY9SLKhlvvdYZZD1NSDRWrFjzSJTDmxptL8c50S563WFja6KOhFOgg1jd+p0XWTxFAVyA=="],
 
     "@stacks/transactions-v6": ["@stacks/transactions@6.17.0", "", { "dependencies": { "@noble/hashes": "1.1.5", "@noble/secp256k1": "1.7.1", "@stacks/common": "^6.16.0", "@stacks/network": "^6.17.0", "c32check": "^2.0.0", "lodash.clonedeep": "^4.5.0" } }, "sha512-FUah2BRgV66ApLcEXGNGhwyFTRXqX5Zco3LpiM3essw8PF0NQlHwwdPgtDko5RfrJl3LhGXXe/30nwsfNnB3+g=="],
 
