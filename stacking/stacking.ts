@@ -41,6 +41,7 @@ program
 
       printJson({
         network: NETWORK,
+        activePoxContract: poxInfo.contract_id,
         currentCycle: poxInfo.current_cycle,
         nextCycle: poxInfo.next_cycle,
         minAmountUstx: poxInfo.min_amount_ustx,

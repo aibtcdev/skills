@@ -51,9 +51,13 @@ const ALEX_FACTOR = 100_000_000;
 // Bitflow API
 const BITFLOW_API = "https://app.bitflow.finance/api";
 
-// Stacking
-const POX_CONTRACT = "SP000000000000000000002Q6VF78";
-const POX_NAME = "pox-4";
+// Stacking: the active PoX contract (pox-4, pox-5, ...) is read from /v2/pox.
+// pox-4 exposes get-stacker-info { lock-amount, ... }; pox-5 exposes
+// get-staker-info { amount-ustx, ... }.
+const POX_READS: Record<string, { fn: string; amountKey: string }> = {
+  "pox-4": { fn: "get-stacker-info", amountKey: "lock-amount" },
+  "pox-5": { fn: "get-staker-info", amountKey: "amount-ustx" },
+};
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -333,25 +337,34 @@ async function readStackingPosition(
   };
 
   try {
+    // serializeCV returns a hex string in stacks.js v7 (bytes in older versions).
+    const serialized = serializeCV(standardPrincipalCV(walletAddress)) as string | Uint8Array;
     const principalArg =
-      "0x" +
-      Buffer.from(serializeCV(standardPrincipalCV(walletAddress))).toString(
-        "hex"
-      );
-    const res = await callReadOnly(
-      POX_CONTRACT,
-      POX_NAME,
-      "get-stacker-info",
-      [principalArg]
-    );
+      "0x" + (typeof serialized === "string" ? serialized : Buffer.from(serialized).toString("hex"));
+    const poxRes = await fetch(`${HIRO_API}/v2/pox`);
+    if (!poxRes.ok) throw new Error(`API ${poxRes.status} for /v2/pox`);
+    const { contract_id: poxContractId } = (await poxRes.json()) as { contract_id: string };
+    const [poxAddress, poxName] = poxContractId.split(".");
+    const read = POX_READS[poxName];
+    if (!read) throw new Error(`Unsupported PoX contract ${poxContractId}`);
+    pos.details.poxContract = poxContractId;
+    const res = await callReadOnly(poxAddress, poxName, read.fn, [principalArg]);
     if (res.okay) {
       const raw = res.result.startsWith("0x")
         ? res.result.slice(2)
         : res.result;
       const cv = hexToCV(raw);
-      const val = cvToValue(cv, true);
-      if (val && typeof val === "object" && "lock-amount" in (val as object)) {
-        const lockAmount = (val as Record<string, unknown>)["lock-amount"];
+      let val = cvToValue(cv, true) as unknown;
+      // Some stacks.js versions wrap an optional's inner tuple as { type, value }.
+      if (val && typeof val === "object" && !(read.amountKey in val) && "value" in val) {
+        val = (val as { value: unknown }).value;
+      }
+      if (val && typeof val === "object" && read.amountKey in (val as object)) {
+        let lockAmount = (val as Record<string, unknown>)[read.amountKey];
+        if (lockAmount && typeof lockAmount === "object" && "value" in lockAmount) {
+          lockAmount = (lockAmount as { value: unknown }).value;
+        }
+        if (typeof lockAmount === "string" && /^\d+$/.test(lockAmount)) lockAmount = BigInt(lockAmount);
         pos.valueSats =
           typeof lockAmount === "bigint"
             ? Number(lockAmount)

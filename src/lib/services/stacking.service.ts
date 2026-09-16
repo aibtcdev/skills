@@ -1,4 +1,14 @@
-import { ClarityValue, uintCV, tupleCV, bufferCV, noneCV, someCV } from "@stacks/transactions";
+import {
+  ClarityValue,
+  uintCV,
+  tupleCV,
+  bufferCV,
+  noneCV,
+  someCV,
+  principalCV,
+  hexToCV,
+  cvToValue,
+} from "@stacks/transactions";
 import { HiroApiService, getHiroApi, PoxInfo } from "./hiro-api.js";
 import { getContracts, parseContractId, type Network } from "../config/index.js";
 import { callContract, type Account, type TransferResult } from "../transactions/builder.js";
@@ -16,6 +26,31 @@ export interface StackingStatus {
   lockPeriod: number;
   unlockHeight: number;
   poxAddress?: string;
+  /** The PoX contract the network currently runs (from /v2/pox). */
+  activePoxContract?: string;
+  /** pox-5 only: the signer the STX is staked with. */
+  signer?: string;
+  /** Set when the result comes with a caveat the caller should surface. */
+  warning?: string;
+}
+
+/**
+ * Raised by write operations when the network no longer runs pox-4. pox-5
+ * (Epoch 4.0) removed stack-stx, stack-extend, stack-increase, delegate-stx
+ * and revoke-delegate-stx in favour of signer-manager staking (stake,
+ * stake-update, unstake), so building these calls would only broadcast a
+ * transaction that aborts and still costs the fee.
+ */
+export class PoxVersionUnsupportedError extends Error {
+  constructor(public readonly activePoxContract: string) {
+    super(
+      `Stacking writes are disabled: this network's active PoX contract is ${activePoxContract}, ` +
+        `but this skill only supports pox-4. pox-5 replaced stack-stx / stack-extend / stack-increase / ` +
+        `delegate-stx / revoke-delegate-stx with signer-manager staking (stake, stake-update, unstake), ` +
+        `which this skill does not implement yet. No transaction was sent.`
+    );
+    this.name = "PoxVersionUnsupportedError";
+  }
 }
 
 // ============================================================================
@@ -39,10 +74,40 @@ export class StackingService {
   }
 
   /**
+   * Refuse a write unless the network's active PoX contract is the pox-4 this
+   * service builds calls for. Fails closed: if the active contract cannot be
+   * read, nothing is signed.
+   */
+  private async assertPox4Active(): Promise<void> {
+    let active: string;
+    try {
+      active = (await this.hiro.getPoxInfo()).contract_id;
+    } catch (error) {
+      throw new Error(
+        `Could not confirm the active PoX contract from the Stacks API ` +
+          `(${error instanceof Error ? error.message : String(error)}). No transaction was sent.`
+      );
+    }
+    if (active !== this.contracts.POX_4) {
+      throw new PoxVersionUnsupportedError(active || "(unknown)");
+    }
+  }
+
+  /**
    * Get stacking status for an address
    * Note: Returns whether the address is stacking, but detailed amounts require proper CV parsing
    */
   async getStackingStatus(address: string): Promise<StackingStatus> {
+    let active: string | undefined;
+    try {
+      active = (await this.hiro.getPoxInfo()).contract_id;
+    } catch {
+      // Unknown: fall back to the pox-4 read below.
+    }
+    if (active && active !== this.contracts.POX_4) {
+      return this.getPox5StakingStatus(address, active);
+    }
+
     try {
       const result = await this.hiro.callReadOnlyFunction(
         this.contracts.POX_4,
@@ -76,6 +141,42 @@ export class StackingService {
     };
   }
 
+  /**
+   * Status under pox-5, read from `get-staker-info`:
+   * (optional { amount-ustx, first-reward-cycle, num-cycles, signer }).
+   * Anything unexpected throws rather than reporting "not stacking".
+   */
+  private async getPox5StakingStatus(address: string, poxContract: string): Promise<StackingStatus> {
+    const result = await this.hiro.callReadOnlyFunction(
+      poxContract,
+      "get-staker-info",
+      [principalCV(address)],
+      address
+    );
+    if (!result.okay || !result.result) {
+      throw new Error(`${poxContract} get-staker-info failed: ${result.cause ?? "no result"}`);
+    }
+    const info = cvToValue(hexToCV(result.result)) as
+      | { value?: Record<string, { value: string } | undefined> }
+      | null;
+    const tuple = info?.value;
+    const base = { activePoxContract: poxContract, unlockHeight: 0 };
+    if (!tuple) {
+      return { ...base, stacked: false, amountMicroStx: "0", amountStx: "0", firstRewardCycle: 0, lockPeriod: 0 };
+    }
+    const amount = BigInt(tuple["amount-ustx"]?.value ?? "0");
+    return {
+      ...base,
+      stacked: true,
+      amountMicroStx: amount.toString(),
+      amountStx: formatUstx(amount),
+      firstRewardCycle: Number(tuple["first-reward-cycle"]?.value ?? 0),
+      lockPeriod: Number(tuple["num-cycles"]?.value ?? 0),
+      signer: tuple.signer?.value,
+      warning: "unlockHeight is not reported for pox-5 positions.",
+    };
+  }
+
 
   /**
    * Stack STX tokens
@@ -87,6 +188,7 @@ export class StackingService {
     startBurnHeight: number,
     lockPeriod: number
   ): Promise<TransferResult> {
+    await this.assertPox4Active();
     const { address: contractAddress, name: contractName } = parseContractId(this.contracts.POX_4);
 
     const functionArgs: ClarityValue[] = [
@@ -123,6 +225,7 @@ export class StackingService {
     extendCount: number,
     poxAddress: { version: number; hashbytes: string }
   ): Promise<TransferResult> {
+    await this.assertPox4Active();
     const { address: contractAddress, name: contractName } = parseContractId(this.contracts.POX_4);
 
     const functionArgs: ClarityValue[] = [
@@ -150,6 +253,7 @@ export class StackingService {
     account: Account,
     increaseAmount: bigint
   ): Promise<TransferResult> {
+    await this.assertPox4Active();
     const { address: contractAddress, name: contractName } = parseContractId(this.contracts.POX_4);
 
     const functionArgs: ClarityValue[] = [uintCV(increaseAmount)];
@@ -180,6 +284,7 @@ export class StackingService {
     untilBurnHeight?: number,
     poxAddress?: { version: number; hashbytes: string }
   ): Promise<TransferResult> {
+    await this.assertPox4Active();
     const { address: contractAddress, name: contractName } = parseContractId(this.contracts.POX_4);
 
     const functionArgs: ClarityValue[] = [
@@ -208,6 +313,7 @@ export class StackingService {
    * Revoke delegation
    */
   async revokeDelegation(account: Account): Promise<TransferResult> {
+    await this.assertPox4Active();
     const { address: contractAddress, name: contractName } = parseContractId(this.contracts.POX_4);
 
     // No assets moved from sender (revokes delegation permission)
@@ -225,6 +331,12 @@ export class StackingService {
 // ============================================================================
 // Helper Functions
 // ============================================================================
+
+function formatUstx(ustx: bigint): string {
+  const whole = ustx / 1_000_000n;
+  const frac = (ustx % 1_000_000n).toString().padStart(6, "0").replace(/0+$/, "");
+  return frac ? `${whole}.${frac}` : whole.toString();
+}
 
 let _stackingServiceInstance: StackingService | null = null;
 

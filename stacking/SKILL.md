@@ -14,6 +14,8 @@ metadata:
 
 # Stacking Skill
 
+> **pox-5 (Epoch 4.0) is active on mainnet.** pox-5 removed `stack-stx`, `stack-extend`, `stack-increase`, `delegate-stx` and `revoke-delegate-stx` in favour of signer-manager staking (`stake`, `stake-update`, `unstake`), which this skill does not implement yet. On any network whose active PoX contract is not pox-4, `stack-stx` and `extend-stacking` refuse with `PoxVersionUnsupportedError` before signing anything. `get-pox-info` reports `activePoxContract`, and `get-stacking-status` reads pox-5's `get-staker-info` (adding `activePoxContract`, `signer` and a `warning`; `lockPeriod` is pox-5's `num-cycles`).
+
 Provides Proof of Transfer (PoX) stacking operations on the Stacks blockchain. Stacking locks STX tokens for a specified number of reward cycles to earn Bitcoin rewards.
 
 - **get-pox-info** and **get-stacking-status** — Read-only, no wallet required.

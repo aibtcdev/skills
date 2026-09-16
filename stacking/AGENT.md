@@ -10,6 +10,8 @@ This agent handles Proof of Transfer (PoX) stacking operations on the Stacks blo
 
 ## Prerequisites
 
+- **Check `activePoxContract` from `get-pox-info` first.** If it is not `...pox-4` (mainnet runs pox-5 since Epoch 4.0), write operations are unsupported and refuse without sending a transaction; only the read operations are usable
+
 - Wallet unlocked via `bun run wallet/wallet.ts unlock` (for `stack-stx` and `extend-stacking` only)
 - Sufficient STX balance to meet the minimum stacking threshold (check with `get-pox-info`)
 - A Bitcoin reward address expressed as version byte + hashbytes hex (not base58check)
@@ -38,6 +40,8 @@ This agent handles Proof of Transfer (PoX) stacking operations on the Stacks blo
 
 | Error message | Cause | Fix |
 |--------------|-------|-----|
+| "Stacking writes are disabled: this network's active PoX contract is ...pox-5" | pox-5 replaced the pox-4 stacking functions this skill calls | Do not retry; stacking via this skill is unavailable until pox-5 staking support lands |
+| "Could not confirm the active PoX contract from the Stacks API" | `/v2/pox` unreachable; writes fail closed | Retry later |
 | "No active wallet found. Specify --wallet-id." | Wallet session expired or not unlocked | Run `bun run wallet/wallet.ts unlock` |
 | "--pox-address-version must be a non-negative integer" | Invalid version byte passed | Use 0, 1, 4, 5, or 6 matching your BTC address type |
 | "--start-burn-height must be a positive integer" | Non-integer or zero burn height | Pass a valid positive BTC block height |
