@@ -15,8 +15,9 @@
  *
  * Check → sign → record runs under a cross-process lock (mkdir-based) so two
  * concurrent direct clients cannot both see "no prior payment" and sign
- * twice. The lock is never reclaimed automatically: a lease with no heartbeat
- * refuses the payment and names the holder. Files are written 0600 via
+ * twice. A lease with no heartbeat is reclaimed only when its holder is
+ * provably gone (see `reclaimDeadLock`); otherwise the payment is refused and
+ * the holder named. Files are written 0600 via
  * temp+rename under a 0700 directory. Keys are SHA-256 digests and values are
  * txids/amounts: no request content reaches disk. A state file that exists
  * but cannot be trusted (unparseable, wrong shape, malformed entries) refuses
@@ -24,7 +25,7 @@
  */
 
 import fs from "node:fs/promises";
-import { mkdirSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmdirSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { createHash, randomBytes } from "node:crypto";
 import { getStorageDir } from "../utils/storage.js";
@@ -129,9 +130,20 @@ function tryLock(dir: string, token: string): boolean {
   try {
     mkdirSync(path.dirname(dir), { recursive: true, mode: 0o700 });
     mkdirSync(dir);
+  } catch {
+    return false;
+  }
+  try {
     writeFileSync(path.join(dir, "owner"), `${process.pid} ${token}`, { mode: 0o600 });
     return true;
   } catch {
+    // We created the directory but could not claim it: remove it rather than
+    // leave an ownerless lock that nobody can prove is dead.
+    try {
+      rmSync(dir, { recursive: true, force: true });
+    } catch {
+      // nothing more we can do; the stale-lock path reports it
+    }
     return false;
   }
 }
@@ -175,6 +187,76 @@ function unlock(dir: string, token: string): void {
   }
 }
 
+/** "<pid> <token>" from the lock's owner file, or null if it cannot be read. */
+function readOwner(dir: string): { raw: string; pid: number; token: string } | null {
+  try {
+    const raw = readFileSync(path.join(dir, "owner"), "utf8");
+    const match = /^(\d+) (\S+)$/.exec(raw);
+    return match ? { raw, pid: Number(match[1]), token: match[2] } : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * True only when the holder is provably not running on this host: the pid
+ * does not exist (ESRCH), or it is our own pid with a token this process never
+ * issued — a previous incarnation, e.g. a restarted container that reuses
+ * pid 1. EPERM (someone else's live process) and pid reuse by an unrelated
+ * process both read as alive, which errs toward refusing.
+ */
+function holderIsDead(owner: { pid: number; token: string }): boolean {
+  if (owner.pid === process.pid) {
+    return ![...heldLocks.values()].includes(owner.token);
+  }
+  try {
+    process.kill(owner.pid, 0);
+    return false;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === "ESRCH";
+  }
+}
+
+/**
+ * Remove a stale lock whose holder is gone, so a crashed payment (SIGKILL,
+ * OOM, reboot) does not block every later direct payment until a human steps
+ * in. Safe because:
+ *
+ * - removal of someone else's lock is serialized by a second mkdir lock
+ *   (`<lock>.reclaim`), and the owner + staleness are re-read while holding it;
+ * - the only other way a lock directory disappears is its own holder
+ *   releasing it, and a dead holder cannot do that — so the lock inspected
+ *   under the reclaim lock is the lock removed;
+ * - a live holder heartbeats every LOCK_HEARTBEAT_MS, so it is never stale.
+ *
+ * An ownerless lock (created, then the process died before claiming it) is
+ * reclaimable once stale, since a live creator writes the owner immediately.
+ * Returns true if the lock was removed.
+ */
+function reclaimDeadLock(dir: string): boolean {
+  const reclaimDir = `${dir}.reclaim`;
+  try {
+    mkdirSync(reclaimDir);
+  } catch {
+    return false; // another process is reclaiming; keep waiting
+  }
+  try {
+    if (!lockIsStale(dir)) return false;
+    const owner = readOwner(dir);
+    if (owner && !holderIsDead(owner)) return false;
+    rmSync(dir, { recursive: true, force: true });
+    return true;
+  } catch {
+    return false;
+  } finally {
+    try {
+      rmdirSync(reclaimDir);
+    } catch {
+      // already gone
+    }
+  }
+}
+
 function describeHolder(dir: string): string {
   try {
     const [pid] = readFileSync(path.join(dir, "owner"), "utf8").split(" ");
@@ -191,23 +273,31 @@ function describeHolder(dir: string): string {
 }
 
 /**
- * Wait for the lock. This code never deletes a lock it did not create: a
- * lease with no heartbeat is reported, with the owner pid and the path, and
- * the payment is refused. Reclaiming automatically would need an atomic
- * "delete only if unchanged since I looked" that the filesystem does not
- * offer, and a wrong guess there signs a second transfer — so the stale case
- * is left to the operator, who can see whether the holder is really dead.
+ * Wait for the lock. A lease with no heartbeat is reclaimed only when its
+ * holder is provably dead (`reclaimDeadLock`); a stale lease whose holder may
+ * still be alive is reported, with the owner pid and the path, and the
+ * payment is refused.
  */
 async function acquire(dir: string, token: string): Promise<void> {
   const deadline = Date.now() + lockMaxWaitMs;
   while (true) {
     if (tryLock(dir, token)) return;
     if (lockIsStale(dir)) {
-      throw new Error(
-        `Direct x402 payment refused: the guard lock at ${dir} has had no heartbeat for over ` +
-          `${LOCK_STALE_MS / 1000}s (${describeHolder(dir)}). If that process is dead, remove the ` +
-          `directory and retry; do not remove it while a payment may still be in progress.`
-      );
+      if (reclaimDeadLock(dir)) continue;
+      if (lockIsStale(`${dir}.reclaim`)) {
+        throw new Error(
+          `Direct x402 payment refused: a lock reclaim at ${dir}.reclaim was interrupted over ` +
+            `${LOCK_STALE_MS / 1000}s ago. Remove that directory (not the lock itself) and retry.`
+        );
+      }
+      if (lockIsStale(dir) && !reclaimInProgress(dir)) {
+        throw new Error(
+          `Direct x402 payment refused: the guard lock at ${dir} has had no heartbeat for over ` +
+            `${LOCK_STALE_MS / 1000}s (${describeHolder(dir)}) and its holder may still be running. ` +
+            `If that process is dead, remove the directory and retry; do not remove it while a ` +
+            `payment may still be in progress.`
+        );
+      }
     }
     if (Date.now() >= deadline) {
       throw new Error(
@@ -216,6 +306,15 @@ async function acquire(dir: string, token: string): Promise<void> {
       );
     }
     await new Promise((r) => setTimeout(r, LOCK_RETRY_MS));
+  }
+}
+
+function reclaimInProgress(dir: string): boolean {
+  try {
+    statSync(`${dir}.reclaim`);
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -230,10 +329,12 @@ function installExitHooks(): void {
     heldLocks.clear();
   };
   process.once("exit", release);
-  for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
+  // Conventional 128 + signal number, so callers can still tell how we died.
+  const exitCodes = { SIGHUP: 129, SIGINT: 130, SIGTERM: 143 } as const;
+  for (const [signal, code] of Object.entries(exitCodes)) {
     process.once(signal, () => {
       release();
-      process.exit(130);
+      process.exit(code);
     });
   }
 }
@@ -422,6 +523,24 @@ export async function recordDedup(key: string, txid: string, policy: DirectPayme
   await writeStateFile(policy.dedupStateFile, state);
 }
 
+/**
+ * Forget the record for `key` if it still names `txid`. Called once the paid
+ * request is known to have been delivered (the server answered 2xx) or known
+ * never to have been sent: in both cases the outcome is no longer ambiguous,
+ * so an identical request after that is a new purchase, not a retry. Holds
+ * the guard lock for the read-modify-write.
+ */
+export async function clearDedup(key: string, txid: string, policy: DirectPaymentPolicy): Promise<void> {
+  await withDirectPaymentLock(policy, async () => {
+    const state = await readStateFile(policy.dedupStateFile);
+    if (!(key in state)) return;
+    const entry = parseDedupEntry(policy.dedupStateFile, key, state[key]);
+    if (entry.txid !== txid) return; // a later payment owns this key now
+    delete state[key];
+    await writeStateFile(policy.dedupStateFile, state);
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Daily spend ledger: { [wallet]: { [UTC day]: { ustx: number, sats: number } } }
 // — byte-compatible with the MCP server's ~/.aibtc/spend-state.json.
@@ -501,20 +620,54 @@ export async function checkSpend(
   }
 }
 
-/** Record spends against today's ledger for `address` (MCP-compatible shape). Keeps the last 8 days per wallet. */
+/**
+ * Record spends against today's ledger for `address` (MCP-compatible shape).
+ * Keeps the last 8 days per wallet. Returns the UTC day booked, so a spend
+ * that turns out never to have left the process can be released from the
+ * same day even across midnight.
+ */
 export async function recordSpend(
   address: string,
   spends: Array<{ unit: SpendUnit; amount: bigint }>,
   policy: DirectPaymentPolicy
+): Promise<string> {
+  const day = utcDay();
+  if (!policy.spend.enabled) return day;
+  await adjustSpend(address, spends, day, 1n, policy);
+  return day;
+}
+
+/**
+ * Undo `recordSpend` for a payment that was signed but provably never sent
+ * (the paid request could not reach the server). Floors at zero. Holds the
+ * guard lock for the read-modify-write.
+ */
+export async function releaseSpend(
+  address: string,
+  spends: Array<{ unit: SpendUnit; amount: bigint }>,
+  day: string,
+  policy: DirectPaymentPolicy
 ): Promise<void> {
   if (!policy.spend.enabled) return;
+  await withDirectPaymentLock(policy, () => adjustSpend(address, spends, day, -1n, policy));
+}
+
+async function adjustSpend(
+  address: string,
+  spends: Array<{ unit: SpendUnit; amount: bigint }>,
+  day: string,
+  sign: 1n | -1n,
+  policy: DirectPaymentPolicy
+): Promise<void> {
   const state = await readStateFile(policy.spendStateFile);
-  const day = utcDay();
-  const today = readDay(policy.spendStateFile, state, address, day);
-  for (const s of spends) today[s.unit] += s.amount;
+  const totals = readDay(policy.spendStateFile, state, address, day);
+  for (const s of spends) {
+    const next = totals[s.unit] + sign * s.amount;
+    totals[s.unit] = next > 0n ? next : 0n;
+  }
   const wallet = (isPlainObject(state[address]) ? state[address] : {}) as Record<string, unknown>;
   // Numbers, not strings: the MCP server reads this file with `?? 0` arithmetic.
-  wallet[day] = { ustx: Number(today.ustx), sats: Number(today.sats) };
+  wallet[day] = { ustx: Number(totals.ustx), sats: Number(totals.sats) };
   for (const key of Object.keys(wallet).sort().slice(0, -8)) delete wallet[key];
   state[address] = wallet;
   await writeStateFile(policy.spendStateFile, state);

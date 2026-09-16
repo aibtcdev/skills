@@ -21,10 +21,12 @@ import { createFungiblePostCondition } from "../transactions/post-conditions.js"
 import {
   checkDedup,
   checkSpend,
+  clearDedup,
   DuplicatePaymentError,
-  generateDedupKey,
+  generateDedupKey as generatePaymentRequestKey,
   recordDedup,
   recordSpend,
+  releaseSpend,
   resolveDirectPaymentPolicy,
   SpendLimitError,
   withDirectPaymentLock,
@@ -51,12 +53,27 @@ import { getWalletManager } from "./wallet-manager.js";
 import { formatStx, formatSbtc } from "../utils/formatting.js";
 import { getSbtcService } from "./sbtc.service.js";
 import { getHiroApi } from "./hiro-api.js";
+import { createHash } from "node:crypto";
 import { InsufficientBalanceError } from "../utils/errors.js";
 import { getContracts, parseContractId } from "../config/contracts.js";
 import { emitPaymentDiagnostic } from "../utils/x402-diagnostics.js";
 
 // Track payment attempts per client instance (auto-cleanup via WeakMap)
 const paymentAttempts: WeakMap<AxiosInstance, number> = new WeakMap();
+
+// Legacy in-memory dedup cache behind the deprecated exports at the bottom of
+// this file. Direct mode uses the persisted guard in ./x402-guards.ts instead.
+const dedupCache: Map<string, { txid: string; timestamp: number }> = new Map();
+
+// Cleanup expired dedup entries every 5 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, value] of dedupCache) {
+    if (now - value.timestamp > 60000) {
+      dedupCache.delete(key);
+    }
+  }
+}, 300000).unref();
 
 // ============================================================================
 // Payment mode (X402_PAYMENT_MODE)
@@ -113,6 +130,8 @@ export type DirectPaymentAsset =
 export function resolveDirectPaymentAsset(asset: string, network: Network): DirectPaymentAsset {
   // No normalization: the challenge terms go into the payment header verbatim,
   // so anything that needs trimming to match is refused rather than reshaped.
+  // The native token symbol alone is matched case-insensitively, as
+  // detectTokenType does for the sponsored path.
   const raw = typeof asset === "string" ? asset : "";
   if (/^stx$/i.test(raw)) {
     return { kind: "STX" };
@@ -198,6 +217,35 @@ export interface DirectPaymentBuild {
   nonce: bigint;
   asset: DirectPaymentAsset;
   amount: bigint;
+  /** What was booked on the daily ledger, and on which UTC day, so it can be released. */
+  spends: Array<{ unit: SpendUnit; amount: bigint }>;
+  spendDay: string;
+}
+
+/**
+ * Failures that happen before a single request byte reaches the server: the
+ * name did not resolve, the connection was refused, or TLS verification
+ * failed (headers, including the payment, are only sent after the handshake).
+ * Anything else — a reset, a timeout, an HTTP status — may have reached the
+ * server and stays ambiguous.
+ */
+const NOT_SENT_ERROR_CODES: ReadonlySet<string> = new Set([
+  "ENOTFOUND",
+  "EAI_AGAIN",
+  "ECONNREFUSED",
+  "ERR_INVALID_URL",
+  "CERT_HAS_EXPIRED",
+  "DEPTH_ZERO_SELF_SIGNED_CERT",
+  "SELF_SIGNED_CERT_IN_CHAIN",
+  "UNABLE_TO_VERIFY_LEAF_SIGNATURE",
+  "ERR_TLS_CERT_ALTNAME_INVALID",
+]);
+
+export function requestWasNeverSent(error: unknown): boolean {
+  const e = error as { response?: unknown; code?: unknown; cause?: { code?: unknown } } | null;
+  if (!e || e.response) return false;
+  const code = typeof e.code === "string" ? e.code : typeof e.cause?.code === "string" ? e.cause.code : "";
+  return NOT_SENT_ERROR_CODES.has(code);
 }
 
 /**
@@ -352,9 +400,9 @@ export async function buildDirectPaymentTransaction(
   // paid request must still leave a trace, because the server may broadcast.
   const txid = transaction.txid();
   if (requestKey) await recordDedup(requestKey, txid, policy);
-  await recordSpend(account.address, spends, policy);
+  const spendDay = await recordSpend(account.address, spends, policy);
 
-  return { transaction, txid, fee, nonce, asset, amount };
+  return { transaction, txid, fee, nonce, asset, amount, spends, spendDay };
   });
 }
 
@@ -1045,6 +1093,7 @@ export async function createApiClient(baseUrl?: string, diagnosticTool = "x402.a
 
         let transaction: StacksTransactionWire;
         let directBuild: DirectPaymentBuild | null = null;
+        let directRequestKey: string | null = null;
         if (paymentMode === "direct") {
           // The generic mismatch guard above lets an unparseable chain id through
           // (null !== network is skipped). Direct mode signs a real chain-bound
@@ -1061,7 +1110,7 @@ export async function createApiClient(baseUrl?: string, diagnosticTool = "x402.a
           // the duplicate/spend rails all live in the builder and fail closed.
           const requestConfig = error.config ?? {};
           const rawHeaders = requestConfig.headers as { toJSON?: () => Record<string, unknown> } | Record<string, unknown> | undefined;
-          const requestKey = generateDedupKey({
+          const requestKey = generatePaymentRequestKey({
             method: String(requestConfig.method ?? "get"),
             url: new URL(String(requestConfig.url ?? ""), requestConfig.baseURL ?? url).toString(),
             params: requestConfig.params,
@@ -1081,6 +1130,7 @@ export async function createApiClient(baseUrl?: string, diagnosticTool = "x402.a
             directPolicy as DirectPaymentPolicy,
             requestKey
           );
+          directRequestKey = requestKey;
           transaction = directBuild.transaction;
         } else {
         // Build a sponsored signed transaction (relay pays gas; fee: 0n)
@@ -1163,10 +1213,33 @@ export async function createApiClient(baseUrl?: string, diagnosticTool = "x402.a
         try {
           paidResponse = await axiosInstance.request(originalRequest);
         } catch (requestError) {
+          const detail = describeHttpFailure(requestError);
+          if (directBuild && directRequestKey && requestWasNeverSent(requestError)) {
+            // The server was never reached, so the signed transfer never left
+            // the process and cannot be broadcast. Undo the guard records so a
+            // retry is not refused and today's budget is not consumed.
+            const build = directBuild;
+            const policy = directPolicy as DirectPaymentPolicy;
+            let released = true;
+            try {
+              await clearDedup(directRequestKey, build.txid, policy);
+              await releaseSpend(account.address, build.spends, build.spendDay, policy);
+            } catch {
+              released = false;
+            }
+            return Promise.reject(
+              new Error(
+                `x402 payment failed: the paid request never reached the server (${detail}). ` +
+                  `Nothing was sent or paid; the signed transfer ${build.txid} was discarded.` +
+                  (released
+                    ? ""
+                    : ` The duplicate guard / spend ledger could not be updated, so an immediate retry may be refused.`)
+              )
+            );
+          }
           // The signed transfer has left the process. Whether the server broadcast
           // it is unknown from here, so say so and hand back the txid instead of
           // hiding the server's answer (skills #417).
-          const detail = describeHttpFailure(requestError);
           // Sponsored keeps its historical "x402 payment failed: …" prefix; only
           // the detail after it changes (server status + body instead of the bare
           // axios message). Direct gets an explicit ambiguity message + txid.
@@ -1190,6 +1263,18 @@ export async function createApiClient(baseUrl?: string, diagnosticTool = "x402.a
           meta.x402Txid = directBuild.txid;
           meta.x402SettlementState = "submitted";
         }
+        // A 2xx means the server received the payment and delivered: the
+        // outcome is no longer ambiguous, so an identical request from here on
+        // is a new purchase, not a retry. Keep the record only when the
+        // canonical status says the payment failed (below).
+        const settleDedup = async () => {
+          if (!directBuild || !directRequestKey) return;
+          try {
+            await clearDedup(directRequestKey, directBuild.txid, directPolicy as DirectPaymentPolicy);
+          } catch {
+            // Leaving the record only makes the guard stricter for its TTL.
+          }
+        };
         const paymentStatusBaseUrl = resolvePaymentStatusBaseUrl(
           originalRequest,
           paymentRequired.resource?.url ?? url
@@ -1224,6 +1309,7 @@ export async function createApiClient(baseUrl?: string, diagnosticTool = "x402.a
                   ? "submitted"
                   : "failed";
           }
+          await settleDedup();
           return paidResponse;
         }
 
@@ -1248,6 +1334,7 @@ export async function createApiClient(baseUrl?: string, diagnosticTool = "x402.a
         );
 
         if (outcome.action === "success" || outcome.action === "poll") {
+          await settleDedup();
           return paidResponse;
         }
 
@@ -1499,20 +1586,44 @@ export async function probeEndpoint(options: {
 }
 
 /**
- * Request deduplication lives in ./x402-guards.ts (persisted, TTL-bound) and
- * is wired into direct mode. These wrappers keep the previous exports alive.
+ * Generate a stable deduplication key for a request
+ * @deprecated In-memory and unused by the payment flow. Direct-mode payments
+ * use the persisted guard in ./x402-guards.ts (`generateDedupKey` there).
  */
-export { generateDedupKey };
-
-/** @returns the prior txid if an identical request was paid within the TTL, else null */
-export async function checkDedupCache(key: string, policy = resolveDirectPaymentPolicy()): Promise<string | null> {
-  const prior = await checkDedup(key, policy);
-  return prior?.txid ?? null;
+export function generateDedupKey(
+  method: string,
+  url: string,
+  params?: Record<string, string>,
+  data?: Record<string, unknown>
+): string {
+  const payload = JSON.stringify({ method, url, params, data });
+  return createHash('sha256').update(payload).digest('hex');
 }
 
-/** Record a signed payment for a request key. */
-export async function recordTransaction(key: string, txid: string, policy = resolveDirectPaymentPolicy()): Promise<void> {
-  await recordDedup(key, txid, policy);
+/**
+ * Check if a request was recently processed (within 60s)
+ * @returns txid if duplicate found, null otherwise
+ * @deprecated See `generateDedupKey`.
+ */
+export function checkDedupCache(key: string): string | null {
+  const cached = dedupCache.get(key);
+  if (!cached) {
+    return null;
+  }
+  const now = Date.now();
+  if (now - cached.timestamp > 60000) {
+    dedupCache.delete(key);
+    return null;
+  }
+  return cached.txid;
+}
+
+/**
+ * Record a transaction in the dedup cache
+ * @deprecated See `generateDedupKey`.
+ */
+export function recordTransaction(key: string, txid: string): void {
+  dedupCache.set(key, { txid, timestamp: Date.now() });
 }
 
 /**
