@@ -82,10 +82,13 @@ a suffix, e.g. `zest-protocol-3672`, so you never have to know it). An
 unknown or ambiguous project fails before any payment and lists the panel.
 `latest` is null when the project's newest score is older than the index's
 7-day recency floor — an old number is never presented as current.
-A panel project whose free-index `score` is null (no scored days yet) is
-served as a normal paid 200 with `series: []` and `latest.score: null` — the
-query is charged. The skill refuses that call before payment; pass
-`--allow-unscored` to pay anyway.
+A panel project whose free-index `score` is null (no scored days yet) cannot
+be charged: since 2026-09-16 the index answers such a slug with a free
+`422 {"detail":{"error":"project_not_scored","slug":"…","days":90}}` before
+issuing any 402 (Vibewatch-io/vibewatch-app#1745; before that it served a
+paid 200 with `series: []`). The skill still refuses the call locally after
+the free slug lookup, which is faster; `--allow-unscored` only skips that
+local check and surfaces the index's own refusal — nothing is paid either way.
 
 ### `evidence` (paid)
 
@@ -148,7 +151,7 @@ that never costs a second payment.)
 
 ## Networks
 
-`--network mainnet` (default) pays real sBTC on the live index; set `NETWORK=mainnet` too, since the wallet follows `NETWORK` (default testnet) and the payment engine refuses a network mismatch before signing. Payments are sponsored unless `X402_PAYMENT_MODE=direct` is set (see the `x402` skill), in which case the wallet also pays the STX fee. `--network testnet`
+`--network mainnet` (default) pays real sBTC on the live index; set `NETWORK=mainnet` too, since the wallet follows `NETWORK` (default testnet) and the payment engine refuses a network mismatch before signing. Payments are sponsored unless `X402_PAYMENT_MODE=direct` is set (see the `x402` skill), in which case the wallet also pays the STX fee. The live index accepts sponsored transfers again as of 2026-09-16 (Vibewatch-io/vibewatch-mcp#15), so a wallet holding only sBTC can pay in the default mode; `direct` remains the fallback if a 402 challenge is followed by `422 sponsored_unsupported`. `--network testnet`
 targets the staging index, which advertises the canonical testnet sBTC
 (`SN3VMHXEN64ZZF71JQ5VESXDWTR301XTTXGF4J8F1.sbtc-token`); the shared engine
 currently pins a different testnet sBTC id (aibtcdev/skills#419), so paid
