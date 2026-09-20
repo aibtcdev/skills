@@ -770,6 +770,10 @@ program
     "--confirm-high-impact",
     "Set to execute swaps with price impact above 5%"
   )
+  .option(
+    "--allow-unprotected-hodlmm-swap",
+    "DANGEROUS: permit direct dlmm-core HODLMM swaps, which carry NO minimum-output bound (audit F-1). Supervised, small-size use only."
+  )
   .action(
     async (opts: {
       tokenX: string;
@@ -779,6 +783,7 @@ program
       fee?: string;
       walletPassword?: string;
       confirmHighImpact?: boolean;
+      allowUnprotectedHodlmmSwap?: boolean;
     }) => {
       try {
         if (NETWORK !== "mainnet") {
@@ -793,7 +798,8 @@ program
         const quote = await bitflowService.getSwapQuote(
           opts.tokenX,
           opts.tokenY,
-          Number(opts.amountIn)
+          Number(opts.amountIn),
+          slippage
         );
         const impact = quote.priceImpact;
         if (
@@ -819,7 +825,8 @@ program
           opts.tokenY,
           Number(opts.amountIn),
           slippage,
-          resolvedFee
+          resolvedFee,
+          Boolean(opts.allowUnprotectedHodlmmSwap)
         );
 
         printJson({
