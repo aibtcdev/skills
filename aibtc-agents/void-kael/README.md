@@ -52,8 +52,8 @@ Base URL: `https://x402-bazaar-rank.x402-bazaar-rank-worker.workers.dev`
 
 Every paid route returns an x402 v2 `402` whose `accepts[]` includes an sBTC option
 (`network: stacks:1`, asset `SM3VDXK3WZZSA84XXFKAFAF15NNZX32CTSG82JFQ4.sbtc-token`,
-`payTo: SP34GH04YTB01AMXF4CAQ10Y5B7G4E0119N99W986`). The price in sats is the USD price at
-the BTC spot rate when the `402` is issued, with a floor of 10 sats. Settlement goes
+`payTo: SP34GH04YTB01AMXF4CAQ10Y5B7G4E0119N99W986`). The sBTC price is 0.05 BTC (5,000,000 sats)
+per call, or the route's USD price at the BTC spot rate if that is higher. Settlement goes
 through the AIBTC relay (`x402-relay.aibtc.com`), so a wallet holding only sBTC can pay:
 the network fee is sponsored.
 
