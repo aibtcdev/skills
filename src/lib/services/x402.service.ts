@@ -305,6 +305,40 @@ export function requestWasNeverSent(error: unknown): boolean {
 }
 
 /**
+ * Sponsored payments: refuse before signing when the wallet cannot cover the
+ * price in the chosen asset. The relay pays gas, so no STX is needed for an
+ * sBTC price. Without this check an unfunded wallet signs a transfer that only
+ * fails at settlement. Unlike direct mode this fails open: if the Stacks API
+ * cannot be read, the payment proceeds and settlement stays the backstop.
+ */
+export async function checkSponsoredPaymentBalance(
+  account: Account,
+  tokenType: "STX" | "sBTC",
+  amount: bigint
+): Promise<void> {
+  let balance: bigint;
+  try {
+    const balances = await getHiroApi(account.network).getAccountBalances(account.address);
+    const key = `${getContracts(account.network).SBTC_TOKEN}::sbtc-token`;
+    const raw = tokenType === "sBTC" ? balances.fungible_tokens?.[key]?.balance : balances.stx?.balance;
+    balance = BigInt(raw ?? "0");
+  } catch {
+    return;
+  }
+  if (balance >= amount) return;
+  const shortfall = amount - balance;
+  const format = tokenType === "sBTC" ? formatSbtc : formatStx;
+  throw new InsufficientBalanceError(
+    `Insufficient ${tokenType} for a sponsored x402 payment: need ${format(amount.toString())}, ` +
+      `have ${format(balance.toString())} (shortfall: ${format(shortfall.toString())}). Nothing was signed.`,
+    tokenType,
+    balance.toString(),
+    amount.toString(),
+    shortfall.toString()
+  );
+}
+
+/**
  * Build (sign, do not broadcast) a standard fee-paying transfer for a 402
  * challenge. Validates asset and amount, checks balances, fetches a
  * mempool-aware nonce, and pins the exact sBTC amount with a deny-mode
@@ -1210,6 +1244,7 @@ export async function createApiClient(
         const tokenType = detectTokenType(selectedOption.asset);
         const amount = BigInt(selectedOption.amount);
         const networkName = getStacksNetwork(account.network);
+        await checkSponsoredPaymentBalance(account, tokenType, amount);
 
         if (tokenType === "sBTC") {
           const contracts = getContracts(account.network);
