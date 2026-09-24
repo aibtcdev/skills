@@ -316,15 +316,15 @@ export async function checkSponsoredPaymentBalance(
   tokenType: "STX" | "sBTC",
   amount: bigint
 ): Promise<void> {
-  let balances;
+  let balance: bigint;
   try {
-    balances = await getHiroApi(account.network).getAccountBalances(account.address);
+    const balances = await getHiroApi(account.network).getAccountBalances(account.address);
+    const key = `${getContracts(account.network).SBTC_TOKEN}::sbtc-token`;
+    const raw = tokenType === "sBTC" ? balances.fungible_tokens?.[key]?.balance : balances.stx?.balance;
+    balance = BigInt(raw ?? "0");
   } catch {
     return;
   }
-  const key = `${getContracts(account.network).SBTC_TOKEN}::sbtc-token`;
-  const raw = tokenType === "sBTC" ? balances.fungible_tokens?.[key]?.balance : balances.stx?.balance;
-  const balance = BigInt(raw ?? "0");
   if (balance >= amount) return;
   const shortfall = amount - balance;
   const format = tokenType === "sBTC" ? formatSbtc : formatStx;
