@@ -68,6 +68,11 @@ signing, if the challenge does not offer the asset you asked for.
   so a paid run takes as long as one Stacks confirmation. Agents paying in
   September 2026 saw the paid payload arrive under 60 s after broadcast;
   budget a minute per paid call and do not re-run while a call is in flight.
+- Daily cap in direct mode: the engine's per-wallet daily spend ledger
+  defaults to 10 STX (`SPEND_LIMIT_DAILY_USTX`) and 50,000 sats
+  (`SPEND_LIMIT_DAILY_SATS`). At the current prices that is about 30 STX
+  queries a day against about 500 sBTC queries; raise the STX cap if an
+  agent pays with `--asset STX` in a polling loop.
 
 ## Error handling
 
@@ -86,7 +91,7 @@ signing, if the challenge does not offer the asset you asked for.
 | 409 `delivery_in_flight` | The paid response is being written for this payment | Wait `Retry-After`, run again — the same signed payment is served, not charged twice |
 | 429 `challenge_rate_limited` / `settlement_rate_limited` | Per-sender rate limit | Wait `Retry-After` |
 | 502 `facilitator_unavailable`, 503 `settlement_busy` / `too_many_pending_claims` | Settlement infrastructure hiccup; a payment may be pending | Wait `Retry-After`, run again; the server's durable ledger recovers a pending payment without double-charging |
-| `Insufficient sBTC balance` (before signing) | Wallet cannot cover the advertised sBTC price | Fund the wallet, pay with `--asset STX` if it holds STX, or stay on the free tier |
+| `Insufficient sBTC …` / `Insufficient STX …` (direct mode, before signing) | Wallet cannot cover the advertised price in the chosen asset, or the STX fee | Fund the wallet, switch `--asset` to one the wallet holds, or stay on the free tier. Sponsored mode has no local balance check: an unfunded payment fails at settlement instead (e.g. 402 `settlement_rejected`) |
 | `The endpoint does not accept <asset> on Stacks` (before signing) | The 402 did not list the `--asset` you asked for | Use one of the assets named in the error (read `terms`) |
 | Top-level `txid: null` + `txidNote` (only when calling the raw endpoint through `execute_x402_endpoint` instead of this skill) | The MCP wrapper looks for `txid` / `payment_txid` at the top level of the body; the index reports the settlement in `payment.txid` and in the standard `payment-response` header | Not a failed payment. Read `payment.txid` (or `payment_receipt.transaction` from this skill) — that is the receipt to verify on Hiro |
 | `suppressed` entries in any payload | Data withheld by the index's k-anonymity floor | Report "withheld", never "zero" |

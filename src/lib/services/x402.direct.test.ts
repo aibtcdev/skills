@@ -234,6 +234,8 @@ describe("selectStacksPaymentOption", () => {
     // sBTC matches by contract id, STX only literally: an unrelated token is neither.
     expect(selectStacksPaymentOption([{ ...stx, asset: "SP1.other-token" }], "STX")).toBeNull();
     expect(selectStacksPaymentOption([{ ...stx, asset: "stx" }], "STX")?.asset).toBe("stx");
+    // Padding is refused, as the direct builder refuses it: no select-then-reject.
+    expect(selectStacksPaymentOption([{ ...stx, asset: " STX" }], "STX")).toBeNull();
   });
 
   test("a preference the challenge does not offer selects nothing", () => {

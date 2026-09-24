@@ -150,8 +150,8 @@ one payment.
 **Choosing the asset.** The index's 402 challenge advertises two Stacks
 options, in this order: `100` sats of sBTC (`SM3VDXK3WZZSA84XXFKAFAF15NNZX32CTSG82JFQ4.sbtc-token`)
 and `300000` µSTX (0.3 STX) — check `terms` for the current list. The shared
-engine's default rule is *first Stacks option*, so a paid subcommand pays
-sBTC unless told otherwise. `--asset STX` (on `project`, `evidence`, `delta`)
+engine's default rule is *first Stacks option*; this skill does not rely on
+that order and always asks for sBTC unless told otherwise. `--asset STX` (on `project`, `evidence`, `delta`)
 makes the engine select the STX option instead — a wallet holding STX but no
 sBTC can pay the index without ever touching sBTC. `--asset sBTC` is the
 default and can be passed explicitly. If the challenge does not offer the
@@ -159,7 +159,9 @@ asset you asked for, the run fails before anything is signed and names the
 assets that were offered. The `payment.asset` and `payment.amount` fields in
 the paid response confirm which option settled. Any other client should do
 the same explicitly: select the `accepts[]` entry by `asset`, not by
-position (Vibewatch-io/vibewatch-mcp#16). Running the same command again is a new query and a new
+position (Vibewatch-io/vibewatch-mcp#16).
+
+Running the same command again is a new query and a new
 payment — there is no free re-read window across runs. (The server does hold
 a 10-minute idempotency window keyed on the *signed payment itself*, which the
 engine uses internally if the retry that carries a payment has to be resent;

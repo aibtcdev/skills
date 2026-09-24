@@ -156,7 +156,7 @@ export function selectStacksPaymentOption(
   const matches = (opt: PaymentRequirementsV2) => {
     if (typeof opt.asset !== "string") return false;
     return preferredAsset === "STX"
-      ? opt.asset.trim().toUpperCase() === "STX"
+      ? /^stx$/i.test(opt.asset)
       : detectTokenType(opt.asset) === "sBTC";
   };
   return stacksOptions.find(matches) ?? null;
