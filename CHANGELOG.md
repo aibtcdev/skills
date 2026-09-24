@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.44.0](https://github.com/aibtcdev/skills/compare/skills-v0.43.1...skills-v0.44.0) (2026-09-24)
+
+
+### Features
+
+* **vibewatch-sentiment:** --asset sBTC|STX picks the 402 option to pay ([#431](https://github.com/aibtcdev/skills/issues/431)) ([e4ddb86](https://github.com/aibtcdev/skills/commit/e4ddb863026d0ee0d1a559342f85a4d547915848))
+* **vibewatch-sentiment:** add vibewatch-sentiment skill ([#421](https://github.com/aibtcdev/skills/issues/421)) ([61a67fd](https://github.com/aibtcdev/skills/commit/61a67fd0ed0ea67e267aacff61aad1cc92abdb03))
+
+
+### Bug Fixes
+
+* **x402:** derive the payment-identifier from the signed transaction ([#427](https://github.com/aibtcdev/skills/issues/427)) ([d8f011f](https://github.com/aibtcdev/skills/commit/d8f011f529637b1d88d3bfa4a223f84aaa9b6f63))
+* **x402:** refuse sponsored payments the wallet cannot cover before signing ([#435](https://github.com/aibtcdev/skills/issues/435)) ([0639709](https://github.com/aibtcdev/skills/commit/063970975d5b5fbb1fe6821f318daa3aa2dfae22))
+
 ## [0.43.1](https://github.com/aibtcdev/skills/compare/skills-v0.43.0...skills-v0.43.1) (2026-09-16)
 
 
