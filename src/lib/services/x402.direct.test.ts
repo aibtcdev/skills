@@ -42,7 +42,7 @@ interface FakeOptions {
   /** Extra `accepts` entries appended after the first (each merged over the same defaults). */
   acceptsAfter?: Array<Partial<{ asset: string; amount: string; payTo: string; network: string; maxTimeoutSeconds: number }>>;
   fees?: { contract_call: number; token_transfer: number } | "error";
-  balances?: { stx: string; sbtc: string };
+  balances?: { stx: string; sbtc: string } | "error";
   nonce?: number;
   txStatus?: string;
   /** When set, the paid 2xx carries a canonical checkStatusUrl hint answered with this status. */
@@ -111,6 +111,7 @@ async function startFake(sender: string, opts: FakeOptions = {}): Promise<Fake> 
     }
     if (url.pathname === `/extended/v1/address/${sender}/balances`) {
       hiroHits.push(url.pathname);
+      if (balances === "error") return json(500, { error: "balances unavailable" });
       return json(200, {
         stx: { balance: balances.stx, total_sent: "0", total_received: balances.stx, locked: "0", lock_height: 0 },
         fungible_tokens: {
@@ -418,8 +419,40 @@ describe("createApiClient payment modes", () => {
       txStatus: undefined,
       settlementState: undefined,
     });
-    // The sponsored path never touches the Stacks API.
-    expect(f.hiroHits).toEqual([]);
+    // The sponsored path reads only the wallet balance from the Stacks API.
+    expect(f.hiroHits).toEqual([`/extended/v1/address/${sender}/balances`]);
+  });
+
+  test("sponsored mode refuses before signing when the wallet lacks the sBTC price", async () => {
+    const f = await up({ balances: { stx: "0", sbtc: "50" } });
+    const api = await createApiClient(f.origin, "test.sponsored-short-sbtc");
+    const err = await api.request({ method: "GET", url: "/paid" }).catch((e) => e);
+    expect(err).toBeInstanceOf(InsufficientBalanceError);
+    expect(err.message).toMatch(/Insufficient sBTC for a sponsored x402 payment/);
+    expect(f.paidRequests).toHaveLength(0);
+  });
+
+  test("sponsored mode needs no STX for an sBTC price", async () => {
+    const f = await up({ balances: { stx: "0", sbtc: "100" } });
+    const api = await createApiClient(f.origin, "test.sponsored-no-gas");
+    await api.request({ method: "GET", url: "/paid" });
+    expect(f.paidRequests).toHaveLength(1);
+  });
+
+  test("sponsored mode refuses before signing when the wallet lacks the STX price", async () => {
+    const f = await up({ accept: { asset: "STX", amount: "300000" }, balances: { stx: "299999", sbtc: "0" } });
+    const api = await createApiClient(f.origin, "test.sponsored-short-stx");
+    const err = await api.request({ method: "GET", url: "/paid" }).catch((e) => e);
+    expect(err).toBeInstanceOf(InsufficientBalanceError);
+    expect(err.message).toMatch(/Insufficient STX for a sponsored x402 payment/);
+    expect(f.paidRequests).toHaveLength(0);
+  });
+
+  test("sponsored mode still pays when the balance cannot be read (fails open)", async () => {
+    const f = await up({ balances: "error" });
+    const api = await createApiClient(f.origin, "test.sponsored-balance-down");
+    await api.request({ method: "GET", url: "/paid" });
+    expect(f.paidRequests).toHaveLength(1);
   });
 
   test("re-signing the same payment in a new client reuses its payment-identifier (skills #420)", async () => {
