@@ -125,9 +125,35 @@ function decodePaymentReceipt(header: unknown): Record<string, unknown> | undefi
   }
 }
 
+/**
+ * Turn a non-402 HTTP failure from the paid route into an error that carries
+ * the status and the index's own body. The shared engine only intercepts 402;
+ * anything else (e.g. the free 422 `project_not_scored` refusal) rejects as a
+ * bare axios error whose message is "Request failed with status code N".
+ */
+function describePaidFailure(error: unknown): Error | undefined {
+  if (typeof error !== "object" || error === null) return undefined;
+  const response = (error as { response?: { status?: unknown; data?: unknown } }).response;
+  if (typeof response?.status !== "number" || response.status === 402) return undefined;
+  let body: string;
+  try {
+    body = typeof response.data === "string" ? response.data : JSON.stringify(response.data);
+  } catch {
+    body = String(response.data);
+  }
+  if (body === undefined || body === "undefined") body = "";
+  if (body.length > 500) body = `${body.slice(0, 500)}…`;
+  return new Error(`HTTP ${response.status} from the index before any payment: ${body || "(empty body)"}`);
+}
+
 async function paidGet(baseUrl: string, path: string, tool: string): Promise<Record<string, unknown>> {
   const api = await createApiClient(baseUrl, tool);
-  const response = await api.request({ method: "GET", url: path });
+  let response;
+  try {
+    response = await api.request({ method: "GET", url: path });
+  } catch (error) {
+    throw describePaidFailure(error) ?? error;
+  }
   const output: Record<string, unknown> = {
     ...(typeof response.data === "object" && response.data !== null ? response.data : {}),
     endpoint: `${baseUrl}${path}`,
@@ -249,7 +275,7 @@ program
   .option("--days <days>", "history window, 1-90", "90")
   .option(
     "--allow-unscored",
-    "pay even when the free index shows no current score for the project (the paid series may be empty)",
+    "skip the free score pre-check; the index itself refuses an unscored project with a free 422 project_not_scored, so nothing is paid either way",
     false,
   )
   .option("--network <network>", "mainnet | testnet", "mainnet")
@@ -259,15 +285,17 @@ program
       const query = normalizeProjectQuery(options.project);
       // One free read resolves the slug BEFORE any payment is signed.
       const resolved = await resolveProjectSlug(baseUrl, query);
-      // A panel project with no current score (free index `score: null`) is
-      // served by the paid endpoint as a 200 with `series: []` and
-      // `latest.score: null` — a charged query for an empty series. Fail free
-      // unless the caller opts in (found by Celestial Shark, aibtc bounty
-      // mtt3jjrgcf0aa8fb225c, 2026-09-08).
+      // A panel project with no current score (free index `score: null`) used
+      // to be served by the paid endpoint as a 200 with `series: []` — a
+      // charged query for an empty series (found by Celestial Shark, aibtc
+      // bounty mtt3jjrgcf0aa8fb225c, 2026-09-08). Since 2026-09-16 the index
+      // refuses such a slug with a free 422 `{"detail":{"error":
+      // "project_not_scored","slug":…,"days":…}}` before the 402, so nothing
+      // can be charged; this pre-check stays as the faster local guard.
       if (resolved.score === null && !options.allowUnscored) {
         throw new Error(
-          `--project "${resolved.slug}" has no current score in the free index; the paid series would be empty. ` +
-            "Pass --allow-unscored to pay anyway.",
+          `--project "${resolved.slug}" has no current score in the free index; the index refuses unscored projects ` +
+            "with a free 422 project_not_scored. Pick a project with a score (nothing was paid).",
         );
       }
       // Reject rather than silently widen: `--days 0` or `--days abc` must not become a 90-day query.
