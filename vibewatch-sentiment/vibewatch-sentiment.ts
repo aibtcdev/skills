@@ -294,8 +294,8 @@ program
       // can be charged; this pre-check stays as the faster local guard.
       if (resolved.score === null && !options.allowUnscored) {
         throw new Error(
-          `--project "${resolved.slug}" has no current score in the free index; the paid series would be empty. ` +
-            "Pass --allow-unscored to pay anyway.",
+          `--project "${resolved.slug}" has no current score in the free index; the index refuses unscored projects ` +
+            "with a free 422 project_not_scored. Pick a project with a score (nothing was paid).",
         );
       }
       // Reject rather than silently widen: `--days 0` or `--days abc` must not become a 90-day query.

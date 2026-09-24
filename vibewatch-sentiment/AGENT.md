@@ -12,7 +12,7 @@ description: Stacks ecosystem community sentiment via the Vibewatch Stacks Vibe 
 - Paid subcommands (`project`, `evidence`, `delta`): an unlocked wallet (the
   `wallet` skill) holding sBTC for the advertised price, with `NETWORK=mainnet`
   set so the wallet matches the live index. Payments are sponsored by default
-  and the live index accepts them (since 2026-09-16), so no STX is needed;
+  and the live index accepts them (since 2026-09-16), so no STX is needed for gas;
   with `X402_PAYMENT_MODE=direct` (see the `x402` skill) the wallet signs a
   standard transfer and must also hold a little STX for the fee. Run `terms`
   first to see the current price and accepted assets.
