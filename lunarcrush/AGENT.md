@@ -50,6 +50,12 @@ Before calling `score`:
 | `400 invalid_symbol` | Did not consume payment. Symbol must be lowercase a-z + 0-9 only, max 16 chars. Check input. |
 | `5xx` from worker | Worker outage. Retry once after 30s. If persists, alert operator. |
 
+## Manual retry policy
+
+If a paid call returns `200` with `galaxy_score: null`, open a GitHub issue referencing the LunarCrush payment-vs-delivery thread with the payment txid and symbol queried.
+
+The maintainer can verify the on-chain payment, cross-check the server-side failure log, and honor a manual re-serve of the data. One retry per txid; caller-surfaced proof is required. This policy holds until an automated retry-with-proof endpoint ships.
+
 ## Safety checks
 
 - **No private key handling.** This skill never logs, prints, or transmits the wallet seed phrase. All signing happens via `getAccount()` returning a properly-scoped account object.
