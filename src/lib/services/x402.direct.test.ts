@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { createServer, type IncomingMessage, type ServerResponse, type Server } from "node:http";
 import { once } from "node:events";
+import type { Socket } from "node:net";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -23,6 +24,7 @@ import {
   resolveDirectPaymentPolicy,
   resolvePaymentMode,
   resolvePreferredAsset,
+  spendableStx,
   selectStacksPaymentOption,
   SpendLimitError,
 } from "./x402.service.js";
@@ -42,7 +44,7 @@ interface FakeOptions {
   /** Extra `accepts` entries appended after the first (each merged over the same defaults). */
   acceptsAfter?: Array<Partial<{ asset: string; amount: string; payTo: string; network: string; maxTimeoutSeconds: number }>>;
   fees?: { contract_call: number; token_transfer: number } | "error";
-  balances?: { stx: string; sbtc: string } | "error";
+  balances?: { stx: string; sbtc: string; locked?: string } | "error";
   nonce?: number;
   txStatus?: string;
   /** When set, the paid 2xx carries a canonical checkStatusUrl hint answered with this status. */
@@ -66,6 +68,7 @@ async function startFake(sender: string, opts: FakeOptions = {}): Promise<Fake> 
   const paidRequests: string[] = [];
   const hiroHits: string[] = [];
   const pendingTimers: NodeJS.Timeout[] = [];
+
   // The Hiro client caches mempool fees for 60 s per process, so every test
   // after the first successful fetch sees these defaults regardless of its own
   // `fees` option. token_transfer sits above its 3000 µSTX ceiling on purpose
@@ -113,7 +116,7 @@ async function startFake(sender: string, opts: FakeOptions = {}): Promise<Fake> 
       hiroHits.push(url.pathname);
       if (balances === "error") return json(500, { error: "balances unavailable" });
       return json(200, {
-        stx: { balance: balances.stx, total_sent: "0", total_received: balances.stx, locked: "0", lock_height: 0 },
+        stx: { balance: balances.stx, total_sent: "0", total_received: balances.stx, locked: balances.locked ?? "0", lock_height: 0 },
         fungible_tokens: {
           [`${SBTC}::sbtc-token`]: { balance: balances.sbtc, total_sent: "0", total_received: balances.sbtc },
         },
@@ -176,6 +179,11 @@ async function startFake(sender: string, opts: FakeOptions = {}): Promise<Fake> 
     json(404, { error: "not found" });
   });
 
+  const sockets = new Set<Socket>();
+  server.on("connection", (socket: Socket) => {
+    sockets.add(socket);
+    socket.on("close", () => sockets.delete(socket));
+  });
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
   const address = server.address();
@@ -188,6 +196,9 @@ async function startFake(sender: string, opts: FakeOptions = {}): Promise<Fake> 
     hiroHits,
     close: async () => {
       for (const t of pendingTimers) clearTimeout(t);
+      // closeAllConnections() does not drop a request held open by `paid: hang`
+      // under Bun, so server.close() would wait on it forever; destroy the sockets.
+      for (const socket of sockets) socket.destroy();
       server.closeAllConnections?.();
       server.close();
       await once(server, "close");
@@ -251,6 +262,15 @@ describe("selectStacksPaymentOption", () => {
     expect(resolvePreferredAsset("stx")).toBe("STX");
     expect(resolvePreferredAsset(" SBTC ")).toBe("sBTC");
     expect(() => resolvePreferredAsset("BTC")).toThrow(/Allowed values: sBTC, STX/);
+  });
+});
+
+describe("spendableStx", () => {
+  test("subtracts STX locked in stacking and never goes negative", () => {
+    expect(spendableStx({ balance: "1000000", locked: "0" })).toBe(1000000n);
+    expect(spendableStx({ balance: "1000000", locked: "900000" })).toBe(100000n);
+    expect(spendableStx({ balance: "100", locked: "500" })).toBe(0n);
+    expect(spendableStx(undefined)).toBe(0n);
   });
 });
 
@@ -445,6 +465,14 @@ describe("createApiClient payment modes", () => {
     const err = await api.request({ method: "GET", url: "/paid" }).catch((e) => e);
     expect(err).toBeInstanceOf(InsufficientBalanceError);
     expect(err.message).toMatch(/Insufficient STX for a sponsored x402 payment/);
+    expect(f.paidRequests).toHaveLength(0);
+  });
+
+  test("sponsored mode does not count STX locked in stacking", async () => {
+    const f = await up({ accept: { asset: "STX", amount: "300000" }, balances: { stx: "1000000", sbtc: "0", locked: "800000" } });
+    const api = await createApiClient(f.origin, "test.sponsored-locked-stx");
+    const err = await api.request({ method: "GET", url: "/paid" }).catch((e) => e);
+    expect(err).toBeInstanceOf(InsufficientBalanceError);
     expect(f.paidRequests).toHaveLength(0);
   });
 
@@ -680,6 +708,14 @@ describe("createApiClient payment modes", () => {
     const failure = await rejection(api.request({ method: "GET", url: "/paid" }));
     expect(failure).toBeInstanceOf(InsufficientBalanceError);
     expect(failure.message).toMatch(/need STX for gas/);
+    expect(f.paidRequests).toHaveLength(0);
+  });
+
+  test("direct mode does not count STX locked in stacking toward gas", async () => {
+    process.env.X402_PAYMENT_MODE = "direct";
+    const f = await up({ balances: { stx: "1000000", sbtc: "100000", locked: "1000000" } });
+    const api = await createApiClient(f.origin, "test.direct-locked-stx");
+    await expect(api.request({ method: "GET", url: "/paid" })).rejects.toThrow(/Insufficient STX for a direct x402 payment/);
     expect(f.paidRequests).toHaveLength(0);
   });
 

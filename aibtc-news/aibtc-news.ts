@@ -413,7 +413,7 @@ program
         const { getStacksNetwork } = await import("../src/lib/config/networks.js");
         const { createFungiblePostCondition } = await import("../src/lib/transactions/post-conditions.js");
         const { getHiroApi } = await import("../src/lib/services/hiro-api.js");
-        const { getAccount } = await import("../src/lib/services/wallet-manager.js");
+        const { checkSponsoredPaymentBalance, getAccount } = await import("../src/lib/services/x402.service.js");
 
         const paymentRequired = decodePaymentRequired(paymentHeader);
         if (!paymentRequired?.accepts?.length) {
@@ -424,6 +424,7 @@ program
 
         // Step 3: Build sponsored sBTC transfer transaction
         const account = await getAccount();
+        await checkSponsoredPaymentBalance(account, "sBTC", amount);
         const contracts = getContracts(NETWORK);
         const { address: contractAddress, name: contractName } = parseContractId(contracts.SBTC_TOKEN);
         const networkName = getStacksNetwork(NETWORK);
