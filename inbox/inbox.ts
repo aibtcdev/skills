@@ -9,6 +9,7 @@
 import { Command } from "commander";
 import { NETWORK, getInboxBase } from "../src/lib/config/networks.js";
 import {
+  checkSponsoredPaymentBalance,
   getAccount,
   getWalletAddress,
 } from "../src/lib/services/x402.service.js";
@@ -128,6 +129,7 @@ program
         }
         const accept = paymentRequired.accepts[0];
         const amount = BigInt(accept.amount);
+        await checkSponsoredPaymentBalance(account, "sBTC", amount);
 
         // Step 3: Build sponsored sBTC transfer transaction
         const contracts = getContracts(NETWORK);
