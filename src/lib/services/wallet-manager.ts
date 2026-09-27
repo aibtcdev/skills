@@ -396,6 +396,28 @@ class WalletManager {
   }
 
   /**
+   * If no in-process session exists, best-effort restore one from the
+   * on-disk session file written by a previous `wallet unlock` process.
+   * Mirrors the first two steps of what getAccount() in x402.service.ts
+   * already does, so CLI commands that only inspect session state (status, list,
+   * lock) see the same "unlocked" view as commands that resolve a full
+   * account. A no-op when a session is already in memory, or when there is
+   * no persisted session to restore.
+   */
+  async ensureSessionRestored(): Promise<void> {
+    if (this.session) return;
+
+    try {
+      const config = await readAppConfig();
+      if (config.activeWalletId) {
+        await this.restoreSessionFromDisk(config.activeWalletId);
+      }
+    } catch {
+      // Non-fatal — callers fall back to reporting "locked"
+    }
+  }
+
+  /**
    * Get the active account if unlocked
    */
   getActiveAccount(): Account | null {
