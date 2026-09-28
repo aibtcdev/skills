@@ -293,10 +293,15 @@ export function getBitflowConfig(): BitflowConfig {
   const readOnlyCallApiHost = process.env.BITFLOW_READONLY_API_HOST || "https://api.hiro.so";
 
   return {
-    apiHost: process.env.BITFLOW_API_HOST || "https://bitflowsdk-api-test-7owjsmt8.uk.gateway.dev",
+    // PRODUCTION host as default (2026-07-15 field audit F-3): the previous default
+    // was the TEST gateway (bitflow-core-api README: uk.gateway.dev = TEST,
+    // uc.gateway.dev = PROD), so any deployment that forgot the env override
+    // quoted and routed mainnet swaps from test-API data. TEST remains reachable
+    // via BITFLOW_API_HOST.
+    apiHost: process.env.BITFLOW_API_HOST || "https://bitflow-sdk-api-gateway-7owjsmt8.uc.gateway.dev",
     apiKey: process.env.BITFLOW_API_KEY,
     readOnlyCallApiHost,
-    keeperApiHost: process.env.BITFLOW_KEEPER_API_HOST || "https://bitflow-keeper-test-7owjsmt8.uc.gateway.dev",
+    keeperApiHost: process.env.BITFLOW_KEEPER_API_HOST || "https://keeper.bitflowapis.finance",
     keeperApiKey: process.env.BITFLOW_KEEPER_API_KEY,
   };
 }
