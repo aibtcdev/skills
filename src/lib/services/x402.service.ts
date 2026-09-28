@@ -1283,7 +1283,7 @@ export async function createApiClient(
 
         const txHex = "0x" + transaction.serialize();
 
-        const paymentIdentifier = derivePaymentIdentifier(txHex);
+        const paymentIdentifier = derivePaymentIdentifier(txHex, account.privateKey);
         emitPaymentDiagnostic({
           event: "payment.accepted",
           tool: diagnosticTool,

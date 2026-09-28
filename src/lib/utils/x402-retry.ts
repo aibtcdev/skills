@@ -25,6 +25,7 @@ import {
   X402_HEADERS,
   type PaymentRequiredV2,
   type PaymentRequirementsV2,
+  type SettlementResponseV2,
 } from "./x402-protocol.js";
 import {
   extractTxidFromPaymentSignature,
@@ -276,24 +277,82 @@ async function advanceNonceCache(address: string, usedNonce: number, txid = ""):
   await recordNonceUsed(address, usedNonce, txid);
 }
 
+export function extractServerIssuedPaymentIdentifier(
+  responseData?: Record<string, unknown> | null,
+  settlement?: SettlementResponseV2 | null
+): string | undefined {
+  if (settlement?.extensions) {
+    const ext = settlement.extensions as Record<string, unknown>;
+    const pidExt = ext["payment-identifier"] as Record<string, unknown> | undefined;
+    if (pidExt) {
+      const info = pidExt["info"] as Record<string, unknown> | undefined;
+      if (typeof info?.["id"] === "string" && info["id"].length > 0) {
+        return info["id"];
+      }
+      if (typeof pidExt["id"] === "string" && pidExt["id"].length > 0) {
+        return pidExt["id"];
+      }
+    }
+    if (typeof ext["paymentId"] === "string" && ext["paymentId"].length > 0) {
+      return ext["paymentId"];
+    }
+    if (typeof ext["paymentIdentifier"] === "string" && ext["paymentIdentifier"].length > 0) {
+      return ext["paymentIdentifier"];
+    }
+  }
+
+  if (responseData) {
+    const pidExt = responseData["payment-identifier"] as Record<string, unknown> | undefined;
+    if (pidExt) {
+      const info = pidExt["info"] as Record<string, unknown> | undefined;
+      if (typeof info?.["id"] === "string" && info["id"].length > 0) {
+        return info["id"];
+      }
+      if (typeof pidExt["id"] === "string" && pidExt["id"].length > 0) {
+        return pidExt["id"];
+      }
+    }
+    if (typeof responseData["paymentId"] === "string" && responseData["paymentId"].length > 0) {
+      return responseData["paymentId"];
+    }
+    if (typeof responseData["payment_identifier"] === "string" && responseData["payment_identifier"].length > 0) {
+      return responseData["payment_identifier"];
+    }
+    if (typeof responseData["paymentIdentifier"] === "string" && responseData["paymentIdentifier"].length > 0) {
+      return responseData["paymentIdentifier"];
+    }
+  }
+
+  return undefined;
+}
+
 export function extractInboxPaymentMetadata(responseData: Record<string, unknown>): {
   paymentId?: string;
   paymentStatus?: TrackedPaymentState;
   compatShimUsed?: boolean;
 } {
   const inbox = responseData["inbox"];
-  if (!inbox || typeof inbox !== "object" || Array.isArray(inbox)) {
+  let paymentId: string | undefined;
+  let paymentStatusRaw: unknown;
+
+  if (inbox && typeof inbox === "object" && !Array.isArray(inbox)) {
+    const inboxRecord = inbox as Record<string, unknown>;
+    if (typeof inboxRecord["paymentId"] === "string" && inboxRecord["paymentId"].length > 0) {
+      paymentId = inboxRecord["paymentId"];
+    }
+    paymentStatusRaw = inboxRecord["paymentStatus"];
+  }
+
+  if (!paymentId) {
+    paymentId = extractServerIssuedPaymentIdentifier(responseData);
+  }
+
+  if (!inbox && !paymentId) {
     return {};
   }
 
-  const inboxRecord = inbox as Record<string, unknown>;
-
-  const paymentId =
-    typeof inboxRecord["paymentId"] === "string" && inboxRecord["paymentId"].length > 0
-      ? inboxRecord["paymentId"]
-      : undefined;
-  const compatShimUsed = usedCallerFacingCompatShim(inboxRecord["paymentStatus"]);
-  const paymentStatus = normalizeCallerFacingPaymentStatus(inboxRecord["paymentStatus"]);
+  const compatShimUsed = usedCallerFacingCompatShim(paymentStatusRaw);
+  const paymentStatus = normalizeCallerFacingPaymentStatus(paymentStatusRaw);
 
   return {
     paymentId,
@@ -537,7 +596,7 @@ export async function executeInboxWithRetry(
         network,
         contentHash
       );
-      paymentIdentifier = derivePaymentIdentifier(txHex);
+      paymentIdentifier = derivePaymentIdentifier(txHex, account.privateKey);
       emitPaymentDiagnostic({
         event: "payment.accepted",
         tool: diagnosticTool,
@@ -586,12 +645,14 @@ export async function executeInboxWithRetry(
         finalRes.headers.get(X402_HEADERS.PAYMENT_RESPONSE)
       );
       const txid = settlement?.transaction;
+      const serverIssuedId = extractServerIssuedPaymentIdentifier(parsed, settlement);
+      const effectivePaymentIdentifier = serverIssuedId ?? paymentIdentifier;
       const {
         paymentId: resolvedPaymentId,
         paymentStatus: inboxPaymentStatus,
         nonceReference,
         compatShimUsed,
-      } = resolveInboxPaymentTracking(parsed, paymentIdentifier, txid);
+      } = resolveInboxPaymentTracking(parsed, effectivePaymentIdentifier, txid);
       const trackingHint = extractCanonicalPaymentTrackingHint(parsed);
       const canonicalAssessment = resolvedPaymentId
         ? await getCanonicalPaymentAssessment(
@@ -654,9 +715,10 @@ export async function executeInboxWithRetry(
     }
 
     // Extract relay txid from payment-response header (forwarded even on failure)
-    const failedTxid = decodePaymentResponse(
+    const failedSettlement = decodePaymentResponse(
       finalRes.headers.get(X402_HEADERS.PAYMENT_RESPONSE)
-    )?.transaction;
+    );
+    const failedTxid = failedSettlement?.transaction;
     if (failedTxid && seenRelayTxids.has(failedTxid)) {
       console.error(
         `[x402-retry] Stale dedup: relay returned previously-seen txid ${failedTxid} on attempt ${attempt + 1}`
@@ -665,14 +727,18 @@ export async function executeInboxWithRetry(
       seenRelayTxids.add(failedTxid);
     }
 
-    // Prefer relay-owned paymentId from the inbox response envelope, then
-    // fall back to the canonical tracking hint, then to locally generated id.
+    // Prefer server-issued paymentId from response envelope or payment-response header,
+    // then fall back to the canonical tracking hint, then to client payment identifier.
+    const serverIssuedId = extractServerIssuedPaymentIdentifier(
+      parsed as Record<string, unknown>,
+      failedSettlement
+    );
     const inboxMeta = extractInboxPaymentMetadata(
       parsed as Record<string, unknown>
     );
     const trackingHint = extractCanonicalPaymentTrackingHint(parsed);
     const canonicalPaymentId =
-      inboxMeta.paymentId ?? trackingHint.paymentId ?? paymentIdentifier;
+      inboxMeta.paymentId ?? serverIssuedId ?? trackingHint.paymentId ?? paymentIdentifier;
     const canonicalAssessment = canonicalPaymentId
       ? await getCanonicalPaymentAssessment(
           canonicalPaymentId,

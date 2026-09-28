@@ -4,7 +4,7 @@
  * No external x402 SDK dependency — all logic is self-contained.
  */
 
-import { createHash, randomUUID } from "node:crypto";
+import { createHash, createHmac, randomUUID } from "node:crypto";
 import type { TrackedPaymentState } from "@aibtc/tx-schemas/core/enums";
 
 // ===== Types =====
@@ -102,6 +102,8 @@ export interface SettlementResponseV2 {
   network: NetworkV2;
   /** Legacy settlement hint. Caller-facing state should come from payment-status polling. */
   paymentStatus?: TrackedPaymentState | "pending";
+  /** Protocol extensions data (e.g. server-issued payment-identifier) */
+  extensions?: Record<string, unknown>;
 }
 
 // ===== Conflict Error Types (per landing-page#522) =====
@@ -141,20 +143,25 @@ export function generatePaymentIdentifier(): string {
 }
 
 /**
- * Idempotency key bound to the signed payment itself: the same transaction
- * bytes always yield the same identifier, in any process.
- *
- * Stacks signatures are deterministic, so re-signing an identical transfer at
- * the same nonce (a retry after a failed paid request, or a second CLI run
- * before the first broadcast) reproduces the exact bytes already submitted.
- * A fresh random identifier on that payload is rejected by resource servers
- * that bound the payload to its first identifier, and the relay loses track
- * of both (skills #420). Different transactions still get different keys.
+ * Idempotency key bound to the signed payment:
+ * When secretKey (e.g. payer's privateKey or derived wallet secret) is provided,
+ * computes HMAC-SHA256(secretKey, txHex)[:32]. This preserves cross-process and
+ * retry idempotency for the payer (skills #420) while remaining unguessable from
+ * public transaction bytes in the mempool (skills #434).
+ * If secretKey is omitted, falls back to SHA-256(txHex)[:32] for backwards compatibility.
  * Same `pay_` + 32 hex shape as `generatePaymentIdentifier`.
  */
-export function derivePaymentIdentifier(txHex: string): string {
+export function derivePaymentIdentifier(txHex: string, secretKey?: string): string {
   const normalized = txHex.replace(/^0x/i, "").toLowerCase();
-  const hex = createHash("sha256").update(Buffer.from(normalized, "hex")).digest("hex").slice(0, 32);
+  const hex = secretKey
+    ? createHmac("sha256", secretKey)
+        .update(Buffer.from(normalized, "hex"))
+        .digest("hex")
+        .slice(0, 32)
+    : createHash("sha256")
+        .update(Buffer.from(normalized, "hex"))
+        .digest("hex")
+        .slice(0, 32);
   return `pay_${hex}`;
 }
 
