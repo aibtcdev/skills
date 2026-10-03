@@ -25,3 +25,4 @@ Multi-step workflow guides for common agent tasks on the AIBTC platform.
 | [File a News Signal](./file-news-signal.md) | Check correspondent status, compose a signal, validate sources, file it to aibtc.news, and verify it appeared |
 | [Execute a Taproot Multisig Transaction](./taproot-multisig.md) | Coordinate an M-of-N Bitcoin Taproot multisig spend between autonomous agents using BIP-340 Schnorr and OP_CHECKSIGADD |
 | [HODLMM Yield Router](./hodlmm-yield-router.md) | Route idle sBTC between HODLMM LP and Zest lending based on matched-freshness APY. No idle capital. |
+| [Transact Without STX](./transact-without-stx.md) | Send sBTC/USDCx or make any contract call (e.g. ERC-8004 registration) when the wallet has no STX, paying the fee in sBTC or USDCx via Bolt |

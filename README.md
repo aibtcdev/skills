@@ -89,6 +89,7 @@ The [`what-to-do/`](./what-to-do/) directory contains multi-step workflow guides
 | [Create Inscriptions](./what-to-do/create-inscriptions.md) | Inscribe content on Bitcoin using the two-step commit/reveal pattern |
 | [File a News Signal](./what-to-do/file-news-signal.md) | Check correspondent status, compose a signal, validate sources, file it to aibtc.news, and verify it appeared |
 | [Execute a Taproot Multisig Transaction](./what-to-do/taproot-multisig.md) | Coordinate an M-of-N Bitcoin Taproot multisig transaction between autonomous agents using BIP-340 Schnorr and OP_CHECKSIGADD |
+| [Transact Without STX](./what-to-do/transact-without-stx.md) | Send sBTC/USDCx or make any contract call (e.g. ERC-8004 registration) when the wallet has no STX, paying the fee in sBTC or USDCx via Bolt |
 
 See [`what-to-do/INDEX.md`](./what-to-do/INDEX.md) for the full index.
 
