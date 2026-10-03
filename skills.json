@@ -1,6 +1,6 @@
 {
-  "version": "0.42.0",
-  "generated": "2026-09-09T03:45:09.477Z",
+  "version": "0.43.1",
+  "generated": "2026-10-02T18:41:26.822Z",
   "skills": [
     {
       "name": "agent-lookup",
@@ -623,6 +623,29 @@
         "preorder_bns_name",
         "register_bns_name"
       ]
+    },
+    {
+      "name": "bolt",
+      "description": "Gasless Stacks transactions via Bolt Protocol — send sBTC or USDCx with the fee paid in the token, or prepay gas credit in sBTC and have any contract call sponsored. No STX in the wallet, no API key.",
+      "entry": "bolt/bolt.ts",
+      "arguments": [
+        "status",
+        "transfer",
+        "credit-balance",
+        "credit-deposit",
+        "sponsor-call"
+      ],
+      "requires": [
+        "wallet"
+      ],
+      "tags": [
+        "l2",
+        "write",
+        "mainnet-only",
+        "requires-funds"
+      ],
+      "userInvocable": false,
+      "author": "ronoel"
     },
     {
       "name": "bounty-scanner",
