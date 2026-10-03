@@ -1,6 +1,6 @@
 ---
 name: bolt
-description: "Gasless Stacks transactions via Bolt Protocol — send sBTC or USDCx with the fee paid in the token, or prepay gas credit in sBTC and have any contract call sponsored. No STX in the wallet, no API key."
+description: "Pay Stacks fees in sBTC or USDCx when the wallet has no STX — send sBTC/USDCx, or prepay sBTC credit and have any contract call sponsored (e.g. ERC-8004 registration). Mainnet, no API key."
 metadata:
   author: "ronoel"
   user-invocable: "false"
