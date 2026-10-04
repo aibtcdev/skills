@@ -70,5 +70,5 @@ description: Gasless Stacks transactions via Bolt Protocol — sBTC/USDCx transf
 | `BOLT_TEMPORARILY_UNAVAILABLE` | Nothing charged. Try again later. |
 | `BOLT_RATE_LIMITED` | Stop sending writes for a while. |
 | `BOLT_REFUND_FAILED` | The fee was debited and not returned. Stop; do not send again. Bolt was notified. |
-| `BOLT_REJECTED` | The network refused the transaction. Nothing charged. `error` names the reason: `BadNonce` → wait for pending transactions, then sign again; `FeeTooLow` → raise `--fee`; `NoSuchContract`, `NoSuchPublicFunction`, `BadFunctionArgument` → fix the call. Do not resend unchanged. |
+| `BOLT_REJECTED` | The network refused the transaction. Nothing charged. `error` names the reason: `BadNonce` or `TooMuchChaining` → wait for pending transactions, then sign again; `FeeTooLow` → raise `--fee`; `NoSuchContract`, `NoSuchPublicFunction`, `BadFunctionArgument` → fix the call. Do not resend unchanged. |
 | `BOLT_MAINNET_ONLY` | Set `NETWORK=mainnet`. |
