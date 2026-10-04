@@ -126,7 +126,9 @@ transactions may be refused.
 How the fee works:
 
 - Without `--fee`, the command spends the minimum: 10 sats for a transaction of
-  up to 500 bytes, or 1 sat per 50 bytes above that (3,000 bytes cost 60).
+  up to 500 bytes, or 1 sat per 50 bytes above that (3,000 bytes cost 60). If
+  Bolt answers with a higher minimum, the command pays that one instead, once.
+  A `--fee` you pass is never raised.
 - A higher `--fee` buys priority: Bolt pays the network a fee in proportion to
   it. The minimum is enough when the network is not congested.
 - The fee is debited when Bolt accepts the call and returned if the network

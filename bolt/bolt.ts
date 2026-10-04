@@ -161,7 +161,7 @@ function boltError(status: number, message: string): AibtcError {
       "The wallet needs amount + fee of the token. Fund it or lower --amount.",
     ],
     [
-      /serializedTx|not sponsored$|Only contract calls|signature|Invalid fee|not allowed|not supported|Post condition/i,
+      /serializedTx|not sponsored$|Only contract calls|signature|Invalid fee|not allowed|not supported|Post condition|too large/i,
       "BOLT_INVALID_TRANSACTION",
       "Nothing was charged. Fix the transaction: it must be a contract call signed with sponsored: true and fee 0.",
     ],
@@ -184,7 +184,7 @@ function boltError(status: number, message: string): AibtcError {
     message,
     "BOLT_REJECTED",
     { status },
-    "The network refused the transaction.",
+    "The network refused the transaction. When the message names a reason, fix that before sending again.",
     BOLT_DOCS
   );
 }
@@ -199,12 +199,14 @@ async function boltRequest<T>(path: string, init?: RequestInit): Promise<T> {
     body = undefined;
   }
   if (!response.ok) {
-    const raw = (body as { message?: unknown } | undefined)?.message;
-    const message = Array.isArray(raw)
+    const { message: raw, reason } = (body ?? {}) as { message?: unknown; reason?: unknown };
+    const text = Array.isArray(raw)
       ? raw.join("; ")
       : typeof raw === "string"
         ? raw
         : `Bolt answered HTTP ${response.status}`;
+    // A refused transfer names the network's reason in a field of its own.
+    const message = typeof reason === "string" && !text.includes(reason) ? `${text} (${reason})` : text;
     throw boltError(response.status, message);
   }
   return body as T;
@@ -262,6 +264,13 @@ function nonceFromRefusal(error: unknown): bigint | undefined {
   const stale = error.message.match(/transaction has (\d+), the next nonce for \S+ is (\d+)/);
   if (stale && BigInt(stale[1]) < BigInt(stale[2])) return BigInt(stale[2]);
   return undefined;
+}
+
+/** The minimum fee to pay instead, when Bolt's refusal names one. */
+function minimumFeeFromRefusal(error: unknown): bigint | undefined {
+  if (!(error instanceof AibtcError) || error.code !== "BOLT_FEE_TOO_LOW") return undefined;
+  const minimum = error.message.match(/minimum required fee: (\d+)/);
+  return minimum ? BigInt(minimum[1]) : undefined;
 }
 
 /** Sign and send; if Bolt names a different nonce, sign again with it, once. */
@@ -533,14 +542,26 @@ program
     }) => {
       try {
         requireMainnet();
-        let fee = opts.fee ? parseAmount(opts.fee, "--fee") : undefined;
+        const chosenFee = opts.fee ? parseAmount(opts.fee, "--fee") : undefined;
+        let fee = chosenFee;
 
-        const send = (serializedTx: string) => {
-          fee ??= minCreditFee(serializedTx);
-          return boltPost<{ txid: string }>(`/v1/sponsor/${CREDIT_TOKEN}/transaction`, {
+        const post = (serializedTx: string) =>
+          boltPost<{ txid: string }>(`/v1/sponsor/${CREDIT_TOKEN}/transaction`, {
             serializedTx,
-            fee: fee.toString(),
+            fee: fee!.toString(),
           });
+        // Without --fee the command pays the minimum, so when Bolt names a
+        // higher one it pays that instead, once. A fee the caller chose stands.
+        const send = async (serializedTx: string) => {
+          fee ??= minCreditFee(serializedTx);
+          try {
+            return await post(serializedTx);
+          } catch (error) {
+            const minimum = chosenFee === undefined ? minimumFeeFromRefusal(error) : undefined;
+            if (minimum === undefined || minimum <= fee) throw error;
+            fee = minimum;
+            return post(serializedTx);
+          }
         };
 
         let result: { txid: string };
