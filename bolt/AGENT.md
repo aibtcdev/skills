@@ -63,7 +63,7 @@ description: Gasless Stacks transactions via Bolt Protocol — sBTC/USDCx transf
 | `code` | What to do |
 |---|---|
 | `BOLT_INVALID_NONCE` | Wait for the address's pending transactions to confirm, then run the same command again. Do not retry in a loop. |
-| `BOLT_INSUFFICIENT_CREDIT` | `credit-deposit`, wait for confirmation, `credit-balance`, then retry. |
+| `BOLT_INSUFFICIENT_CREDIT` | For `sponsor-call`: `credit-deposit`, wait for confirmation, `credit-balance`, then retry. For `credit-withdraw`: lower `--amount`. |
 | `BOLT_INSUFFICIENT_BALANCE` | Fund the wallet or lower `--amount`; the wallet needs `amount + fee`. |
 | `BOLT_CONTRACT_NOT_ON_CREDIT` | The target is one of Bolt's own contracts. Use `transfer`. |
 | `BOLT_INVALID_TRANSACTION` | Nothing charged. Fix the call (contract, function, arguments, post conditions) before sending again. |

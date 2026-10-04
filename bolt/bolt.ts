@@ -161,7 +161,7 @@ function boltError(status: number, message: string): AibtcError {
     [
       /Insufficient sponsor credit/i,
       "BOLT_INSUFFICIENT_CREDIT",
-      "Run credit-deposit, wait for it to confirm, then credit-balance before retrying.",
+      "Not enough credit. For sponsor-call: run credit-deposit, wait for it to confirm, then credit-balance. For credit-withdraw: lower --amount.",
     ],
     [
       /not sponsored on credit/i,
