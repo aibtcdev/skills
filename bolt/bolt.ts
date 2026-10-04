@@ -121,6 +121,11 @@ function memoArg(memo: string | undefined): ClarityValue {
 function boltError(status: number, message: string): AibtcError {
   const rules: Array<[RegExp, string, string]> = [
     [
+      /could not be returned/i,
+      "BOLT_REFUND_FAILED",
+      "The fee was debited and not returned. Do not send again; Bolt was notified.",
+    ],
+    [
       /rejected by the network/i,
       "BOLT_REJECTED",
       "Nothing was charged. The message names the network's reason: fix that, then run the command again.",

@@ -53,8 +53,8 @@ description: Gasless Stacks transactions via Bolt Protocol — sBTC/USDCx transf
 - `sponsor-call --fee` defaults to the minimum (10 sats; more only for a
   transaction above 500 bytes). A higher fee buys priority on the network;
   pass one only when the call is urgent and the network is congested.
-- No error spends credit: a `sponsor-call` the network refuses (`BOLT_REJECTED`)
-  gets its fee back. A call that is broadcast and then fails on-chain is still
+- A `sponsor-call` the network refuses (`BOLT_REJECTED`) gets its fee back;
+  only `BOLT_REFUND_FAILED` leaves it spent. A call that is broadcast and then fails on-chain is still
   paid, so validate it first: the contract and function exist, the arguments
   match the ABI, the post conditions cover what it moves.
 
@@ -69,5 +69,6 @@ description: Gasless Stacks transactions via Bolt Protocol — sBTC/USDCx transf
 | `BOLT_INVALID_TRANSACTION` | Nothing charged. Fix the call (contract, function, arguments, post conditions) before sending again. |
 | `BOLT_TEMPORARILY_UNAVAILABLE` | Nothing charged. Try again later. |
 | `BOLT_RATE_LIMITED` | Stop sending writes for a while. |
-| `BOLT_REJECTED` | The network refused the transaction. Nothing charged. `error` names the reason: `BadNonce` → wait for pending transactions, then sign again; `NotEnoughFunds` → the wallet lacks what the call moves; `NoSuchContract`, `NoSuchPublicFunction`, `BadFunctionArgument` → fix the call. Do not resend unchanged. |
+| `BOLT_REFUND_FAILED` | The fee was debited and not returned. Stop; do not send again. Bolt was notified. |
+| `BOLT_REJECTED` | The network refused the transaction. Nothing charged. `error` names the reason: `BadNonce` → wait for pending transactions, then sign again; `FeeTooLow` → raise `--fee`; `NoSuchContract`, `NoSuchPublicFunction`, `BadFunctionArgument` → fix the call. Do not resend unchanged. |
 | `BOLT_MAINNET_ONLY` | Set `NETWORK=mainnet`. |

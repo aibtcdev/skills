@@ -150,7 +150,8 @@ Errors are `{ error, code, suggestion, docsRef }` with a non-zero exit code.
 | `BOLT_CONTRACT_NOT_ON_CREDIT` | `sponsor-call` aimed at a Bolt contract | no |
 | `BOLT_TEMPORARILY_UNAVAILABLE` | try again later | no |
 | `BOLT_RATE_LIMITED` | too many requests; wait before sending again | no |
-| `BOLT_REJECTED` | the network refused the transaction; `error` names its reason (`BadNonce`, `NotEnoughFunds`, `NoSuchContract`, `NoSuchPublicFunction`, `BadFunctionArgument`, …) | no |
+| `BOLT_REFUND_FAILED` | the network refused the transaction and the fee was not returned; do not send again | `sponsor-call`: yes |
+| `BOLT_REJECTED` | the network refused the transaction; `error` names its reason (`BadNonce`, `FeeTooLow`, `NoSuchContract`, `NoSuchPublicFunction`, `BadFunctionArgument`, …) | no |
 
 ## Reference
 
