@@ -11,11 +11,14 @@
 import { Command } from "commander";
 import {
   makeContractCall,
+  signMessageHashRsv,
   Cl,
   PostConditionMode,
   type ClarityValue,
   type PostCondition,
 } from "@stacks/transactions";
+import { hashMessage } from "@stacks/encryption";
+import { bytesToHex } from "@stacks/common";
 import { NETWORK, getExplorerTxUrl } from "../src/lib/config/networks.js";
 import { getAccount, getWalletAddress } from "../src/lib/services/x402.service.js";
 import { getHiroApi } from "../src/lib/services/hiro-api.js";
@@ -121,9 +124,24 @@ function memoArg(memo: string | undefined): ClarityValue {
 function boltError(status: number, message: string): AibtcError {
   const rules: Array<[RegExp, string, string]> = [
     [
-      /could not be returned/i,
+      /could not be (returned|restored)/i,
       "BOLT_REFUND_FAILED",
-      "The fee was debited and not returned. Do not send again; Bolt was notified.",
+      "The amount was debited and not returned. Do not send again; Bolt was notified.",
+    ],
+    [
+      /Withdrawal status unknown/i,
+      "BOLT_WITHDRAWAL_UNKNOWN",
+      "Do not send again. Bolt was notified; run credit-balance later to see the outcome.",
+    ],
+    [
+      /Withdrawal already processed/i,
+      "BOLT_WITHDRAWAL_REPEATED",
+      "This withdrawal request was already used. Run credit-balance; run the command again only if the credit is still there.",
+    ],
+    [
+      /Invalid signature|signedAt|Unsupported token|Invalid address|greater than the withdrawal fee/i,
+      "BOLT_INVALID_ARGUMENT",
+      "Nothing was withdrawn. Check --amount and that the active wallet owns the credit.",
     ],
     [
       /rejected by the network/i,
@@ -472,7 +490,7 @@ program
 program
   .command("credit-deposit")
   .description(
-    "Deposit sBTC as prepaid gas credit (sBTC only; there is no USDCx credit). The deposit is itself gasless. Credit is not withdrawable at this time, so deposit what you plan to use. Requires an unlocked wallet."
+    "Deposit sBTC as prepaid gas credit (sBTC only; there is no USDCx credit). The deposit is itself gasless. Unused credit can be taken back with credit-withdraw. Requires an unlocked wallet."
   )
   .requiredOption("--amount <sats>", "Credit to add, in sats")
   .option("--fee <sats>", "Fee for the deposit itself, in sats (default: 10)")
@@ -508,6 +526,48 @@ program
         network: NETWORK,
         explorerUrl: getExplorerTxUrl(result.txid, NETWORK),
         next: "Wait for the transaction to confirm, then run credit-balance. The credit is available after that.",
+      });
+    } catch (error) {
+      handleError(error);
+    }
+  });
+
+// ---------------------------------------------------------------------------
+// credit-withdraw
+// ---------------------------------------------------------------------------
+
+program
+  .command("credit-withdraw")
+  .description(
+    "Take unused prepaid credit back as sBTC, to the wallet that owns it. Bolt keeps a 10-sat fee and sends the rest. Needs no STX. Requires an unlocked wallet."
+  )
+  .requiredOption("--amount <sats>", "Credit to withdraw, in sats (more than the 10-sat fee)")
+  .action(async (opts: { amount: string }) => {
+    try {
+      requireMainnet();
+      const amount = parseAmount(opts.amount, "--amount");
+      const account = await getAccount();
+      const signedAt = new Date().toISOString();
+      // Bolt pays the credit back to the address that signed this text, and to no other.
+      const message = `Bolt credit withdrawal | ${account.address} | ${amount} | ${signedAt}`;
+      const signature = signMessageHashRsv({
+        messageHash: bytesToHex(hashMessage(message)),
+        privateKey: account.privateKey,
+      });
+      const result = await boltPost<{ txid: string; amount: string; fee: number; received: string }>(
+        `/v1/sponsor/${CREDIT_TOKEN}/withdraw`,
+        { address: account.address, amount: amount.toString(), signedAt, signature }
+      );
+      printJson({
+        success: true,
+        txid: result.txid,
+        address: account.address,
+        creditWithdrawn: String(result.amount),
+        fee: String(result.fee),
+        received: String(result.received),
+        unit: "sats",
+        network: NETWORK,
+        explorerUrl: getExplorerTxUrl(result.txid, NETWORK),
       });
     } catch (error) {
       handleError(error);

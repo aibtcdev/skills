@@ -633,6 +633,7 @@
         "transfer",
         "credit-balance",
         "credit-deposit",
+        "credit-withdraw",
         "sponsor-call"
       ],
       "requires": [

@@ -10,7 +10,7 @@ description: Gasless Stacks transactions via Bolt Protocol — sBTC/USDCx transf
 
 - `NETWORK=mainnet`. The repo default is testnet and every subcommand refuses it.
 - `status` and `credit-balance --address`: nothing else. No wallet, no funds.
-- `transfer`, `credit-deposit`, `sponsor-call`: an unlocked wallet (the `wallet`
+- `transfer`, `credit-deposit`, `credit-withdraw`, `sponsor-call`: an unlocked wallet (the `wallet`
   skill) holding the token being moved. No STX is needed for any of them.
 - Credit is sBTC only. A wallet holding only USDCx can `transfer` USDCx and
   nothing else.
@@ -48,8 +48,8 @@ description: Gasless Stacks transactions via Bolt Protocol — sBTC/USDCx transf
 
 ## Cost guardrails
 
-- Credit is not withdrawable at this time. Deposit for the calls you plan, not
-  a round number.
+- Unused credit comes back with `credit-withdraw`, less a 10-sat fee, and only
+  to the wallet that deposited it. Bolt holds the credit until then.
 - `sponsor-call --fee` defaults to the minimum (10 sats; more only for a
   transaction above 500 bytes). A higher fee buys priority on the network;
   pass one only when the call is urgent and the network is congested.
@@ -70,5 +70,7 @@ description: Gasless Stacks transactions via Bolt Protocol — sBTC/USDCx transf
 | `BOLT_TEMPORARILY_UNAVAILABLE` | Nothing charged. Try again later. |
 | `BOLT_RATE_LIMITED` | Stop sending writes for a while. |
 | `BOLT_REFUND_FAILED` | The fee was debited and not returned. Stop; do not send again. Bolt was notified. |
+| `BOLT_WITHDRAWAL_REPEATED` | That withdrawal request was already used. Check `credit-balance` before trying again. |
+| `BOLT_WITHDRAWAL_UNKNOWN` | Stop. Do not send again; check `credit-balance` later. Bolt was notified. |
 | `BOLT_REJECTED` | The network refused the transaction. Nothing charged. `error` names the reason: `BadNonce` or `TooMuchChaining` → wait for pending transactions, then sign again; `FeeTooLow` → raise `--fee`; `NoSuchContract`, `NoSuchPublicFunction`, `BadFunctionArgument` → fix the call. Do not resend unchanged. |
 | `BOLT_MAINNET_ONLY` | Set `NETWORK=mainnet`. |

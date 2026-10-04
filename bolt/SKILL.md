@@ -4,7 +4,7 @@ description: "Pay Stacks fees in sBTC or USDCx when the wallet has no STX — se
 metadata:
   author: "ronoel"
   user-invocable: "false"
-  arguments: "status | transfer | credit-balance | credit-deposit | sponsor-call"
+  arguments: "status | transfer | credit-balance | credit-deposit | credit-withdraw | sponsor-call"
   entry: "bolt/bolt.ts"
   requires: "wallet"
   tags: "l2, write, mainnet-only, requires-funds"
@@ -87,9 +87,26 @@ NETWORK=mainnet bun run bolt/bolt.ts credit-deposit --amount 1000
 | `--fee` | no | fee for the deposit itself, default 10 sats |
 
 Moves `amount + fee` sBTC from the wallet; the deposit itself needs no STX.
-Credit is not withdrawable at this time — deposit what you plan to use.
+Unused credit can be taken back with `credit-withdraw`.
 
 Output: `{ success, txid, address, creditAdded, fee, unit, nonce, network, explorerUrl, next }`
+
+### `credit-withdraw`
+
+```bash
+NETWORK=mainnet bun run bolt/bolt.ts credit-withdraw --amount 500
+```
+
+| Option | Required | Description |
+|---|---|---|
+| `--amount` | yes | sats of credit to withdraw, more than the 10-sat fee |
+
+Takes credit back as sBTC. Bolt keeps 10 sats and sends the rest to the wallet
+that owns the credit, never to another address. The wallet signs a message, not
+a transaction, so it needs no STX. The credit is held by Bolt until then: the
+withdrawal is processed by Bolt on request.
+
+Output: `{ success, txid, address, creditWithdrawn, fee, received, unit, network, explorerUrl }`
 
 ### `sponsor-call`
 
@@ -152,7 +169,9 @@ Errors are `{ error, code, suggestion, docsRef }` with a non-zero exit code.
 | `BOLT_CONTRACT_NOT_ON_CREDIT` | `sponsor-call` aimed at a Bolt contract | no |
 | `BOLT_TEMPORARILY_UNAVAILABLE` | try again later | no |
 | `BOLT_RATE_LIMITED` | too many requests; wait before sending again | no |
-| `BOLT_REFUND_FAILED` | the network refused the transaction and the fee was not returned; do not send again | `sponsor-call`: yes |
+| `BOLT_REFUND_FAILED` | the network refused the transaction and the amount was not returned; do not send again | yes |
+| `BOLT_WITHDRAWAL_REPEATED` | the same withdrawal request was sent twice | no |
+| `BOLT_WITHDRAWAL_UNKNOWN` | the outcome of a withdrawal could not be confirmed; do not send again | credit held until resolved |
 | `BOLT_REJECTED` | the network refused the transaction; `error` names its reason (`BadNonce`, `TooMuchChaining`, `FeeTooLow`, `NoSuchContract`, `NoSuchPublicFunction`, `BadFunctionArgument`, …) | no |
 
 ## Reference
