@@ -112,7 +112,7 @@ NETWORK=mainnet bun run bolt/bolt.ts sponsor-call --serialized-tx 0x8080...
 | `--post-condition-mode` | no | `deny` (default) or `allow` |
 | `--post-conditions` | no | JSON array, see below |
 | `--serialized-tx` | instead of the above | hex of a contract call signed with `sponsored: true`, fee 0 |
-| `--fee` | no | sats of credit to spend; default is the minimum: 10, plus 1 per 120 bytes above 1,200 |
+| `--fee` | no | sats of credit to spend; default is the minimum: 10, or 1 per 50 bytes when the transaction is above 500 bytes |
 
 Post conditions use the `contract` skill's JSON shape, `stx` and `ft` types:
 
@@ -126,8 +126,9 @@ transactions may be refused.
 How the fee works:
 
 - Without `--fee`, the command spends the minimum: 10 sats for a transaction of
-  up to 1,200 bytes, plus 1 sat per 120 bytes above that (3,000 bytes cost 25).
-- Paying more than the minimum buys nothing.
+  up to 500 bytes, or 1 sat per 50 bytes above that (3,000 bytes cost 60).
+- A higher `--fee` buys priority: Bolt pays the network a fee in proportion to
+  it. The minimum is enough when the network is not congested.
 - The fee is debited when Bolt accepts the call and returned if the network
   refuses it. A call that is broadcast and later fails on-chain is still paid.
 

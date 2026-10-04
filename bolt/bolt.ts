@@ -39,8 +39,8 @@ const BOLT_DEPLOYER = "SP3QZNX3CGT6V7PE1PBK17FCRK1TP1AT02ZHQCMVJ";
 const CREDIT_TOKEN = "sbtc-token";
 /** Smallest fee Bolt accepts for a credit-sponsored call, in sats. */
 const MIN_CREDIT_FEE = 10n;
-/** Above 1,200 bytes the minimum grows by 1 sat per 120 bytes of transaction. */
-const CREDIT_BYTES_PER_SAT = 120n;
+/** Above 500 bytes the minimum grows by 1 sat per 50 bytes of transaction. */
+const CREDIT_BYTES_PER_SAT = 50n;
 
 function minCreditFee(serializedTx: string): bigint {
   const bytes = BigInt(Math.ceil(serializedTx.length / 2));

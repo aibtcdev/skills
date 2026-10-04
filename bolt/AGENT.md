@@ -51,7 +51,8 @@ description: Gasless Stacks transactions via Bolt Protocol — sBTC/USDCx transf
 - Credit is not withdrawable at this time. Deposit for the calls you plan, not
   a round number.
 - `sponsor-call --fee` defaults to the minimum (10 sats; more only for a
-  transaction above 1,200 bytes). Paying more buys nothing.
+  transaction above 500 bytes). A higher fee buys priority on the network;
+  pass one only when the call is urgent and the network is congested.
 - No error spends credit: a `sponsor-call` the network refuses (`BOLT_REJECTED`)
   gets its fee back. A call that is broadcast and then fails on-chain is still
   paid, so validate it first: the contract and function exist, the arguments
