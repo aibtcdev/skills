@@ -112,7 +112,7 @@ NETWORK=mainnet bun run bolt/bolt.ts sponsor-call --serialized-tx 0x8080...
 | `--post-condition-mode` | no | `deny` (default) or `allow` |
 | `--post-conditions` | no | JSON array, see below |
 | `--serialized-tx` | instead of the above | hex of a contract call signed with `sponsored: true`, fee 0 |
-| `--fee` | no | sats of credit to spend, default and minimum 10 |
+| `--fee` | no | sats of credit to spend; default is the minimum: 10, plus 1 per 120 bytes above 1,200 |
 
 Post conditions use the `contract` skill's JSON shape, `stx` and `ft` types:
 
@@ -122,6 +122,14 @@ Post conditions use the `contract` skill's JSON shape, `stx` and `ft` types:
 
 Bolt's own contracts cannot be called this way — use `transfer`. Very large
 transactions may be refused.
+
+How the fee works:
+
+- Without `--fee`, the command spends the minimum: 10 sats for a transaction of
+  up to 1,200 bytes, plus 1 sat per 120 bytes above that (3,000 bytes cost 25).
+- Paying more than the minimum buys nothing.
+- The fee is debited when Bolt accepts the call and returned if the network
+  refuses it. A call that is broadcast and later fails on-chain is still paid.
 
 Output: `{ success, txid, contract?, function?, creditSpent, unit, nonce?, network, explorerUrl }`
 
@@ -141,7 +149,7 @@ Errors are `{ error, code, suggestion, docsRef }` with a non-zero exit code.
 | `BOLT_CONTRACT_NOT_ON_CREDIT` | `sponsor-call` aimed at a Bolt contract | no |
 | `BOLT_TEMPORARILY_UNAVAILABLE` | try again later | no |
 | `BOLT_RATE_LIMITED` | too many requests; wait before sending again | no |
-| `BOLT_REJECTED` | the network refused the transaction | `sponsor-call`: yes, the `--fee` is spent. Others: no |
+| `BOLT_REJECTED` | the network refused the transaction; `error` names its reason (`BadNonce`, `NotEnoughFunds`, `NoSuchContract`, `NoSuchPublicFunction`, `BadFunctionArgument`, …) | no |
 
 ## Reference
 

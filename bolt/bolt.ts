@@ -39,6 +39,14 @@ const BOLT_DEPLOYER = "SP3QZNX3CGT6V7PE1PBK17FCRK1TP1AT02ZHQCMVJ";
 const CREDIT_TOKEN = "sbtc-token";
 /** Smallest fee Bolt accepts for a credit-sponsored call, in sats. */
 const MIN_CREDIT_FEE = 10n;
+/** Above 1,200 bytes the minimum grows by 1 sat per 120 bytes of transaction. */
+const CREDIT_BYTES_PER_SAT = 120n;
+
+function minCreditFee(serializedTx: string): bigint {
+  const bytes = BigInt(Math.ceil(serializedTx.length / 2));
+  const bySize = (bytes + CREDIT_BYTES_PER_SAT - 1n) / CREDIT_BYTES_PER_SAT;
+  return bySize > MIN_CREDIT_FEE ? bySize : MIN_CREDIT_FEE;
+}
 const MEMO_MAX_BYTES = 34;
 
 type TokenKey = "sbtc" | "usdcx";
@@ -113,6 +121,11 @@ function memoArg(memo: string | undefined): ClarityValue {
 function boltError(status: number, message: string): AibtcError {
   const rules: Array<[RegExp, string, string]> = [
     [
+      /rejected by the network/i,
+      "BOLT_REJECTED",
+      "Nothing was charged. The message names the network's reason: fix that, then run the command again.",
+    ],
+    [
       /Try again|Nothing was charged/i,
       "BOLT_TEMPORARILY_UNAVAILABLE",
       "Nothing was charged. Try again later.",
@@ -135,7 +148,7 @@ function boltError(status: number, message: string): AibtcError {
     [
       /minimum required fee/i,
       "BOLT_FEE_TOO_LOW",
-      "Raise --fee: at least 10 sats (sBTC, credit) or 100 micro-USDCx.",
+      "Nothing was charged. Raise --fee to the minimum in the message.",
     ],
     [
       /Insufficient .*balance/i,
@@ -502,7 +515,7 @@ program
   .option("--post-condition-mode <mode>", "'deny' (default) blocks unexpected transfers; 'allow' permits any", "deny")
   .option("--post-conditions <json>", "Post conditions as JSON array (stx and ft). See SKILL.md for format.")
   .option("--serialized-tx <hex>", "Hex of a contract call already signed with sponsored: true and fee 0")
-  .option("--fee <sats>", "Credit to spend on this call, in sats (default and minimum: 10)")
+  .option("--fee <sats>", "Credit to spend on this call, in sats (default: the minimum for its size, from 10)")
   .action(
     async (opts: {
       contract?: string;
@@ -515,13 +528,15 @@ program
     }) => {
       try {
         requireMainnet();
-        const fee = opts.fee ? parseAmount(opts.fee, "--fee") : MIN_CREDIT_FEE;
+        let fee = opts.fee ? parseAmount(opts.fee, "--fee") : undefined;
 
-        const send = (serializedTx: string) =>
-          boltPost<{ txid: string }>(`/v1/sponsor/${CREDIT_TOKEN}/transaction`, {
+        const send = (serializedTx: string) => {
+          fee ??= minCreditFee(serializedTx);
+          return boltPost<{ txid: string }>(`/v1/sponsor/${CREDIT_TOKEN}/transaction`, {
             serializedTx,
             fee: fee.toString(),
           });
+        };
 
         let result: { txid: string };
         let nonce: string | undefined;
@@ -563,7 +578,7 @@ program
           success: true,
           txid: result.txid,
           ...(opts.contract && { contract: opts.contract, function: opts.function }),
-          creditSpent: fee.toString(),
+          creditSpent: fee!.toString(),
           unit: "sats",
           ...(nonce !== undefined && { nonce }),
           network: NETWORK,

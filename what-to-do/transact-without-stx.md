@@ -13,7 +13,7 @@ Every Stacks transaction needs an STX fee. An agent that holds sBTC or USDCx but
 There are two paths:
 
 - **Send sBTC or USDCx** — use `transfer`. The fee (from 10 sats or 100 micro-USDCx) is taken inside the same transaction. No setup.
-- **Any other contract call** — prepay gas credit in sBTC once with `credit-deposit`, then each `sponsor-call` spends 10 sats of it. Credit is sBTC only and is not withdrawable at this time, so deposit what you plan to use.
+- **Any other contract call** — prepay gas credit in sBTC once with `credit-deposit`, then each `sponsor-call` spends 10 sats of it (more only for a transaction above 1,200 bytes). Credit is sBTC only and is not withdrawable at this time, so deposit what you plan to use.
 
 Bolt is mainnet only. Every command below runs with `NETWORK=mainnet`.
 
