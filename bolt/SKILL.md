@@ -131,6 +131,15 @@ NETWORK=mainnet bun run bolt/bolt.ts sponsor-call --serialized-tx 0x8080...
 | `--serialized-tx` | instead of the above | hex of a contract call signed with `sponsored: true`, fee 0 |
 | `--fee` | no | sats of credit to spend; default is the minimum: 10, or 1 per 50 bytes when the transaction is above 500 bytes |
 
+Every typed argument needs both `type` and `value`, including an empty optional:
+write `{"type":"none","value":null}`. Without `value` it is read as a tuple and
+the network refuses the call with `BadFunctionArgument`. For example, an sBTC
+`transfer` with no memo:
+
+```json
+[{"type":"uint","value":100},{"type":"principal","value":"SP...sender"},{"type":"principal","value":"SP...recipient"},{"type":"none","value":null}]
+```
+
 Post conditions use the `contract` skill's JSON shape, `stx` and `ft` types:
 
 ```json
