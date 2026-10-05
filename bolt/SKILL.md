@@ -108,6 +108,9 @@ withdrawal is processed by Bolt on request.
 
 Output: `{ success, txid, address, creditWithdrawn, fee, received, unit, network, explorerUrl }`
 
+`fee` and `received` are absent when the answer was lost and the command recovered
+the payout by sending the same request again.
+
 ### `sponsor-call`
 
 ```bash
@@ -164,14 +167,16 @@ Output: `{ success, txid, contract?, function?, creditSpent, unit, nonce?, netwo
 
 ## Errors
 
-Errors are `{ error, code, suggestion, docsRef }` with a non-zero exit code.
+Errors are `{ error, code, suggestion, docsRef, details }` with a non-zero exit code.
+`details` has the HTTP `status` and, when Bolt sends them, `boltCode` (Bolt's own
+refusal code), `txid`, `withdrawal` and `minimumFee`.
 
 | `code` | Meaning | Charged? |
 |---|---|---|
 | `BOLT_MAINNET_ONLY` | `NETWORK` is not `mainnet` | no |
 | `BOLT_INVALID_ARGUMENT` | a flag is missing or malformed | no |
 | `BOLT_INVALID_TRANSACTION` | the transaction as built was refused | no |
-| `BOLT_INVALID_NONCE` | the address has pending transactions; wait for them to confirm | no |
+| `BOLT_INVALID_NONCE` | the address has pending transactions; wait for them to confirm. `details.txid`, when present, is a call Bolt already broadcast with this nonce | no |
 | `BOLT_INSUFFICIENT_CREDIT` | credit below `--fee` | no |
 | `BOLT_INSUFFICIENT_BALANCE` | wallet below `amount + fee` | no |
 | `BOLT_FEE_TOO_LOW` | fee under the minimum | no |
@@ -179,8 +184,10 @@ Errors are `{ error, code, suggestion, docsRef }` with a non-zero exit code.
 | `BOLT_TEMPORARILY_UNAVAILABLE` | try again later | no |
 | `BOLT_RATE_LIMITED` | too many requests; wait before sending again | no |
 | `BOLT_REFUND_FAILED` | the network refused the transaction and the amount was not returned; do not send again | yes |
-| `BOLT_WITHDRAWAL_REPEATED` | the same withdrawal request was sent twice | no |
+| `BOLT_WITHDRAWAL_REPEATED` | the same withdrawal request was sent twice; `details.withdrawal` is the outcome of the first (`sent`, `confirmed`, `not_paid`, `pending`, `unknown`) and `details.txid` its payout | no |
 | `BOLT_WITHDRAWAL_UNKNOWN` | the outcome of a withdrawal could not be confirmed; do not send again | credit held until resolved |
+| `BOLT_SENT_UNCONFIRMED` | a write got no answer, was sent again unchanged, and its nonce was already taken: the first attempt was most likely broadcast | probably |
+| `BOLT_CALL_UNKNOWN` | the outcome of a `sponsor-call` could not be confirmed; `details.txid` is the transaction to look up; do not send again | fee held until resolved |
 | `BOLT_REJECTED` | the network refused the transaction; `error` names its reason (`BadNonce`, `TooMuchChaining`, `FeeTooLow`, `NoSuchContract`, `NoSuchPublicFunction`, `BadFunctionArgument`, …) | no |
 
 ## Reference
