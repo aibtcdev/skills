@@ -61,6 +61,12 @@ NETWORK=mainnet bun run bolt/bolt.ts transfer --token usdcx --recipient SP... --
 The wallet must hold `amount + fee` of the token. The transaction carries a
 `Deny` post condition for exactly that amount.
 
+On-chain this is a call to the Bolt contract, which moves the fee to Bolt and
+then `--amount` to the recipient. A service that verifies a payment by looking
+for a direct `transfer` call on the token contract (aibtc bounty payouts, inbox
+payments recovered by txid) does not recognize it: pay those with
+`sponsor-call` instead.
+
 Output: `{ success, txid, from, recipient, token, amount, fee, unit, nonce, network, explorerUrl }`
 
 ### `credit-balance`
@@ -88,6 +94,9 @@ NETWORK=mainnet bun run bolt/bolt.ts credit-deposit --amount 1000
 
 Moves `amount + fee` sBTC from the wallet; the deposit itself needs no STX.
 Unused credit can be taken back with `credit-withdraw`.
+
+A single call on credit costs at least 20 sats (deposit fee and call fee), 30
+if a remainder is withdrawn afterwards; credit pays off over several calls.
 
 Output: `{ success, txid, address, creditAdded, fee, unit, nonce, network, explorerUrl, next }`
 
@@ -158,8 +167,9 @@ How the fee works:
   up to 500 bytes, or 1 sat per 50 bytes above that (3,000 bytes cost 60). If
   Bolt answers with a higher minimum, the command pays that one instead, once.
   A `--fee` you pass is never raised.
-- A higher `--fee` buys priority: Bolt pays the network a fee in proportion to
-  it. The minimum is enough when the network is not congested.
+- A higher `--fee` buys priority: Bolt pays the network 50 micro-STX per sat of
+  fee (this rate can change), so the minimum of 10 pays 500 micro-STX. The
+  minimum is enough when the network is not congested.
 - The fee is debited when Bolt accepts the call and returned if the network
   refuses it. A call that is broadcast and later fails on-chain is still paid.
 

@@ -27,6 +27,10 @@ description: Gasless Stacks transactions via Bolt Protocol — sBTC/USDCx transf
 
 1. Run `status` once per session. If it fails, do not sign anything.
 2. Plain sBTC/USDCx payment → `transfer`. No credit needed.
+   Exception: a payment that a service verifies by txid (an aibtc bounty
+   payout, an inbox payment recovered by txid). Those checks accept only a
+   direct `sbtc-token.transfer` call, and `transfer` here calls the Bolt
+   contract. Pay those with `sponsor-call` on `sbtc-token` `transfer`.
 3. Any other contract call → check `credit-balance`. If it is below the fee for
    the calls you plan, run `credit-deposit`, wait for the transaction to
    confirm, then run `credit-balance` again before `sponsor-call`.
@@ -53,8 +57,11 @@ description: Gasless Stacks transactions via Bolt Protocol — sBTC/USDCx transf
 - Unused credit comes back with `credit-withdraw`, less a 10-sat fee, and only
   to the wallet that deposited it. Bolt holds the credit until then.
 - `sponsor-call --fee` defaults to the minimum (10 sats; more only for a
-  transaction above 500 bytes). A higher fee buys priority on the network;
-  pass one only when the call is urgent and the network is congested.
+  transaction above 500 bytes). A higher fee buys priority on the network
+  (Bolt pays it 50 micro-STX per sat of fee); pass one only when the call is
+  urgent and the network is congested.
+- One call alone costs at least 20 sats: 10 for the deposit, 10 for the call,
+  and 10 more to withdraw a remainder. Deposit for several calls at once.
 - A `sponsor-call` the network refuses (`BOLT_REJECTED`) gets its fee back;
   only `BOLT_REFUND_FAILED` and `BOLT_CALL_UNKNOWN` leave it spent. A call that is broadcast and then fails on-chain is still
   paid, so validate it first: the contract and function exist, the arguments
