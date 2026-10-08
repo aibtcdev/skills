@@ -727,8 +727,11 @@ export async function executeInboxWithRetry(
       seenRelayTxids.add(failedTxid);
     }
 
-    // Prefer server-issued paymentId from response envelope or payment-response header,
-    // then fall back to the canonical tracking hint, then to client payment identifier.
+    // Prefer relay-owned paymentId from the inbox response envelope, then the
+    // canonical tracking hint, then a server-issued id from the payment-response
+    // header, then the local identifier. The header id ranks below the tracking
+    // hint because x402 v2 servers may simply echo the client's own
+    // payment-identifier extension there, which must not mask the relay's id.
     const serverIssuedId = extractServerIssuedPaymentIdentifier(
       parsed as Record<string, unknown>,
       failedSettlement
@@ -738,7 +741,7 @@ export async function executeInboxWithRetry(
     );
     const trackingHint = extractCanonicalPaymentTrackingHint(parsed);
     const canonicalPaymentId =
-      inboxMeta.paymentId ?? serverIssuedId ?? trackingHint.paymentId ?? paymentIdentifier;
+      inboxMeta.paymentId ?? trackingHint.paymentId ?? serverIssuedId ?? paymentIdentifier;
     const canonicalAssessment = canonicalPaymentId
       ? await getCanonicalPaymentAssessment(
           canonicalPaymentId,
