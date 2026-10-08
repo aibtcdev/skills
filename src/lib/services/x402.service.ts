@@ -289,6 +289,9 @@ const NOT_SENT_ERROR_CODES: ReadonlySet<string> = new Set([
   "ENOTFOUND",
   "EAI_AGAIN",
   "ECONNREFUSED",
+  // Bun's fetch-backed adapter reports both a refused connection and a failed
+  // name lookup as "ConnectionRefused" instead of the Node codes above.
+  "ConnectionRefused",
   "ERR_INVALID_URL",
   "CERT_HAS_EXPIRED",
   "DEPTH_ZERO_SELF_SIGNED_CERT",
@@ -302,6 +305,15 @@ export function requestWasNeverSent(error: unknown): boolean {
   if (!e || e.response) return false;
   const code = typeof e.code === "string" ? e.code : typeof e.cause?.code === "string" ? e.cause.code : "";
   return NOT_SENT_ERROR_CODES.has(code);
+}
+
+/**
+ * STX the wallet can actually send: Hiro's `stx.balance` includes STX locked
+ * in stacking, which a transfer cannot move.
+ */
+export function spendableStx(stx: { balance?: string; locked?: string } | undefined): bigint {
+  const spendable = BigInt(stx?.balance ?? "0") - BigInt(stx?.locked ?? "0");
+  return spendable > 0n ? spendable : 0n;
 }
 
 /**
@@ -320,8 +332,10 @@ export async function checkSponsoredPaymentBalance(
   try {
     const balances = await getHiroApi(account.network).getAccountBalances(account.address);
     const key = `${getContracts(account.network).SBTC_TOKEN}::sbtc-token`;
-    const raw = tokenType === "sBTC" ? balances.fungible_tokens?.[key]?.balance : balances.stx?.balance;
-    balance = BigInt(raw ?? "0");
+    balance =
+      tokenType === "sBTC"
+        ? BigInt(balances.fungible_tokens?.[key]?.balance ?? "0")
+        : spendableStx(balances.stx);
   } catch {
     return;
   }
@@ -412,7 +426,7 @@ export async function buildDirectPaymentTransaction(
         `(${error instanceof Error ? error.message : String(error)}).`
     );
   }
-  const stxBalance = BigInt(balances.stx?.balance ?? "0");
+  const stxBalance = spendableStx(balances.stx);
   const stxRequired = asset.kind === "STX" ? amount + fee : fee;
   if (stxBalance < stxRequired) {
     const shortfall = stxRequired - stxBalance;
