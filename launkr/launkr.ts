@@ -503,7 +503,7 @@ async function waitForConfirmation(
     return;
   }
   if (ABORT_STATUSES.includes(result.status)) {
-    throw new Error(`Transaction failed with status: ${result.status}`);
+    throw new Error(`Transaction ${txid} failed with status: ${result.status}`);
   }
   throw new Error(`Timed out waiting for tx ${txid} after ${timeoutMs / 1000}s (last status: ${result.status})`);
 }
