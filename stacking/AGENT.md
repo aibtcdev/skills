@@ -30,23 +30,25 @@ Handles STX staking on PoX-5. A stake locks STX with a **signer manager** contra
 
 ## Safety Checks
 
-- Before any write: `get-pox-info`; if `inPreparePhase` is true, wait until `nextCycleStartHeight` — writes are refused during the prepare phase
+- Before any write: `get-pox-info`; if `inPreparePhase` is true, wait until `nextCycleStartHeight` — writes are refused during the prepare phase and within 3 burn blocks before it
 - Before `stack-stx`: `get-stacking-status` must show `staking: false`; otherwise use `extend-stacking`
 - Before `stack-stx`: confirm the manager's own terms (allowlists, minimums, required `--btc-reward-address`). A stake the manager refuses aborts on chain and still costs the fee
 - `--num-cycles` locks STX for up to 96 cycles (~4 years); STX cannot be moved until `unlockBurnHeight` unless `unstake-stx` is called, which still waits for the next cycle
 - `claim-rewards` may send **two** transactions (manager pull, then staker claim); check `get-rewards` first and only claim when `unclaimedSatsBeforeFees` > 0 and `stakerClaim` is not `none`
 - Never pass both `--btc-reward-address` and `--signer-calldata-hex`
+- `extend-stacking` requires a payout choice every time: if the staker is paid to a BTC address, pass the same `--btc-reward-address` again; most managers delete the stored address on an update without calldata. Use `--sbtc-payout` only when sBTC payout is intended
 
 ## Error Handling
 
 | Error message | Cause | Fix |
 |--------------|-------|-----|
 | "pox-5 refuses ... during the prepare phase" | Burn height is in the last 100 blocks of the cycle | Retry at or after the burn height named in the error |
-| "... is already staking ... Use extend_stacking" | Address has a stake | Use `extend-stacking` |
+| "... is already staking ... Use extend-stacking" | Address has a stake | Use `extend-stacking` |
 | "... is not staking" | No stake to update / unstake / look up | Use `stack-stx`, or pass `--signer-manager` for past rewards |
 | "... is not a registered pox-5 signer manager" | Wrong or unregistered contract id | Pick one from `list-signers` |
 | "Insufficient STX" / "Insufficient unlocked STX" | Balance too low | Fund the wallet or reduce the amount |
 | "Nothing to update" | `extend-stacking` with no changes | Pass at least one change |
+| "extend-stacking sends payout calldata ..." | No payout choice given | Re-pass `--btc-reward-address`, or `--sbtc-payout` if sBTC is intended |
 | "unstaking would not unlock it sooner" | Stake already ends next cycle | No action needed |
 | "has no on-chain staker claim" | Manager pays off-chain | Do not retry; contact the manager |
 | "No unclaimed rewards" | Nothing earned or already claimed for that cycle | Check another cycle with `get-rewards` |

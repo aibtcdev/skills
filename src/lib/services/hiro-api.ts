@@ -158,6 +158,8 @@ export interface MempoolTransaction {
 
 export interface PoxInfo {
   contract_id: string;
+  /** sBTC token contract pox-5 pays rewards in (not always the network's default sBTC). */
+  pox_5_sbtc_contract?: string;
   pox_activation_threshold_ustx: number;
   first_burnchain_block_height: number;
   current_burnchain_block_height: number;

@@ -56,6 +56,8 @@ export const MAX_STAKE_CYCLES = 96;
 
 /** Hard stop when walking the signer-set linked list. */
 const MAX_SIGNERS_WALKED = 200;
+// Burn blocks before the prepare phase within which writes are refused.
+const PREPARE_PHASE_MARGIN_BLOCKS = 3;
 
 
 // ============================================================================
@@ -431,6 +433,54 @@ export class StackingService {
     );
   }
 
+  /**
+   * What the staker can claim once the manager has pulled the cycle's rewards.
+   *
+   * `get-earned-staker-rewards` reads the signer's rewards-per-token, which
+   * pox-5 only advances when the manager calls `claim-rewards`. Until that pull
+   * it reports 0 (or a stale amount) even with rewards waiting. The pull sets
+   * the signer's rewards-per-token to the cycle's global value, so this runs
+   * pox-5's own `compute-earned-rewards` against that global value instead.
+   */
+  async getStakerClaimableRewards(
+    signerManager: string,
+    rewardCycle: number,
+    staker: string
+  ): Promise<bigint> {
+    const [shares, globalRpt, rptPaid, pending] = await Promise.all([
+      this.readPox("get-staker-shares-staked-for-cycle", [
+        principalCV(staker),
+        uintCV(rewardCycle),
+        noneCV(),
+        principalCV(signerManager),
+      ]),
+      this.readPox("get-rewards-per-token-for-cycle", [uintCV(rewardCycle), noneCV()]),
+      this.readPox("get-staker-rewards-per-token-settled-for-cycle", [
+        principalCV(signerManager),
+        uintCV(rewardCycle),
+        noneCV(),
+        principalCV(staker),
+      ]),
+      this.readPox("get-staker-unclaimed-rewards-for-cycle", [
+        principalCV(signerManager),
+        uintCV(rewardCycle),
+        noneCV(),
+        principalCV(staker),
+      ]),
+    ]);
+    if (toBigInt(globalRpt) < toBigInt(rptPaid)) {
+      return this.getStakerUnclaimedRewards(signerManager, rewardCycle, staker);
+    }
+    return toBigInt(
+      await this.readPox("compute-earned-rewards", [
+        uintCV(toBigInt(shares)),
+        uintCV(toBigInt(globalRpt)),
+        uintCV(toBigInt(rptPaid)),
+        uintCV(toBigInt(pending)),
+      ])
+    );
+  }
+
   /** sBTC pox-5 still holds for the signer manager for a cycle (not yet pulled by the manager). */
   async getSignerUnpulledRewards(signerManager: string, rewardCycle: number): Promise<bigint> {
     return toBigInt(
@@ -442,20 +492,29 @@ export class StackingService {
   // Writes
   // --------------------------------------------------------------------------
 
-  /** Refuse to sign unless pox-5 is the network's active PoX contract. */
-  private async assertPox5Active(): Promise<void> {
-    let active: string;
+  /**
+   * Refuse to sign unless pox-5 is the network's active PoX contract. Returns
+   * the sBTC contract pox-5 pays rewards in: on testnet it differs from the
+   * network's default sBTC, and a Deny-mode post-condition on the wrong token
+   * aborts every reward transfer.
+   */
+  private async assertPox5Active(): Promise<{ sbtcContract: `${string}.${string}` }> {
+    let info: Awaited<ReturnType<HiroApiService["getPoxInfo"]>>;
     try {
-      active = (await this.hiro.getPoxInfo()).contract_id;
+      info = await this.hiro.getPoxInfo();
     } catch (error) {
       throw new Error(
         `Could not confirm the active PoX contract from the Stacks API ` +
           `(${error instanceof Error ? error.message : String(error)}). No transaction was sent.`
       );
     }
+    const active = info.contract_id;
     if (active !== this.poxContract) {
       throw new PoxVersionUnsupportedError(active || "(unknown)", this.poxContract);
     }
+    const sbtcContract = (info.pox_5_sbtc_contract ||
+      getContracts(this.network).SBTC_TOKEN) as `${string}.${string}`;
+    return { sbtcContract };
   }
 
   private assertNotPreparePhase(pox: PoxState, action: string): void {
@@ -464,6 +523,15 @@ export class StackingService {
         `pox-5 refuses ${action} during the prepare phase. Burn height ${pox.burnHeight} is inside ` +
           `the prepare phase that started at ${pox.preparePhaseStartHeight}; try again at or after ` +
           `burn height ${pox.nextCycleStartHeight} (reward cycle ${pox.rewardCycle + 1}).`
+      );
+    }
+    // A transaction sent just before the prepare phase can be mined inside it
+    // and abort, so leave a few blocks of margin.
+    if (pox.burnHeight >= pox.preparePhaseStartHeight - PREPARE_PHASE_MARGIN_BLOCKS) {
+      throw new Error(
+        `pox-5 refuses ${action} during the prepare phase, which starts at burn height ` +
+          `${pox.preparePhaseStartHeight}; at ${pox.burnHeight} this transaction could be mined inside it. ` +
+          `Try again at or after burn height ${pox.nextCycleStartHeight} (reward cycle ${pox.rewardCycle + 1}).`
       );
     }
   }
@@ -483,7 +551,7 @@ export class StackingService {
     if (status.staking) {
       throw new Error(
         `${account.address} is already staking ${status.staking.amountUstx} uSTX with ` +
-          `${status.staking.signerManager}. Use extend_stacking to extend, increase or switch signer.`
+          `${status.staking.signerManager}. Use extend-stacking to extend, increase or switch signer.`
       );
     }
     // pox-5 counts locked + unlocked STX (a bond rolling over into a stake is still locked).
@@ -494,7 +562,7 @@ export class StackingService {
     }
     if (!(await this.isRegisteredSigner(signerManager))) {
       throw new Error(
-        `${signerManager} is not a registered pox-5 signer manager. Use list_stacking_signers to pick one.`
+        `${signerManager} is not a registered pox-5 signer manager. Use list-signers to pick one.`
       );
     }
 
@@ -539,7 +607,7 @@ export class StackingService {
     const { pox } = status;
     const current = status.staking;
     if (!current) {
-      throw new Error(`${account.address} is not staking. Use stack_stx to start.`);
+      throw new Error(`${account.address} is not staking. Use stack-stx to start.`);
     }
     this.assertNotPreparePhase(pox, "stake-update");
 
@@ -569,7 +637,7 @@ export class StackingService {
     }
     if (signerManager !== current.signerManager && !(await this.isRegisteredSigner(signerManager))) {
       throw new Error(
-        `${signerManager} is not a registered pox-5 signer manager. Use list_stacking_signers to pick one.`
+        `${signerManager} is not a registered pox-5 signer manager. Use list-signers to pick one.`
       );
     }
 
@@ -647,12 +715,13 @@ export class StackingService {
     account: Account,
     signerManager: string,
     rewardCycle: number,
-    unpulledSats: bigint
+    unpulledSats: bigint,
+    nonce?: bigint
   ): Promise<TransferResult> {
-    await this.assertPox5Active();
+    const { sbtcContract: sbtc } = await this.assertPox5Active();
     const { address, name } = parseContractId(signerManager);
-    const sbtc = getContracts(this.network).SBTC_TOKEN as `${string}.${string}`;
     return this.call(account, {
+      ...(nonce !== undefined && { nonce }),
       contractAddress: address,
       contractName: name,
       functionName: "claim-rewards",
@@ -671,16 +740,17 @@ export class StackingService {
     account: Account,
     signerManager: string,
     rewardCycle: number,
-    style: Exclude<ClaimStyle, "none">
+    style: Exclude<ClaimStyle, "none">,
+    nonce?: bigint
   ): Promise<TransferResult> {
-    await this.assertPox5Active();
+    const { sbtcContract: sbtc } = await this.assertPox5Active();
     const { address, name } = parseContractId(signerManager);
-    const sbtc = getContracts(this.network).SBTC_TOKEN as `${string}.${string}`;
     const args =
       style === "staker-arg"
         ? [principalCV(account.address), uintCV(rewardCycle), noneCV()]
         : [uintCV(rewardCycle), noneCV()];
     return this.call(account, {
+      ...(nonce !== undefined && { nonce }),
       contractAddress: address,
       contractName: name,
       functionName: "claim-staker-rewards",

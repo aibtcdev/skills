@@ -308,6 +308,60 @@ describe("signer managers", () => {
     expect(claim.postConditions).toHaveLength(1);
     expect(claim.postConditions[0].address).toBe(MANAGER);
   });
+
+  test("passes explicit nonces through to both transactions", async () => {
+    const svc = service();
+    await svc.pullSignerRewards(account, MANAGER, 143, 500n, 7n);
+    await svc.claimStakerRewards(account, MANAGER, 143, "staker-arg", 8n);
+    expect(lastCall(0).nonce).toBe(7n);
+    expect(lastCall(1).nonce).toBe(8n);
+  });
+
+  test("uses the sBTC contract pox-5 reports, not the network default", async () => {
+    const testnetSbtc = "SN3VMHXEN64ZZF71JQ5VESXDWTR301XTTXGF4J8F1.sbtc-token";
+    (hiro.getPoxInfo as unknown as ReturnType<typeof mock>).mockImplementation(async () => ({
+      contract_id: activePox,
+      pox_5_sbtc_contract: testnetSbtc,
+    }));
+    try {
+      const svc = service();
+      await svc.pullSignerRewards(account, MANAGER, 143, 500n);
+      await svc.claimStakerRewards(account, MANAGER, 143, "staker-arg");
+      expect(lastCall(0).postConditions[0].asset).toBe(`${testnetSbtc}::sbtc-token`);
+      expect(lastCall(1).postConditions[0].asset).toBe(`${testnetSbtc}::sbtc-token`);
+    } finally {
+      (hiro.getPoxInfo as unknown as ReturnType<typeof mock>).mockImplementation(async () => ({
+        contract_id: activePox,
+      }));
+    }
+  });
+
+  test("projects claimable rewards from the cycle's global rewards-per-token before the manager pulls", async () => {
+    // Before the pull the signer's rewards-per-token is still 0, so pox-5's own
+    // get-earned-staker-rewards reports nothing.
+    reads.set("get-earned-staker-rewards", Cl.uint(0));
+    reads.set("get-staker-shares-staked-for-cycle", Cl.uint(521_000_000n));
+    reads.set("get-rewards-per-token-for-cycle", Cl.uint(646_291_401_690n));
+    reads.set("get-staker-rewards-per-token-settled-for-cycle", Cl.uint(0));
+    reads.set("get-staker-unclaimed-rewards-for-cycle", Cl.uint(0));
+    reads.set("compute-earned-rewards", Cl.uint(336));
+
+    expect(await service().getStakerClaimableRewards(MANAGER, 144, STAKER)).toBe(336n);
+    const computeCall = (hiro.callReadOnlyFunction as unknown as ReturnType<typeof mock>).mock.calls.find(
+      (c) => c[1] === "compute-earned-rewards"
+    ) as [string, string, ClarityValue[]];
+    expect(computeCall[2].map((a) => cvToJSON(a).value)).toEqual(["521000000", "646291401690", "0", "0"]);
+  });
+});
+
+describe("prepare phase margin", () => {
+  test("refuses a write a few blocks before the prepare phase", async () => {
+    burnHeight = 968348; // prepare phase starts at 968350
+    await expect(service().stake(account, { signerManager: MANAGER, amountUstx: 1n, numCycles: 1 })).rejects.toThrow(
+      /could be mined inside it/
+    );
+    expect(callContract).not.toHaveBeenCalled();
+  });
 });
 
 describe("payout calldata", () => {

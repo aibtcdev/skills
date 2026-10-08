@@ -143,7 +143,7 @@ Options:
 - `--max-withdrawal-fee-sats` (optional) — max sBTC withdrawal fee per payout with `--btc-reward-address` (default 3000)
 - `--signer-calldata-hex` (optional) — raw calldata (≤500 bytes) for managers with a custom format; not combinable with `--btc-reward-address`
 
-Refused before signing when: in the prepare phase, already staking (use `extend-stacking`), the manager is not a registered pox-5 signer, or the amount exceeds the address's STX balance.
+Refused before signing when: in the prepare phase (or within 3 burn blocks of it), already staking (use `extend-stacking`), the manager is not a registered pox-5 signer, or the amount exceeds the address's STX balance.
 
 Output:
 ```json
@@ -171,10 +171,12 @@ Update an existing stake (`stake-update`): extend, add STX, switch signer manage
 ```
 bun run stacking/stacking.ts extend-stacking \
   [--cycles-to-extend <cycles>] [--amount-increase <microStx>] [--signer-manager <contractId>] \
-  [--btc-reward-address <address> [--max-withdrawal-fee-sats <sats>] | --signer-calldata-hex <hex>]
+  (--btc-reward-address <address> [--max-withdrawal-fee-sats <sats>] | --signer-calldata-hex <hex> | --sbtc-payout)
 ```
 
-Refused when not staking, in the prepare phase, nothing would change, the increase exceeds the **unlocked** balance, the new manager is not registered, or the lock would run more than 96 cycles past the next cycle.
+**A payout choice is required on every update.** pox-5 passes `stake-update`'s calldata to the manager's `validate-stake!` each time, and reference managers (Xverse, Fast Pool) treat no calldata as "delete the stored BTC payout address"; others reject it. To keep a BTC payout, pass the same `--btc-reward-address` again. `--sbtc-payout` sends no calldata on purpose.
+
+Refused when no payout choice is given, when not staking, in the prepare phase, nothing would change, the increase exceeds the **unlocked** balance, the new manager is not registered, or the lock would run more than 96 cycles past the next cycle.
 
 Output: `txid`, `explorerUrl`, `previous` (the stake before), `signerManager`, `newAmountUstx`, `newAmount`, `unlockCycle`, `unlockBurnHeight`.
 
@@ -192,7 +194,7 @@ Output: `txid`, `explorerUrl`, `previous`, `unlockCycle`, `unlockBurnHeight`.
 
 ### get-rewards
 
-sBTC earned from a signer manager for one cycle and not yet claimed.
+sBTC claimable from a signer manager for one cycle. pox-5's `get-earned-staker-rewards` only catches up when the manager pulls the cycle's rewards, so this projects the amount the staker can claim after that pull (pox-5's own `compute-earned-rewards` over the cycle's global rewards-per-token).
 
 ```
 bun run stacking/stacking.ts get-rewards --reward-cycle <cycle> [--address <addr>] [--signer-manager <contractId>]
@@ -220,7 +222,7 @@ Claim one cycle's sBTC rewards through the signer manager. If the manager has no
 bun run stacking/stacking.ts claim-rewards --reward-cycle <cycle> [--signer-manager <contractId>]
 ```
 
-Refused when the manager has no on-chain staker claim or nothing is unclaimed. Post-conditions allow sBTC only out of pox-5 (the pull) and the manager (the payout); nothing may leave the caller.
+Refused when the manager has no on-chain staker claim or nothing is claimable (projected as in `get-rewards`, so rewards the manager has not pulled yet still count). When two transactions are sent they use consecutive explicit nonces. The sBTC post-conditions use the token pox-5 reports in `/v2/pox` (`pox_5_sbtc_contract`), which differs from the default sBTC on testnet. Post-conditions allow sBTC only out of pox-5 (the pull) and the manager (the payout); nothing may leave the caller.
 
 Output: `txid`, `explorerUrl`, `unclaimedSatsBeforeFees`, `managerPull` (`{ txid, explorerUrl }` or `null`), and a `note` when two transactions were sent.
 

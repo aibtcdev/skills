@@ -10,6 +10,7 @@
 import { Command } from "commander";
 import { NETWORK, getExplorerTxUrl } from "../src/lib/config/networks.js";
 import { getAccount, getWalletAddress } from "../src/lib/services/x402.service.js";
+import { getHiroApi } from "../src/lib/services/hiro-api.js";
 import {
   MAX_STAKE_CYCLES,
   buildPayoutCalldata,
@@ -323,12 +324,34 @@ addPayoutOptions(
     .option("--cycles-to-extend <cycles>", "Cycles to add to the current unlock cycle", "0")
     .option("--amount-increase <microStx>", "Additional micro-STX to lock", "0")
     .option("--signer-manager <contractId>", "New signer manager contract id (defaults to the current one)")
+    .option(
+      "--sbtc-payout",
+      "Send no payout calldata, so rewards are paid as sBTC. Managers that store a BTC payout address delete it " +
+        "on a stake-update without calldata, and some managers reject it. One of this, --btc-reward-address or " +
+        "--signer-calldata-hex is required."
+    )
 ).action(
-  async (opts: PayoutOptions & { cyclesToExtend: string; amountIncrease: string; signerManager?: string }) => {
+  async (
+    opts: PayoutOptions & { cyclesToExtend: string; amountIncrease: string; signerManager?: string; sbtcPayout?: boolean }
+  ) => {
     try {
       const cyclesToExtend = parseIntStrict(opts.cyclesToExtend, "--cycles-to-extend", 0, MAX_STAKE_CYCLES);
       const amountIncreaseUstx = parseUstx(opts.amountIncrease, "--amount-increase", true);
       const signerCalldata = resolveCalldata(opts);
+      // pox-5 hands stake-update's calldata to the manager's validate-stake! on
+      // every update. Reference managers (Xverse, Fast Pool) treat `none` as
+      // "delete the stored BTC payout address", so an extend that omits it
+      // silently switches a BTC-payout staker to sBTC. Make the choice explicit.
+      if (signerCalldata && opts.sbtcPayout) {
+        throw new Error("--sbtc-payout cannot be combined with --btc-reward-address or --signer-calldata-hex.");
+      }
+      if (!signerCalldata && !opts.sbtcPayout) {
+        throw new Error(
+          "extend-stacking sends payout calldata to the signer manager on every update, and most managers " +
+            "treat no calldata as \"delete my BTC payout address\". Pass --btc-reward-address <address> (or " +
+            "--signer-calldata-hex) to keep or set a BTC payout, or --sbtc-payout to be paid in sBTC."
+        );
+      }
       const account = await getAccount();
       const result = await getStackingService(NETWORK).updateStake(account, {
         signerManager: opts.signerManager,
@@ -411,7 +434,7 @@ program
         );
       }
       const [earnedSats, unpulledSats, claimStyle] = await Promise.all([
-        service.getStakerUnclaimedRewards(manager, rewardCycle, staker),
+        service.getStakerClaimableRewards(manager, rewardCycle, staker),
         service.getSignerUnpulledRewards(manager, rewardCycle),
         service.getClaimStyle(manager),
       ]);
@@ -462,7 +485,7 @@ program
       }
 
       const [earnedSats, unpulledSats, claimStyle] = await Promise.all([
-        service.getStakerUnclaimedRewards(manager, rewardCycle, account.address),
+        service.getStakerClaimableRewards(manager, rewardCycle, account.address),
         service.getSignerUnpulledRewards(manager, rewardCycle),
         service.getClaimStyle(manager),
       ]);
@@ -474,12 +497,19 @@ program
       }
 
       let managerPull: { txid: string; explorerUrl: string } | null = null;
+      let claimNonce: bigint | undefined;
       if (unpulledSats > 0n) {
-        const pulled = await service.pullSignerRewards(account, manager, rewardCycle, unpulledSats);
+        // Two transactions back to back: pin consecutive nonces, since the API
+        // can still report the first one's nonce as next right after broadcast.
+        const pullNonce = BigInt(
+          (await getHiroApi(NETWORK).getNonceInfo(account.address)).possible_next_nonce
+        );
+        const pulled = await service.pullSignerRewards(account, manager, rewardCycle, unpulledSats, pullNonce);
         managerPull = { txid: pulled.txid, explorerUrl: getExplorerTxUrl(pulled.txid, NETWORK) };
+        claimNonce = pullNonce + 1n;
       }
 
-      const claim = await service.claimStakerRewards(account, manager, rewardCycle, claimStyle);
+      const claim = await service.claimStakerRewards(account, manager, rewardCycle, claimStyle, claimNonce);
       printJson({
         success: true,
         network: NETWORK,
