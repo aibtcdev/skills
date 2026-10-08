@@ -468,7 +468,7 @@ describe("createApiClient payment modes", () => {
     // ...so the idempotency key must match too, and be derived from those bytes.
     const idOf = (p: typeof first) => (p.extensions as Record<string, { info: { id: string } }>)["payment-identifier"].info.id;
     expect(idOf(second)).toBe(idOf(first));
-    expect(idOf(first)).toBe(derivePaymentIdentifier(first.payload.transaction));
+    expect(idOf(first)).toBe(derivePaymentIdentifier(first.payload.transaction, (await mnemonicToAccount(TEST_MNEMONIC, network)).privateKey));
   });
 
   // Runs before any other direct test on purpose: the Hiro client caches
