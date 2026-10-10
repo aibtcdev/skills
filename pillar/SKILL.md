@@ -421,7 +421,7 @@ Options:
 
 #### direct-stack-stx
 
-Stack STX via Fast Pool or Stacking DAO. Agent-signed, no browser needed.
+Stack STX via Fast Pool or Stacking DAO. Agent-signed, no browser needed. The Fast Pool path goes through pox-4 in the Pillar wallet contract and is refused while pox-4 is not the active PoX contract (PoX-5 is live on mainnet); use the `stacking` skill for PoX-5 staking.
 
 ```
 bun run pillar/pillar-direct.ts direct-stack-stx --stx-amount <microStx> --pool fast-pool|stacking-dao
@@ -433,7 +433,7 @@ Options:
 
 #### direct-revoke-fast-pool
 
-Revoke Fast Pool STX delegation. Agent-signed, no browser needed.
+Revoke Fast Pool STX delegation. Agent-signed, no browser needed. Refused while pox-4 is not the active PoX contract (it calls pox-4 `revoke-delegate-stx`).
 
 ```
 bun run pillar/pillar-direct.ts direct-revoke-fast-pool
