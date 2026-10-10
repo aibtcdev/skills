@@ -51,6 +51,8 @@ function minCreditFee(serializedTx: string): bigint {
   const bySize = (bytes + CREDIT_BYTES_PER_SAT - 1n) / CREDIT_BYTES_PER_SAT;
   return bySize > MIN_CREDIT_FEE ? bySize : MIN_CREDIT_FEE;
 }
+/** A call paid in the same request pays for two transactions: twice the credit fee. */
+const PAID_CALL_MULTIPLE = 2n;
 const MEMO_MAX_BYTES = 34;
 
 type TokenKey = "sbtc" | "usdcx";
@@ -132,6 +134,10 @@ interface BoltErrorBody {
   /** Outcome of the original withdrawal request, on a repeated one. */
   status?: string;
   minimumFee?: number;
+  /** Payment transaction of a call paid in the same request. */
+  feeTxid?: string;
+  /** Sats that become prepaid credit when the payment was sent and the call was not. */
+  credit?: number;
 }
 
 /** What to tell the agent, per skill error code. */
@@ -159,6 +165,10 @@ const SUGGESTIONS: Record<string, string> = {
   BOLT_INVALID_TRANSACTION:
     "Nothing was charged. Fix the transaction: it must be a contract call signed with sponsored: true and fee 0.",
   BOLT_RATE_LIMITED: "Too many requests. Wait before sending again.",
+  BOLT_CREDIT_ONLY:
+    "Bolt takes only prepaid credit from this address. Run credit-deposit, wait for it to confirm, then sponsor-call.",
+  BOLT_CALL_NOT_SENT:
+    "The payment was sent and the call was not. Do not run the command again as is: fix what the message names. The fee of the call (details.credit) becomes prepaid credit once the payment (details.feeTxid) confirms; spend it with sponsor-call or take it back with credit-withdraw.",
 };
 
 /** Suggestion when nothing above applies: an answer with no known code or wording. */
@@ -176,6 +186,9 @@ const BY_BOLT_CODE: Record<string, string> = {
   UNAVAILABLE: "BOLT_TEMPORARILY_UNAVAILABLE",
   NOT_REFUNDED: "BOLT_REFUND_FAILED",
   ALREADY_PROCESSED: "BOLT_WITHDRAWAL_REPEATED",
+  INSUFFICIENT_BALANCE: "BOLT_INSUFFICIENT_BALANCE",
+  CREDIT_ONLY: "BOLT_CREDIT_ONLY",
+  CALL_NOT_SENT: "BOLT_CALL_NOT_SENT",
 };
 
 /** Bolt codes too broad to decide alone: used only when the message says no more. */
@@ -241,6 +254,8 @@ function boltError(status: number, message: string, body: BoltErrorBody = {}): A
     ...(body.txid !== undefined && { txid: body.txid }),
     ...(body.status !== undefined && { withdrawal: body.status }),
     ...(body.minimumFee !== undefined && { minimumFee: body.minimumFee }),
+    ...(body.feeTxid !== undefined && { feeTxid: body.feeTxid }),
+    ...(body.credit !== undefined && { credit: body.credit }),
   };
   let suggestion = known === undefined ? UNRECOGNIZED_REFUSAL : SUGGESTIONS[code];
   if (code === "BOLT_WITHDRAWAL_REPEATED") {
@@ -481,6 +496,12 @@ program
             },
           ])
         ),
+        call: {
+          token: "sBTC",
+          minFee: (PAID_CALL_MULTIPLE * MIN_CREDIT_FEE).toString(),
+          unit: "sats",
+          note: "A contract call paid in the same request: no deposit, no balance kept at Bolt.",
+        },
         credit: {
           token: "sBTC",
           contract: `${BOLT_DEPLOYER}.${TOKENS.sbtc.boltContract}`,
@@ -556,6 +577,125 @@ program
       handleError(error);
     }
   });
+
+// ---------------------------------------------------------------------------
+// call
+// ---------------------------------------------------------------------------
+
+/** Both transactions Bolt already broadcast for this nonce, when a nonce refusal names them. */
+function paidCallFromNonceRefusal(refusal: AibtcError): { txid: string; feeTxid: string } | undefined {
+  const { txid, feeTxid } = (refusal.details ?? {}) as { txid?: unknown; feeTxid?: unknown };
+  return refusal.code === "BOLT_INVALID_NONCE" && typeof txid === "string" && typeof feeTxid === "string"
+    ? { txid, feeTxid }
+    : undefined;
+}
+
+program
+  .command("call")
+  .description(
+    "Call any contract without STX and without prepaid credit: the fee is paid in sBTC by a payment transaction sent in the same request. From 20 sats. Requires an unlocked wallet holding the fee in sBTC."
+  )
+  .requiredOption("--contract <contractId>", "Full contract ID in ADDRESS.contract-name format")
+  .requiredOption("--function <functionName>", "Public function name to call")
+  .option("--args <json>", 'Function arguments as JSON array. Typed: [{"type":"uint","value":100}]', "[]")
+  .option("--post-condition-mode <mode>", "'deny' (default) blocks unexpected transfers; 'allow' permits any", "deny")
+  .option("--post-conditions <json>", "Post conditions as JSON array (stx and ft). See SKILL.md for format.")
+  .option("--fee <sats>", "Total to pay, in sats (default: the minimum, twice what the call costs on credit, from 20)")
+  .action(
+    async (opts: {
+      contract: string;
+      function: string;
+      args: string;
+      postConditionMode: string;
+      postConditions?: string;
+      fee?: string;
+    }) => {
+      try {
+        requireMainnet();
+        const [contractAddress, contractName] = opts.contract.split(".");
+        if (!contractAddress || !contractName) {
+          throw new AibtcError("Provide --contract as ADDRESS.contract-name", "BOLT_INVALID_ARGUMENT");
+        }
+        if (contractAddress === BOLT_DEPLOYER && contractName.startsWith("boltproto-")) {
+          throw new AibtcError(
+            "Bolt's own contracts cannot be called this way",
+            "BOLT_INVALID_ARGUMENT",
+            undefined,
+            "Use the transfer subcommand.",
+            BOLT_DOCS
+          );
+        }
+        const spec: CallSpec = {
+          contractAddress,
+          contractName,
+          functionName: opts.function,
+          functionArgs: parseJsonArray(opts.args, "--args").map(parseArgToClarityValue),
+          postConditions: opts.postConditions
+            ? parseJsonArray(opts.postConditions, "--post-conditions").map(parsePostCondition)
+            : [],
+          postConditionMode: opts.postConditionMode === "allow" ? PostConditionMode.Allow : PostConditionMode.Deny,
+        };
+        const chosenFee = opts.fee ? parseAmount(opts.fee, "--fee") : undefined;
+        const sender = await getWalletAddress();
+
+        // The payment takes the next nonce and the call the one after it: Bolt
+        // broadcasts them in that order.
+        const send = async (nonce: bigint, fee: bigint | undefined) => {
+          const call = await signSponsored(spec, nonce + 1n);
+          const total = fee ?? PAID_CALL_MULTIPLE * minCreditFee(call.serializedTx);
+          const payment = await signSponsored(
+            {
+              contractAddress: BOLT_DEPLOYER,
+              contractName: TOKENS.sbtc.boltContract,
+              functionName: "pay-fee",
+              functionArgs: [Cl.uint(total)],
+              postConditions: [
+                createFungiblePostCondition(sender, TOKENS.sbtc.assetContract, TOKENS.sbtc.assetName, "eq", total),
+              ],
+              postConditionMode: PostConditionMode.Deny,
+            },
+            nonce
+          );
+          const result = await boltWrite<{ txid: string; feeTxid: string }>(
+            "/v2/transaction/call?token=sbtc",
+            { feeTx: payment.serializedTx, serializedTx: call.serializedTx },
+            paidCallFromNonceRefusal
+          );
+          return { result, nonce, total };
+        };
+
+        // One correction, as elsewhere: the nonce Bolt names, or (when the
+        // caller did not choose the fee) the minimum it names.
+        let nonce = await nextNonce(sender);
+        let sent: Awaited<ReturnType<typeof send>>;
+        try {
+          sent = await send(nonce, chosenFee);
+        } catch (error) {
+          const retryNonce = nonceFromRefusal(error);
+          const minimum = chosenFee === undefined ? minimumFeeFromRefusal(error) : undefined;
+          if (retryNonce === undefined && minimum === undefined) throw error;
+          nonce = retryNonce ?? nonce;
+          sent = await send(nonce, minimum ?? chosenFee);
+        }
+
+        printJson({
+          success: true,
+          txid: sent.result.txid,
+          feeTxid: sent.result.feeTxid,
+          contract: opts.contract,
+          function: opts.function,
+          feePaid: sent.total.toString(),
+          unit: "sats",
+          nonce: (sent.nonce + 1n).toString(),
+          feeNonce: sent.nonce.toString(),
+          network: NETWORK,
+          explorerUrl: getExplorerTxUrl(sent.result.txid, NETWORK),
+        });
+      } catch (error) {
+        handleError(error);
+      }
+    }
+  );
 
 // ---------------------------------------------------------------------------
 // credit-balance
