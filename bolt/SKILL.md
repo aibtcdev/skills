@@ -239,7 +239,6 @@ refusal code), `txid`, `withdrawal` and `minimumFee`.
 | `BOLT_INSUFFICIENT_CREDIT` | credit below `--fee` | no |
 | `BOLT_INSUFFICIENT_BALANCE` | wallet below `amount + fee`, or below the `--fee` of a `call` | no |
 | `BOLT_FEE_TOO_LOW` | fee under the minimum | no |
-| `BOLT_FEE_TOO_HIGH` | `sponsor-call --fee` above `details.maximumFee` (50 times the minimum) | no |
 | `BOLT_CONTRACT_NOT_ON_CREDIT` | `sponsor-call` aimed at a Bolt contract | no |
 | `BOLT_TEMPORARILY_UNAVAILABLE` | try again later | no |
 | `BOLT_RATE_LIMITED` | too many requests; wait before sending again | no |
