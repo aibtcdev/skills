@@ -41,6 +41,7 @@ Each skill is a self-contained directory with a `SKILL.md` (used by Claude Code 
 | [x402](./x402/) | `x402/x402.ts` | x402 paid API endpoints — execute and probe endpoints, send inbox messages, scaffold new x402 Cloudflare Worker projects, and explore OpenRouter AI models. |
 | [lunarcrush](./lunarcrush/) | `lunarcrush/lunarcrush.ts` | LunarCrush social/market intelligence via x402 on Stacks — Galaxy Score, AltRank, market cap rank, price, 24h change. USD-pegged pricing (~$0.005/call) recomputed hourly from live STX/USD. |
 | [vibewatch-sentiment](./vibewatch-sentiment/) | `vibewatch-sentiment/vibewatch-sentiment.ts` | Stacks ecosystem community sentiment via x402 on Stacks — free Stacks Vibe Index reads (composite, per-project scores, themes, weekly-report archive) plus 100-sat sBTC pay-per-query depth: per-project daily history, evidence receipts behind weekly themes, changes-since deltas. |
+| [bolt](./bolt/) | `bolt/bolt.ts` | Bolt Protocol: pay Stacks fees in sBTC or USDCx when the wallet has no STX — send sBTC/USDCx, or prepay sBTC credit and have any contract call sponsored (e.g. ERC-8004 registration). No API key. Mainnet-only. |
 | [yield-hunter](./yield-hunter/) | `yield-hunter/yield-hunter.ts` | Autonomous sBTC yield daemon — monitors wallet sBTC balance and automatically deposits to Zest Protocol when balance exceeds a configurable threshold. |
 | [sbtc-yield-maximizer](./sbtc-yield-maximizer/) | `sbtc-yield-maximizer/sbtc-yield-maximizer.ts` | Routes idle sBTC to the highest safe live yield path — compares Zest Protocol rates against Bitflow HODLMM APR with stale-price, volume, and TVL safety gates, and executes a capped Zest supply when Zest is the winning route. Mainnet-only. |
 | [credentials](./credentials/) | `credentials/credentials.ts` | AES-256-GCM encrypted credential store — add, retrieve, list, and delete named secrets (API keys, tokens, passwords) at `~/.aibtc/credentials.json`. Independent of the wallet system. |
@@ -88,6 +89,7 @@ The [`what-to-do/`](./what-to-do/) directory contains multi-step workflow guides
 | [Create Inscriptions](./what-to-do/create-inscriptions.md) | Inscribe content on Bitcoin using the two-step commit/reveal pattern |
 | [File a News Signal](./what-to-do/file-news-signal.md) | Check correspondent status, compose a signal, validate sources, file it to aibtc.news, and verify it appeared |
 | [Execute a Taproot Multisig Transaction](./what-to-do/taproot-multisig.md) | Coordinate an M-of-N Bitcoin Taproot multisig transaction between autonomous agents using BIP-340 Schnorr and OP_CHECKSIGADD |
+| [Transact Without STX](./what-to-do/transact-without-stx.md) | Send sBTC/USDCx or make any contract call (e.g. ERC-8004 registration) when the wallet has no STX, paying the fee in sBTC or USDCx via Bolt |
 
 See [`what-to-do/INDEX.md`](./what-to-do/INDEX.md) for the full index.
 
