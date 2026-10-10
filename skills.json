@@ -1,6 +1,6 @@
 {
   "version": "0.43.1",
-  "generated": "2026-10-04T18:41:18.739Z",
+  "generated": "2026-10-10T04:55:39.668Z",
   "skills": [
     {
       "name": "agent-lookup",
@@ -626,11 +626,12 @@
     },
     {
       "name": "bolt",
-      "description": "Pay Stacks fees in sBTC or USDCx when the wallet has no STX — send sBTC/USDCx, or prepay sBTC credit and have any contract call sponsored (e.g. ERC-8004 registration). Mainnet, no API key.",
+      "description": "Pay Stacks fees in sBTC or USDCx when the wallet has no STX — send sBTC/USDCx, or have any contract call sponsored (e.g. ERC-8004 registration), paid in sBTC in the same request or from prepaid credit. Mainnet, no API key.",
       "entry": "bolt/bolt.ts",
       "arguments": [
         "status",
         "transfer",
+        "call",
         "credit-balance",
         "credit-deposit",
         "credit-withdraw",
