@@ -44,8 +44,9 @@ description: Gasless Stacks transactions via Bolt Protocol — sBTC/USDCx transf
   cannot be undone.
 - Treat the `txid` in the output as broadcast, not confirmed. Check it with the
   `query` skill before acting on the result.
-- `--serialized-tx` sends bytes signed elsewhere: only pass a transaction you
-  built or decoded yourself.
+- `--serialized-tx` sends bytes signed earlier by this same wallet: only pass
+  a transaction you built or decoded yourself. One signed by another wallet is
+  refused.
 - A write that gets no answer (timeout, dropped connection) is sent once more,
   unchanged, by the command itself; that is safe because Bolt runs a signed
   request once. If a command still ends without a JSON result, do not run it

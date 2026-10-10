@@ -140,7 +140,7 @@ NETWORK=mainnet bun run bolt/bolt.ts sponsor-call --serialized-tx 0x8080...
 | `--args` | no | JSON array, same typed format as the `contract` skill |
 | `--post-condition-mode` | no | `deny` (default) or `allow` |
 | `--post-conditions` | no | JSON array, see below |
-| `--serialized-tx` | instead of the above | hex of a contract call signed with `sponsored: true`, fee 0 |
+| `--serialized-tx` | instead of the above | hex of a contract call this wallet signed with `sponsored: true`, fee 0 |
 | `--fee` | no | sats of credit to spend; default is the minimum: 10, or 1 per 50 bytes when the transaction is above 500 bytes |
 
 Every typed argument needs both `type` and `value`, including an empty optional:
@@ -170,6 +170,9 @@ How the fee works:
 - A higher `--fee` buys priority: Bolt pays the network 50 micro-STX per sat of
   fee (this rate can change), so the minimum of 10 pays 500 micro-STX. The
   minimum is enough when the network is not congested.
+- The wallet signs the fee together with the call, so only the wallet that
+  signed the transaction can set what it costs. That is why `--serialized-tx`
+  needs the wallet that signed it unlocked.
 - The fee is debited when Bolt accepts the call and returned if the network
   refuses it. A call that is broadcast and later fails on-chain is still paid.
 
@@ -184,7 +187,7 @@ refusal code), `txid`, `withdrawal` and `minimumFee`.
 | `code` | Meaning | Charged? |
 |---|---|---|
 | `BOLT_MAINNET_ONLY` | `NETWORK` is not `mainnet` | no |
-| `BOLT_INVALID_ARGUMENT` | a flag is missing or malformed | no |
+| `BOLT_INVALID_ARGUMENT` | a flag is missing or malformed, or `--serialized-tx` was signed by another wallet | no |
 | `BOLT_INVALID_TRANSACTION` | the transaction as built was refused | no |
 | `BOLT_INVALID_NONCE` | the address has pending transactions; wait for them to confirm. `details.txid`, when present, is a call Bolt already broadcast with this nonce | no |
 | `BOLT_INSUFFICIENT_CREDIT` | credit below `--fee` | no |

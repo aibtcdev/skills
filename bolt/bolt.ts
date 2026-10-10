@@ -8,6 +8,7 @@
  * Usage: bun run bolt/bolt.ts <subcommand> [options]
  */
 
+import { createHash } from "node:crypto";
 import { Command } from "commander";
 import {
   makeContractCall,
@@ -693,7 +694,7 @@ program
 program
   .command("sponsor-call")
   .description(
-    "Have Bolt sponsor any contract call, paid from prepaid sBTC credit. Pass --contract/--function/--args to build and sign it here, or --serialized-tx for one already signed as sponsored. Requires an unlocked wallet unless --serialized-tx is used."
+    "Have Bolt sponsor any contract call, paid from prepaid sBTC credit. Pass --contract/--function/--args to build and sign it here, or --serialized-tx for one this wallet already signed as sponsored. Requires an unlocked wallet."
   )
   .option("--contract <contractId>", "Full contract ID in ADDRESS.contract-name format")
   .option("--function <functionName>", "Public function name to call")
@@ -717,12 +718,21 @@ program
         const chosenFee = opts.fee ? parseAmount(opts.fee, "--fee") : undefined;
         let fee = chosenFee;
 
-        const post = (serializedTx: string) =>
-          boltWrite<{ txid: string }>(
+        // The fee is not inside the signed transaction, so the wallet that signed
+        // it also signs the fee for it: nobody else can choose what the call costs.
+        const post = async (serializedTx: string) => {
+          const account = await getAccount();
+          const sha256 = createHash("sha256").update(Buffer.from(serializedTx, "hex")).digest("hex");
+          const feeSignature = signMessageHashRsv({
+            messageHash: bytesToHex(hashMessage(`Bolt credit call | ${sha256} | ${fee}`)),
+            privateKey: account.privateKey,
+          });
+          return boltWrite<{ txid: string }>(
             `/v1/sponsor/${CREDIT_TOKEN}/transaction`,
-            { serializedTx, fee: fee!.toString() },
+            { serializedTx, fee: fee!.toString(), feeSignature },
             broadcastFromNonceRefusal
           );
+        };
         // Without --fee the command pays the minimum, so when Bolt names a
         // higher one it pays that instead, once. A fee the caller chose stands.
         const send = async (serializedTx: string) => {
