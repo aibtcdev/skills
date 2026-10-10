@@ -239,6 +239,7 @@ refusal code), `txid`, `withdrawal` and `minimumFee`.
 | `BOLT_INSUFFICIENT_CREDIT` | credit below `--fee` | no |
 | `BOLT_INSUFFICIENT_BALANCE` | wallet below `amount + fee`, or below the `--fee` of a `call` | no |
 | `BOLT_FEE_TOO_LOW` | fee under the minimum | no |
+| `BOLT_FEE_TOO_HIGH` | `sponsor-call --fee` above `details.maximumFee` (50 times the minimum) | no |
 | `BOLT_CONTRACT_NOT_ON_CREDIT` | `sponsor-call` aimed at a Bolt contract | no |
 | `BOLT_TEMPORARILY_UNAVAILABLE` | try again later | no |
 | `BOLT_RATE_LIMITED` | too many requests; wait before sending again | no |
@@ -248,7 +249,7 @@ refusal code), `txid`, `withdrawal` and `minimumFee`.
 | `BOLT_WITHDRAWAL_REPEATED` | the same withdrawal request was sent twice; `details.withdrawal` is the outcome of the first (`sent`, `confirmed`, `not_paid`, `pending`, `unknown`) and `details.txid` its payout | no |
 | `BOLT_WITHDRAWAL_UNKNOWN` | the outcome of a withdrawal could not be confirmed; do not send again | credit held until resolved |
 | `BOLT_SENT_UNCONFIRMED` | a write got no answer, was sent again unchanged, and its nonce was already taken: the first attempt was most likely broadcast | probably |
-| `BOLT_CALL_UNKNOWN` | the outcome of a `sponsor-call` or `call` could not be confirmed; `details.txid` is the transaction to look up; do not send again | fee held until resolved |
+| `BOLT_CALL_UNKNOWN` | the outcome of a `sponsor-call` or `call` could not be confirmed; `details.txid` is the transaction to look up, or `details.feeTxid` when it is the payment of a `call` that has no answer; do not send again | fee held until resolved |
 | `BOLT_REJECTED` | the network refused the transaction; `error` names its reason (`BadNonce`, `TooMuchChaining`, `FeeTooLow`, `NoSuchContract`, `NoSuchPublicFunction`, `BadFunctionArgument`, …) | no |
 
 ## Reference

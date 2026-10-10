@@ -134,6 +134,7 @@ interface BoltErrorBody {
   /** Outcome of the original withdrawal request, on a repeated one. */
   status?: string;
   minimumFee?: number;
+  maximumFee?: number;
   /** Payment transaction of a call paid in the same request. */
   feeTxid?: string;
   /** Sats that become prepaid credit when the payment was sent and the call was not. */
@@ -161,6 +162,7 @@ const SUGGESTIONS: Record<string, string> = {
   BOLT_CONTRACT_NOT_ON_CREDIT:
     "Bolt's own contracts cannot be called through sponsor-call. Use the transfer subcommand.",
   BOLT_FEE_TOO_LOW: "Nothing was charged. Raise --fee to the minimum in the message.",
+  BOLT_FEE_TOO_HIGH: "Nothing was charged. Lower --fee to at most details.maximumFee.",
   BOLT_INSUFFICIENT_BALANCE: "The wallet needs amount + fee of the token. Fund it or lower --amount.",
   BOLT_INVALID_TRANSACTION:
     "Nothing was charged. Fix the transaction: it must be a contract call signed with sponsored: true and fee 0.",
@@ -178,6 +180,8 @@ const UNRECOGNIZED_REFUSAL =
 /** Bolt's `code` -> skill error code, where one decides the other. */
 const BY_BOLT_CODE: Record<string, string> = {
   FEE_TOO_LOW: "BOLT_FEE_TOO_LOW",
+  FEE_TOO_HIGH: "BOLT_FEE_TOO_HIGH",
+  INVALID_SIGNATURE: "BOLT_INVALID_ARGUMENT",
   NONCE_PENDING: "BOLT_INVALID_NONCE",
   NONCE_MISMATCH: "BOLT_INVALID_NONCE",
   INSUFFICIENT_CREDIT: "BOLT_INSUFFICIENT_CREDIT",
@@ -194,7 +198,6 @@ const BY_BOLT_CODE: Record<string, string> = {
 /** Bolt codes too broad to decide alone: used only when the message says no more. */
 const BY_BROAD_BOLT_CODE: Record<string, string> = {
   INVALID_REQUEST: "BOLT_INVALID_ARGUMENT",
-  INVALID_SIGNATURE: "BOLT_INVALID_ARGUMENT",
   SIGNATURE_EXPIRED: "BOLT_INVALID_ARGUMENT",
   INVALID_TRANSACTION: "BOLT_INVALID_TRANSACTION",
   STATUS_UNKNOWN: "BOLT_CALL_UNKNOWN",
@@ -254,12 +257,16 @@ function boltError(status: number, message: string, body: BoltErrorBody = {}): A
     ...(body.txid !== undefined && { txid: body.txid }),
     ...(body.status !== undefined && { withdrawal: body.status }),
     ...(body.minimumFee !== undefined && { minimumFee: body.minimumFee }),
+    ...(body.maximumFee !== undefined && { maximumFee: body.maximumFee }),
     ...(body.feeTxid !== undefined && { feeTxid: body.feeTxid }),
     ...(body.credit !== undefined && { credit: body.credit }),
   };
   let suggestion = known === undefined ? UNRECOGNIZED_REFUSAL : SUGGESTIONS[code];
   if (code === "BOLT_WITHDRAWAL_REPEATED") {
     suggestion = repeatedWithdrawalSuggestion(body);
+  } else if (/feeSignature/.test(message)) {
+    suggestion =
+      "Nothing was charged. The fee is signed by the wallet that signed the transaction: --serialized-tx takes only a transaction the active wallet signed.";
   } else if (code === "BOLT_INVALID_NONCE" && body.txid !== undefined) {
     suggestion = `Bolt already broadcast a call with this nonce: txid ${body.txid}. If it is the call you meant, it is done; do not send it again.`;
   }
