@@ -82,7 +82,7 @@ const TOKENS: Record<
     boltContract: "boltproto-usdcx-v1",
     assetContract: "SP120SBRBQJ00MCWS7TM5R8WJNTTKD5K0HFRC2CNE.usdcx",
     assetName: "usdcx-token",
-    minFee: 100n,
+    minFee: 10_000n,
   },
 };
 
@@ -530,7 +530,7 @@ program
   .requiredOption("--token <token>", "sbtc or usdcx")
   .requiredOption("--recipient <address>", "Stacks address to send to")
   .requiredOption("--amount <units>", "Amount in the smallest unit: sats for sBTC, micro-USDCx for USDCx")
-  .option("--fee <units>", "Fee paid to Bolt in the same token (default: the minimum, 10 sats or 100 micro-USDCx)")
+  .option("--fee <units>", "Fee paid to Bolt in the same token (default: the minimum, 10 sats or 10,000 micro-USDCx)")
   .option("--memo <text>", "Optional memo, up to 34 bytes")
   .action(async (opts: { token: string; recipient: string; amount: string; fee?: string; memo?: string }) => {
     try {

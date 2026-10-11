@@ -22,7 +22,7 @@ instead. An address that holds no STX can transact.
 
 | You want to | Subcommand | Cost |
 |---|---|---|
-| Send sBTC or USDCx to a Stacks address | `transfer` | from 10 sats or 100 micro-USDCx, inside the same transaction |
+| Send sBTC or USDCx to a Stacks address | `transfer` | from 10 sats or 10,000 micro-USDCx (0.01 USDCx), inside the same transaction |
 | Call any other contract without STX | `call` | from 20 sats of sBTC, paid in the same request; nothing is deposited |
 | Call contracts often | `credit-deposit` once, then `sponsor-call` | the `--fee` you pass, from 10 sats per call, debited from the credit |
 
@@ -56,7 +56,7 @@ NETWORK=mainnet bun run bolt/bolt.ts transfer --token usdcx --recipient SP... --
 | `--token` | yes | `sbtc` or `usdcx` |
 | `--recipient` | yes | Stacks address; it receives exactly `--amount` |
 | `--amount` | yes | smallest unit of the token |
-| `--fee` | no | paid to Bolt in the same token; default is the minimum (10 sats / 100 micro-USDCx) |
+| `--fee` | no | paid to Bolt in the same token; default is the minimum (10 sats / 10,000 micro-USDCx) |
 | `--memo` | no | up to 34 bytes |
 
 The wallet must hold `amount + fee` of the token. The transaction carries a
