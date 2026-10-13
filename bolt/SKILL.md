@@ -88,6 +88,7 @@ NETWORK=mainnet bun run bolt/bolt.ts call \
 | `--post-condition-mode` | no | `deny` (default) or `allow` |
 | `--post-conditions` | no | JSON array, same format as `sponsor-call` below |
 | `--fee` | no | total sats to pay; default is the minimum: 20, or 2 per 50 bytes when the call is above 500 bytes |
+| `--check` | no | ask Bolt whether it would accept the call, without sending it |
 
 Any contract call, paid in sBTC in the same request. The wallet signs two
 transactions with consecutive nonces: a payment of `--fee` to Bolt, then the
@@ -113,6 +114,14 @@ then, and `credit-deposit` plus `sponsor-call` for calls made often.
 
 Output: `{ success, txid, feeTxid, contract, function, feePaid, unit, nonce, feeNonce, network, explorerUrl }`
 
+With `--check` both transactions are built and signed the same way and Bolt
+runs every check it runs before sending the payment (the two transactions,
+the fee, the nonce, the sBTC balance), then stops: nothing is paid or
+broadcast. It fails with the error the request itself would get. It does not
+run the contract, so a call that passes can still fail on-chain.
+
+Output with `--check`: `{ success, checked, sent: false, contract, function, fee, minimumFee, unit, nonce, feeNonce, network }`
+
 `txid` is the call, `feeTxid` the payment.
 
 ### `credit-balance`
@@ -132,26 +141,28 @@ Output: `{ address, network, credit: { sats, callsAtMinimumFee } }`
 ```bash
 NETWORK=mainnet bun run bolt/bolt.ts credit-ledger
 NETWORK=mainnet bun run bolt/bolt.ts credit-ledger --address SP... --limit 10
-# The sponsored call signed with nonce 7, e.g. after a lost answer
+# The call signed with nonce 7, e.g. after a lost answer
 NETWORK=mainnet bun run bolt/bolt.ts credit-ledger --nonce 7
 ```
 
 The statement of an address's prepaid credit, newest first: every deposit,
-sponsored call and withdrawal, each with its `txid`. No wallet needed with
-`--address`.
+sponsored call and withdrawal, each with its `txid`. Calls made with `call`
+are listed too (`paid_call`), so every call Bolt broadcast for the address is
+in one place. No wallet needed with `--address`.
 
 | Option | Required | Description |
 |---|---|---|
 | `--address` | no | address to list; default is the active wallet |
 | `--limit` | no | entries to return, 1 to 100 (default 50) |
 | `--before` | no | ISO time; pass the `at` of the last entry to read older ones |
-| `--nonce` | no | only the sponsored call signed with this nonce |
+| `--nonce` | no | only the call signed with this nonce |
 
-Output: `{ address, network, credit: { sats }, entries: [{ type, amount, status, change?, txid?, nonce?, at, explorerUrl? }] }`
+Output: `{ address, network, credit: { sats }, entries: [{ type, amount, status, change?, txid?, feeTxid?, nonce?, at, explorerUrl? }] }`
 
-`type` is `deposit`, `call` or `withdrawal`. `change` is what the entry did to
-the balance, in sats with a sign (`"0"` when it did nothing); an entry with no
-outcome yet may come without it.
+`type` is `deposit`, `call`, `withdrawal` or `paid_call`. `change` is what the
+entry did to the balance, in sats with a sign (`"0"` when it did nothing); an
+entry with no outcome yet may come without it. A `paid_call` also has
+`feeTxid`, its payment, and never changes the credit.
 
 | type | status | meaning |
 |---|---|---|
@@ -164,6 +175,13 @@ outcome yet may come without it.
 | `call` | `pending` | accepted moments ago |
 | `call` | `unknown` | debited, broadcast not confirmed: look `txid` up |
 | `withdrawal` | `sent`, `confirmed`, `not_paid`, `pending`, `unknown` | as for a repeated `credit-withdraw` |
+| `paid_call` | `pending` | received, not both broadcast yet |
+| `paid_call` | `sent` | payment and call were broadcast |
+| `paid_call` | `confirmed` | both were broadcast and the payment confirmed; `txid` tells how the call ended |
+| `paid_call` | `call_not_sent` | the payment went out and the call did not; its half is a `deposit` entry |
+| `paid_call` | `not_paid` | the call was not broadcast and the payment did not confirm |
+| `paid_call` | `payment_failed` | the call was broadcast and the payment did not confirm |
+| `paid_call` | `unknown` | Bolt could not confirm a broadcast: look `feeTxid` and `txid` up |
 
 ### `credit-deposit`
 
@@ -226,6 +244,7 @@ NETWORK=mainnet bun run bolt/bolt.ts sponsor-call --serialized-tx 0x8080...
 | `--post-conditions` | no | JSON array, see below |
 | `--serialized-tx` | instead of the above | hex of a contract call this wallet signed with `sponsored: true`, fee 0 |
 | `--fee` | no | sats of credit to spend; default is the minimum: 10, or 1 per 50 bytes when the transaction is above 500 bytes |
+| `--check` | no | ask Bolt whether it would accept the call, without sending it |
 
 Every typed argument needs both `type` and `value`, including an empty optional:
 write `{"type":"none","value":null}`. Without `value` it is read as a tuple and
@@ -261,6 +280,14 @@ How the fee works:
   refuses it. A call that is broadcast and later fails on-chain is still paid.
 
 Output: `{ success, txid, contract?, function?, creditSpent, unit, nonce?, network, explorerUrl }`
+
+With `--check` the call is built and signed the same way and Bolt runs every
+check it runs on a real call (the transaction, the fee and its signature, the
+nonce, the credit), then stops: nothing is debited or broadcast. It fails with
+the error the call itself would get. It does not run the contract, so a call
+that passes can still fail on-chain.
+
+Output with `--check`: `{ success, checked, sent: false, contract?, function?, fee, minimumFee, unit, nonce?, network }`
 
 ## Errors
 

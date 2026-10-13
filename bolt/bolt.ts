@@ -604,6 +604,7 @@ program
   .option("--post-condition-mode <mode>", "'deny' (default) blocks unexpected transfers; 'allow' permits any", "deny")
   .option("--post-conditions <json>", "Post conditions as JSON array (stx and ft). See SKILL.md for format.")
   .option("--fee <sats>", "Total to pay, in sats (default: the minimum, twice what the call costs on credit, from 20)")
+  .option("--check", "Ask Bolt whether it would accept this call, without sending it: nothing is paid or broadcast")
   .action(
     async (opts: {
       contract: string;
@@ -612,6 +613,7 @@ program
       postConditionMode: string;
       postConditions?: string;
       fee?: string;
+      check?: boolean;
     }) => {
       try {
         requireMainnet();
@@ -659,12 +661,18 @@ program
             },
             nonce
           );
+          const body = { feeTx: payment.serializedTx, serializedTx: call.serializedTx };
+          if (opts.check) {
+            // Same checks as the request, up to the point where the payment would go out.
+            const checked = await boltPost<{ minimumFee: number }>("/v2/transaction/call/check?token=sbtc", body);
+            return { result: { txid: "", feeTxid: "" }, nonce, total, minimumFee: checked.minimumFee };
+          }
           const result = await boltWrite<{ txid: string; feeTxid: string }>(
             "/v2/transaction/call?token=sbtc",
-            { feeTx: payment.serializedTx, serializedTx: call.serializedTx },
+            body,
             paidCallFromNonceRefusal
           );
-          return { result, nonce, total };
+          return { result, nonce, total, minimumFee: undefined };
         };
 
         // One correction, as elsewhere: the nonce Bolt names, or (when the
@@ -679,6 +687,23 @@ program
           if (retryNonce === undefined && minimum === undefined) throw error;
           nonce = retryNonce ?? nonce;
           sent = await send(nonce, minimum ?? chosenFee);
+        }
+
+        if (opts.check) {
+          printJson({
+            success: true,
+            checked: true,
+            sent: false,
+            contract: opts.contract,
+            function: opts.function,
+            fee: sent.total.toString(),
+            minimumFee: String(sent.minimumFee),
+            unit: "sats",
+            nonce: (sent.nonce + 1n).toString(),
+            feeNonce: sent.nonce.toString(),
+            network: NETWORK,
+          });
+          return;
         }
 
         printJson({
@@ -731,11 +756,12 @@ program
 // ---------------------------------------------------------------------------
 
 interface CreditLedgerEntry {
-  type: "deposit" | "call" | "withdrawal";
+  type: "deposit" | "call" | "withdrawal" | "paid_call";
   amount: string;
   status: string;
   change?: string;
   txid?: string;
+  feeTxid?: string;
   nonce?: number;
   at?: string;
 }
@@ -743,12 +769,12 @@ interface CreditLedgerEntry {
 program
   .command("credit-ledger")
   .description(
-    "List the prepaid credit entries of an address, newest first: every deposit, sponsored call and withdrawal, with its txid and what it did to the balance. Use --nonce to find a sponsor-call whose answer was lost."
+    "List what Bolt holds and did for an address, newest first: every credit deposit, sponsored call and withdrawal, and every call paid in the request, with its txid and what it did to the credit. Use --nonce to find a call whose answer was lost."
   )
   .option("--address <address>", "Stacks address to list (uses active wallet if omitted)")
   .option("--limit <n>", "Entries to return, 1 to 100 (default 50)")
   .option("--before <time>", "Only entries older than this ISO time: pass the `at` of the last entry to read on")
-  .option("--nonce <n>", "Only the sponsored call signed with this nonce")
+  .option("--nonce <n>", "Only the call signed with this nonce")
   .action(async (opts: { address?: string; limit?: string; before?: string; nonce?: string }) => {
     try {
       requireMainnet();
@@ -898,7 +924,7 @@ program
 program
   .command("sponsor-call")
   .description(
-    "Have Bolt sponsor any contract call, paid from prepaid sBTC credit. Pass --contract/--function/--args to build and sign it here, or --serialized-tx for one this wallet already signed as sponsored. Requires an unlocked wallet."
+    "Have Bolt sponsor any contract call, paid from prepaid sBTC credit. Pass --contract/--function/--args to build and sign it here, or --serialized-tx for one this wallet already signed as sponsored. Add --check to learn whether Bolt would accept it, without sending. Requires an unlocked wallet."
   )
   .option("--contract <contractId>", "Full contract ID in ADDRESS.contract-name format")
   .option("--function <functionName>", "Public function name to call")
@@ -907,6 +933,7 @@ program
   .option("--post-conditions <json>", "Post conditions as JSON array (stx and ft). See SKILL.md for format.")
   .option("--serialized-tx <hex>", "Hex of a contract call already signed with sponsored: true and fee 0")
   .option("--fee <sats>", "Credit to spend on this call, in sats (default: the minimum for its size, from 10)")
+  .option("--check", "Ask Bolt whether it would accept this call, without sending it: nothing is debited or broadcast")
   .action(
     async (opts: {
       contract?: string;
@@ -916,11 +943,13 @@ program
       postConditions?: string;
       serializedTx?: string;
       fee?: string;
+      check?: boolean;
     }) => {
       try {
         requireMainnet();
         const chosenFee = opts.fee ? parseAmount(opts.fee, "--fee") : undefined;
         let fee = chosenFee;
+        let minimumFee: number | undefined;
 
         // The fee is not inside the signed transaction, so the wallet that signed
         // it also signs the fee for it: nobody else can choose what the call costs.
@@ -931,9 +960,19 @@ program
             messageHash: bytesToHex(hashMessage(`Bolt credit call | ${sha256} | ${fee}`)),
             privateKey: account.privateKey,
           });
+          const body = { serializedTx, fee: fee!.toString(), feeSignature };
+          if (opts.check) {
+            // Same checks as the call, up to the point where it would be charged.
+            const checked = await boltPost<{ minimumFee: number }>(
+              `/v1/sponsor/${CREDIT_TOKEN}/transaction/check`,
+              body
+            );
+            minimumFee = checked.minimumFee;
+            return { txid: "" };
+          }
           return boltWrite<{ txid: string }>(
             `/v1/sponsor/${CREDIT_TOKEN}/transaction`,
-            { serializedTx, fee: fee!.toString(), feeSignature },
+            body,
             broadcastFromNonceRefusal
           );
         };
@@ -985,6 +1024,21 @@ program
           );
           result = sent.result;
           nonce = sent.nonce.toString();
+        }
+
+        if (opts.check) {
+          printJson({
+            success: true,
+            checked: true,
+            sent: false,
+            ...(opts.contract && { contract: opts.contract, function: opts.function }),
+            fee: fee!.toString(),
+            minimumFee: minimumFee!.toString(),
+            unit: "sats",
+            ...(nonce !== undefined && { nonce }),
+            network: NETWORK,
+          });
+          return;
         }
 
         printJson({
