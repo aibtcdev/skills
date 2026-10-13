@@ -4,7 +4,7 @@ description: "Pay Stacks fees in sBTC or USDCx when the wallet has no STX — se
 metadata:
   author: "ronoel"
   user-invocable: "false"
-  arguments: "status | transfer | call | credit-balance | credit-deposit | credit-withdraw | sponsor-call"
+  arguments: "status | transfer | call | credit-balance | credit-ledger | credit-deposit | credit-withdraw | sponsor-call"
   entry: "bolt/bolt.ts"
   requires: "wallet"
   tags: "l2, write, mainnet-only, requires-funds"
@@ -126,6 +126,44 @@ Prepaid credit of an address, in sats. No wallet needed with `--address`.
 Run it after a `credit-deposit` confirms; the credit is available after that.
 
 Output: `{ address, network, credit: { sats, callsAtMinimumFee } }`
+
+### `credit-ledger`
+
+```bash
+NETWORK=mainnet bun run bolt/bolt.ts credit-ledger
+NETWORK=mainnet bun run bolt/bolt.ts credit-ledger --address SP... --limit 10
+# The sponsored call signed with nonce 7, e.g. after a lost answer
+NETWORK=mainnet bun run bolt/bolt.ts credit-ledger --nonce 7
+```
+
+The statement of an address's prepaid credit, newest first: every deposit,
+sponsored call and withdrawal, each with its `txid`. No wallet needed with
+`--address`.
+
+| Option | Required | Description |
+|---|---|---|
+| `--address` | no | address to list; default is the active wallet |
+| `--limit` | no | entries to return, 1 to 100 (default 50) |
+| `--before` | no | ISO time; pass the `at` of the last entry to read older ones |
+| `--nonce` | no | only the sponsored call signed with this nonce |
+
+Output: `{ address, network, credit: { sats }, entries: [{ type, amount, status, change?, txid?, nonce?, at, explorerUrl? }] }`
+
+`type` is `deposit`, `call` or `withdrawal`. `change` is what the entry did to
+the balance, in sats with a sign (`"0"` when it did nothing); an entry with no
+outcome yet may come without it.
+
+| type | status | meaning |
+|---|---|---|
+| `deposit` | `pending` | waiting for the deposit to confirm |
+| `deposit` | `credited` | confirmed, the credit is in the balance |
+| `deposit` | `not_credited` | nothing was credited: the transaction failed or never confirmed |
+| `deposit` | `settled` | an older deposit with no outcome recorded: look `txid` up |
+| `deposit` | `unknown` | confirmed, but Bolt could not record the credit and was notified |
+| `call` | `sent` | broadcast and paid; `txid` tells how it ended on-chain |
+| `call` | `pending` | accepted moments ago |
+| `call` | `unknown` | debited, broadcast not confirmed: look `txid` up |
+| `withdrawal` | `sent`, `confirmed`, `not_paid`, `pending`, `unknown` | as for a repeated `credit-withdraw` |
 
 ### `credit-deposit`
 

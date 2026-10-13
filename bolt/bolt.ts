@@ -727,6 +727,67 @@ program
   });
 
 // ---------------------------------------------------------------------------
+// credit-ledger
+// ---------------------------------------------------------------------------
+
+interface CreditLedgerEntry {
+  type: "deposit" | "call" | "withdrawal";
+  amount: string;
+  status: string;
+  change?: string;
+  txid?: string;
+  nonce?: number;
+  at?: string;
+}
+
+program
+  .command("credit-ledger")
+  .description(
+    "List the prepaid credit entries of an address, newest first: every deposit, sponsored call and withdrawal, with its txid and what it did to the balance. Use --nonce to find a sponsor-call whose answer was lost."
+  )
+  .option("--address <address>", "Stacks address to list (uses active wallet if omitted)")
+  .option("--limit <n>", "Entries to return, 1 to 100 (default 50)")
+  .option("--before <time>", "Only entries older than this ISO time: pass the `at` of the last entry to read on")
+  .option("--nonce <n>", "Only the sponsored call signed with this nonce")
+  .action(async (opts: { address?: string; limit?: string; before?: string; nonce?: string }) => {
+    try {
+      requireMainnet();
+      const address = opts.address ?? (await getWalletAddress());
+      const invalid = (flag: string, expected: string) =>
+        new AibtcError(`${flag} must be ${expected}`, "BOLT_INVALID_ARGUMENT");
+      const query = new URLSearchParams();
+      if (opts.limit !== undefined) {
+        if (!/^([1-9]\d?|100)$/.test(opts.limit)) throw invalid("--limit", "an integer from 1 to 100");
+        query.set("limit", opts.limit);
+      }
+      if (opts.before !== undefined) {
+        const before = new Date(opts.before);
+        if (Number.isNaN(before.getTime())) throw invalid("--before", "an ISO 8601 time");
+        query.set("before", before.toISOString());
+      }
+      if (opts.nonce !== undefined) {
+        if (!/^(0|[1-9]\d*)$/.test(opts.nonce)) throw invalid("--nonce", "a non-negative integer");
+        query.set("nonce", opts.nonce);
+      }
+      const suffix = query.size > 0 ? `?${query}` : "";
+      const result = await boltRequest<{ balance: string; entries: CreditLedgerEntry[] }>(
+        `/v1/sponsor/${CREDIT_TOKEN}/ledger/${address}${suffix}`
+      );
+      printJson({
+        address,
+        network: NETWORK,
+        credit: { sats: result.balance },
+        entries: result.entries.map((entry) => ({
+          ...entry,
+          ...(entry.txid && { explorerUrl: getExplorerTxUrl(entry.txid, NETWORK) }),
+        })),
+      });
+    } catch (error) {
+      handleError(error);
+    }
+  });
+
+// ---------------------------------------------------------------------------
 // credit-deposit
 // ---------------------------------------------------------------------------
 

@@ -9,7 +9,7 @@ description: Gasless Stacks transactions via Bolt Protocol — sBTC/USDCx transf
 ## Prerequisites
 
 - `NETWORK=mainnet`. The repo default is testnet and every subcommand refuses it.
-- `status` and `credit-balance --address`: nothing else. No wallet, no funds.
+- `status`, `credit-balance --address` and `credit-ledger --address`: nothing else. No wallet, no funds.
 - `transfer`, `call`, `credit-deposit`, `credit-withdraw`, `sponsor-call`: an unlocked wallet (the `wallet`
   skill) holding the token being moved. No STX is needed for any of them.
 - Contract calls are paid in sBTC only. A wallet holding only USDCx can
