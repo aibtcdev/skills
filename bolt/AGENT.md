@@ -72,7 +72,9 @@ description: Gasless Stacks transactions via Bolt Protocol — sBTC/USDCx transf
 - A `sponsor-call` the network refuses (`BOLT_REJECTED`) gets its fee back;
   only `BOLT_REFUND_FAILED` and `BOLT_CALL_UNKNOWN` leave it spent. A call that is broadcast and then fails on-chain is still
   paid, so validate it first: the contract and function exist, the arguments
-  match the ABI, the post conditions cover what it moves.
+  match the ABI, the post conditions cover what it moves. `--check` on
+  `sponsor-call` or `call` asks Bolt whether it would accept the call and what
+  the minimum fee is, without sending it; it does not run the contract.
 
 ## Error handling
 
@@ -91,6 +93,6 @@ description: Gasless Stacks transactions via Bolt Protocol — sBTC/USDCx transf
 | `BOLT_WITHDRAWAL_REPEATED` | That withdrawal request was already used. `details.withdrawal` says how it ended: `sent` or `confirmed` → paid, `details.txid` is the payout, do not withdraw again for it; `not_paid` → the credit is in the balance, run the command again; `pending` or `unknown` → wait and check `credit-balance`, do not sign a new one. |
 | `BOLT_WITHDRAWAL_UNKNOWN` | Stop. Do not send again; check `credit-balance` later. Bolt was notified. |
 | `BOLT_SENT_UNCONFIRMED` | The command got no answer, sent the same request again, and its nonce was already taken: the first attempt was most likely broadcast. Check the address's recent transactions with the `query` skill; run the command again only if the operation is not there. |
-| `BOLT_CALL_UNKNOWN` | Stop. The fee was debited and Bolt could not confirm the broadcast. Look `details.txid` up with the `query` skill (`details.feeTxid` when a `call` returns only that); do not run the command again. Bolt was notified. |
+| `BOLT_CALL_UNKNOWN` | Stop. The fee was debited and Bolt could not confirm the broadcast. Look `details.txid` up with the `query` skill (`details.feeTxid` when a `call` returns only that), or run `credit-ledger --nonce <nonce>` to read what Bolt recorded for that call; do not run the command again. Bolt was notified. |
 | `BOLT_REJECTED` | The network refused the transaction. Nothing charged. `error` names the reason: `BadNonce` or `TooMuchChaining` → wait for pending transactions, then sign again; `FeeTooLow` → raise `--fee`; `NoSuchContract`, `NoSuchPublicFunction`, `BadFunctionArgument` → fix the call (a common cause of the last one: an empty optional written without `"value":null`). Do not resend unchanged. |
 | `BOLT_MAINNET_ONLY` | Set `NETWORK=mainnet`. |

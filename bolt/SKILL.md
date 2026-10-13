@@ -155,9 +155,9 @@ in one place. No wallet needed with `--address`.
 | `--address` | no | address to list; default is the active wallet |
 | `--limit` | no | entries to return, 1 to 100 (default 50) |
 | `--before` | no | ISO time; pass the `at` of the last entry to read older ones |
-| `--nonce` | no | only the call signed with this nonce |
+| `--nonce` | no | only the call signed with this nonce; a `paid_call` is found by the nonce of its payment too |
 
-Output: `{ address, network, credit: { sats }, entries: [{ type, amount, status, change?, txid?, feeTxid?, nonce?, at, explorerUrl? }] }`
+Output: `{ address, network, credit: { sats }, entries: [{ type, amount, status, change?, txid?, feeTxid?, nonce?, at, explorerUrl?, feeExplorerUrl? }] }`
 
 `type` is `deposit`, `call`, `withdrawal` or `paid_call`. `change` is what the
 entry did to the balance, in sats with a sign (`"0"` when it did nothing); an

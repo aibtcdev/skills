@@ -593,6 +593,14 @@ function paidCallFromNonceRefusal(refusal: AibtcError): { txid: string; feeTxid:
     : undefined;
 }
 
+/** One attempt of `call`: `result` when the pair was sent, `checked` when it was only checked. */
+interface PaidCallAttempt {
+  result?: { txid: string; feeTxid: string };
+  checked?: { minimumFee?: number };
+  nonce: bigint;
+  total: bigint;
+}
+
 program
   .command("call")
   .description(
@@ -645,7 +653,7 @@ program
 
         // The payment takes the next nonce and the call the one after it: Bolt
         // broadcasts them in that order.
-        const send = async (nonce: bigint, fee: bigint | undefined) => {
+        const send = async (nonce: bigint, fee: bigint | undefined): Promise<PaidCallAttempt> => {
           const call = await signSponsored(spec, nonce + 1n);
           const total = fee ?? PAID_CALL_MULTIPLE * minCreditFee(call.serializedTx);
           const payment = await signSponsored(
@@ -664,21 +672,21 @@ program
           const body = { feeTx: payment.serializedTx, serializedTx: call.serializedTx };
           if (opts.check) {
             // Same checks as the request, up to the point where the payment would go out.
-            const checked = await boltPost<{ minimumFee: number }>("/v2/transaction/call/check?token=sbtc", body);
-            return { result: { txid: "", feeTxid: "" }, nonce, total, minimumFee: checked.minimumFee };
+            const checked = await boltPost<{ minimumFee?: number }>("/v2/transaction/call/check?token=sbtc", body);
+            return { checked, nonce, total };
           }
           const result = await boltWrite<{ txid: string; feeTxid: string }>(
             "/v2/transaction/call?token=sbtc",
             body,
             paidCallFromNonceRefusal
           );
-          return { result, nonce, total, minimumFee: undefined };
+          return { result, nonce, total };
         };
 
         // One correction, as elsewhere: the nonce Bolt names, or (when the
         // caller did not choose the fee) the minimum it names.
         let nonce = await nextNonce(sender);
-        let sent: Awaited<ReturnType<typeof send>>;
+        let sent: PaidCallAttempt;
         try {
           sent = await send(nonce, chosenFee);
         } catch (error) {
@@ -689,7 +697,9 @@ program
           sent = await send(nonce, minimum ?? chosenFee);
         }
 
-        if (opts.check) {
+        // On the flag, not on the shape of the answer: a check is never reported as sent.
+        const result = sent.result;
+        if (opts.check || result === undefined) {
           printJson({
             success: true,
             checked: true,
@@ -697,7 +707,7 @@ program
             contract: opts.contract,
             function: opts.function,
             fee: sent.total.toString(),
-            minimumFee: String(sent.minimumFee),
+            ...(sent.checked?.minimumFee !== undefined && { minimumFee: String(sent.checked.minimumFee) }),
             unit: "sats",
             nonce: (sent.nonce + 1n).toString(),
             feeNonce: sent.nonce.toString(),
@@ -708,8 +718,8 @@ program
 
         printJson({
           success: true,
-          txid: sent.result.txid,
-          feeTxid: sent.result.feeTxid,
+          txid: result.txid,
+          feeTxid: result.feeTxid,
           contract: opts.contract,
           function: opts.function,
           feePaid: sent.total.toString(),
@@ -717,7 +727,7 @@ program
           nonce: (sent.nonce + 1n).toString(),
           feeNonce: sent.nonce.toString(),
           network: NETWORK,
-          explorerUrl: getExplorerTxUrl(sent.result.txid, NETWORK),
+          explorerUrl: getExplorerTxUrl(result.txid, NETWORK),
         });
       } catch (error) {
         handleError(error);
@@ -781,6 +791,7 @@ program
       const address = opts.address ?? (await getWalletAddress());
       const invalid = (flag: string, expected: string) =>
         new AibtcError(`${flag} must be ${expected}`, "BOLT_INVALID_ARGUMENT");
+      if (!/^S[PM][0-9A-Z]{30,40}$/.test(address)) throw invalid("--address", "a mainnet Stacks address (SP… or SM…)");
       const query = new URLSearchParams();
       if (opts.limit !== undefined) {
         if (!/^([1-9]\d?|100)$/.test(opts.limit)) throw invalid("--limit", "an integer from 1 to 100");
@@ -797,7 +808,7 @@ program
       }
       const suffix = query.size > 0 ? `?${query}` : "";
       const result = await boltRequest<{ balance: string; entries: CreditLedgerEntry[] }>(
-        `/v1/sponsor/${CREDIT_TOKEN}/ledger/${address}${suffix}`
+        `/v1/sponsor/${CREDIT_TOKEN}/ledger/${encodeURIComponent(address)}${suffix}`
       );
       printJson({
         address,
@@ -806,6 +817,7 @@ program
         entries: result.entries.map((entry) => ({
           ...entry,
           ...(entry.txid && { explorerUrl: getExplorerTxUrl(entry.txid, NETWORK) }),
+          ...(entry.feeTxid && { feeExplorerUrl: getExplorerTxUrl(entry.feeTxid, NETWORK) }),
         })),
       });
     } catch (error) {
@@ -921,6 +933,12 @@ program
 // sponsor-call
 // ---------------------------------------------------------------------------
 
+/** What Bolt answers to a call on credit: `txid` when sent, `minimumFee` when only checked. */
+interface CreditCallAnswer {
+  txid?: string;
+  minimumFee?: number;
+}
+
 program
   .command("sponsor-call")
   .description(
@@ -949,7 +967,6 @@ program
         requireMainnet();
         const chosenFee = opts.fee ? parseAmount(opts.fee, "--fee") : undefined;
         let fee = chosenFee;
-        let minimumFee: number | undefined;
 
         // The fee is not inside the signed transaction, so the wallet that signed
         // it also signs the fee for it: nobody else can choose what the call costs.
@@ -963,14 +980,9 @@ program
           const body = { serializedTx, fee: fee!.toString(), feeSignature };
           if (opts.check) {
             // Same checks as the call, up to the point where it would be charged.
-            const checked = await boltPost<{ minimumFee: number }>(
-              `/v1/sponsor/${CREDIT_TOKEN}/transaction/check`,
-              body
-            );
-            minimumFee = checked.minimumFee;
-            return { txid: "" };
+            return boltPost<CreditCallAnswer>(`/v1/sponsor/${CREDIT_TOKEN}/transaction/check`, body);
           }
-          return boltWrite<{ txid: string }>(
+          return boltWrite<CreditCallAnswer>(
             `/v1/sponsor/${CREDIT_TOKEN}/transaction`,
             body,
             broadcastFromNonceRefusal
@@ -990,7 +1002,7 @@ program
           }
         };
 
-        let result: { txid: string };
+        let result: CreditCallAnswer;
         let nonce: string | undefined;
         if (opts.serializedTx) {
           if (opts.contract || opts.function) {
@@ -1026,14 +1038,16 @@ program
           nonce = sent.nonce.toString();
         }
 
-        if (opts.check) {
+        // On the flag, not on the shape of the answer: a check is never reported as sent.
+        const txid = result.txid;
+        if (opts.check || txid === undefined) {
           printJson({
             success: true,
             checked: true,
             sent: false,
             ...(opts.contract && { contract: opts.contract, function: opts.function }),
             fee: fee!.toString(),
-            minimumFee: minimumFee!.toString(),
+            ...(result.minimumFee !== undefined && { minimumFee: String(result.minimumFee) }),
             unit: "sats",
             ...(nonce !== undefined && { nonce }),
             network: NETWORK,
