@@ -450,3 +450,9 @@ Output:
 - Price impact is calculated using the XYK constant-product formula across all hops in the route.
 - Keeper features enable automated/scheduled swaps. Use `get-keeper-contract` to get started.
 - Wallet operations require an unlocked wallet (use `bun run wallet/wallet.ts unlock` first).
+
+## Safety update (2026-07-15 field audit)
+
+- **Direct HODLMM core swaps are refused by default.** `dlmm-core-v-1-1` `swap-x-for-y`/`swap-y-for-x` has no minimum-output parameter, fills at most the single active bin per call, and was previously broadcast in Allow mode with no post-conditions (audit F-1, CRITICAL). When the best route is HODLMM-direct, `swap` now errors unless `--allow-unprotected-hodlmm-swap` is passed — supervised, small-size use only. SDK-routed swaps (Deny mode + SDK post-conditions) are unaffected. Planned replacement: `dlmm-swap-router-v-1-2` `swap-*-simple-range-multi` with `max-steps <= 230` and a real min-out.
+- **Production API hosts are now the compiled defaults** (previously TEST gateways; audit F-3). `BITFLOW_API_HOST` / `BITFLOW_KEEPER_API_HOST` still override.
+- `--slippage-tolerance` is now threaded into the HODLMM multi-quote request — converted to the quote API's percent unit at the boundary (CLI stays fractional, 0.01 = 1%; previously hardcoded `3` = 3%, audit F-6). When the best route is HODLMM-direct and a protected SDK route exists, `swap` falls back to the SDK route with a warning instead of hard-failing.
