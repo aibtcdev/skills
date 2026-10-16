@@ -36,8 +36,8 @@ description: "Autonomous agent behavior for HODLMM Move-Liquidity & Auto-Rebalan
 - **Respect the 4-hour cooldown.** Do not attempt to bypass cooldown by modifying the state file. If cooldown is active, inform the operator and provide the remaining wait time.
 - **Do not move in-range positions.** If the position is already in the active bin range, report `IN_RANGE` and take no action. Moving an in-range position wastes gas for zero benefit.
 - **Gas budget: 0.05 STX** estimated for one atomic transaction. If STX balance is below 1 STX, refuse to execute.
-- **Atomic execution.** Uses `move-relative-liquidity-multi` — withdraw from old bins and deposit into new bins in a single on-chain call. Either all bins move or none do.
-- **Contract-level slippage protection.** Each move requires ≥95% DLP shares back (`min-dlp`) and caps liquidity fees at 5% (`max-x-liquidity-fee`, `max-y-liquidity-fee`). The transaction reverts on-chain if either bound is violated.
+- **Atomic execution.** Uses `move-liquidity-multi` — withdraw from old bins and deposit into new bins in a single on-chain call. Either all bins move or none do.
+- **Contract-level protection status (honest).** The code sends `min-dlp = 1` — enforced by the contract but vacuous at 1. The live bounds are the 5% liquidity-fee caps, which bind only when the target is the active bin. Do not treat this skill as carrying output-floor protection; real safety comes from the off-chain gates and the pre-sign staleness/side-legality gate. Price-aware `min-dlp` + Deny-mode sender post-conditions are planned.
 
 ## On error
 
