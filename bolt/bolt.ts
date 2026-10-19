@@ -779,13 +779,14 @@ interface CreditLedgerEntry {
 program
   .command("credit-ledger")
   .description(
-    "List what Bolt holds and did for an address, newest first: every credit deposit, sponsored call and withdrawal, and every call paid in the request, with its txid and what it did to the credit. Use --nonce to find a call whose answer was lost."
+    "List what Bolt holds and did for an address, newest first: every credit deposit, sponsored call and withdrawal, and every call paid in the request, with its txid and what it did to the credit. Use --nonce or --hash to find a call whose answer was lost."
   )
   .option("--address <address>", "Stacks address to list (uses active wallet if omitted)")
   .option("--limit <n>", "Entries to return, 1 to 100 (default 50)")
   .option("--before <time>", "Only entries older than this ISO time: pass the `at` of the last entry to read on")
   .option("--nonce <n>", "Only the call signed with this nonce")
-  .action(async (opts: { address?: string; limit?: string; before?: string; nonce?: string }) => {
+  .option("--hash <sha256>", "Only the call with these bytes: the SHA-256 of its serialized transaction, as hex")
+  .action(async (opts: { address?: string; limit?: string; before?: string; nonce?: string; hash?: string }) => {
     try {
       requireMainnet();
       const address = opts.address ?? (await getWalletAddress());
@@ -805,6 +806,11 @@ program
       if (opts.nonce !== undefined) {
         if (!/^(0|[1-9]\d*)$/.test(opts.nonce)) throw invalid("--nonce", "a non-negative integer");
         query.set("nonce", opts.nonce);
+      }
+      if (opts.hash !== undefined) {
+        const hash = opts.hash.replace(/^0x/, "").toLowerCase();
+        if (!/^[0-9a-f]{64}$/.test(hash)) throw invalid("--hash", "64 hex characters");
+        query.set("hash", hash);
       }
       const suffix = query.size > 0 ? `?${query}` : "";
       const result = await boltRequest<{ balance: string; entries: CreditLedgerEntry[] }>(

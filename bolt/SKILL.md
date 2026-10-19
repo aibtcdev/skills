@@ -156,6 +156,7 @@ in one place. No wallet needed with `--address`.
 | `--limit` | no | entries to return, 1 to 100 (default 50) |
 | `--before` | no | ISO time; pass the `at` of the last entry to read older ones |
 | `--nonce` | no | only the call signed with this nonce; a `paid_call` is found by the nonce of its payment too |
+| `--hash` | no | only the call with these bytes: the SHA-256 of its serialized transaction (hex), for calls sent since 2026-10-13 |
 
 Output: `{ address, network, credit: { sats }, entries: [{ type, amount, status, change?, txid?, feeTxid?, nonce?, at, explorerUrl?, feeExplorerUrl? }] }`
 
