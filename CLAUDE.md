@@ -154,6 +154,7 @@ metadata:
 | `metadata.arguments` | Pipe-separated list of subcommands (quoted string) |
 | `metadata.entry` | Path to the CLI script(s), relative to repo root. Comma-separated for multiple: `"pillar/pillar.ts, pillar/pillar-direct.ts"` |
 | `metadata.mcp-tools` | Optional comma-separated MCP tool names from aibtc-mcp-server |
+| `metadata.deprecated` | Optional one-line notice that the skill is retired and what replaces it; copied to `deprecated` in `skills.json` |
 | `metadata.requires` | Comma-separated skills that must be configured first (e.g. `"wallet"`) |
 | `metadata.tags` | Comma-separated tags. Controlled vocabulary: `read-only`, `write`, `mainnet-only`, `requires-funds`, `sensitive`, `infrastructure`, `defi`, `l1`, `l2` |
 

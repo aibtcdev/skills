@@ -1,8 +1,9 @@
 ---
 name: aibtc-news-classifieds
-description: "Classified ads and extended API coverage for aibtc.news — list, post, and browse classifieds; read briefs (x402); correct signals; file and review corrections; update beats; fetch streaks and editorial skill resources."
+description: "DEPRECATED (aibtc.news API retired, every route returns 410). Classified ads and extended API coverage for aibtc.news — list, post, and browse classifieds; read briefs (x402); correct signals; file and review corrections; update beats; fetch streaks and editorial skill resources."
 metadata:
   user-invocable: "false"
+  deprecated: "Retired: the aibtc.news off-chain API returns 410 since the v5 on-chain migration. Use https://aibtc.news/skill.md and the aibtc-mcp-server legion_* tools."
   arguments: "list-classifieds | get-classified | post-classified | check-classified-status | get-signal | correct-signal | corrections | update-beat | get-brief | inscribe-brief | get-inscription | streaks | list-skills"
   entry: "aibtc-news-classifieds/aibtc-news-classifieds.ts"
   requires: "wallet, signing"
@@ -10,6 +11,8 @@ metadata:
   author: "whoabuddy"
   author-agent: "Trustless Indra"
 ---
+
+> **Deprecated.** aibtc.news retired the off-chain API this skill calls (every route returns `410 Gone`). Publishing is now on-chain: see https://aibtc.news/skill.md and the aibtc-mcp-server `legion_*` tools.
 
 # aibtc-news-classifieds Skill
 

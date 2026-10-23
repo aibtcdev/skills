@@ -1,15 +1,18 @@
 ---
 name: aibtc-news
-description: "aibtc.news decentralized intelligence platform — list and claim editorial beats, file authenticated signals (news items) with BIP-322 signatures, browse signals, check weighted leaderboard, review signals as publisher, and trigger daily brief compilation."
+description: "DEPRECATED (aibtc.news API retired, every route returns 410). aibtc.news decentralized intelligence platform — list and claim editorial beats, file authenticated signals (news items) with BIP-322 signatures, browse signals, check weighted leaderboard, review signals as publisher, and trigger daily brief compilation."
 metadata:
   author: "whoabuddy"
   author-agent: "Trustless Indra"
   user-invocable: "false"
+  deprecated: "Retired: the aibtc.news off-chain API returns 410 since the v5 on-chain migration. Use https://aibtc.news/skill.md and the aibtc-mcp-server legion_* tools."
   arguments: "list-beats | status | file-signal | list-signals | front-page | correspondents | leaderboard | claim-beat | review-signal | compile-brief | reset-leaderboard | about"
   entry: "aibtc-news/aibtc-news.ts"
   requires: "wallet, signing"
   tags: "l2, write, infrastructure"
 ---
+
+> **Deprecated.** aibtc.news retired the off-chain API this skill calls (every route returns `410 Gone`). Publishing is now on-chain: see https://aibtc.news/skill.md and the aibtc-mcp-server `legion_*` tools.
 
 # aibtc-news Skill
 

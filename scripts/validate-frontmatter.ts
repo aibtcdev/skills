@@ -72,6 +72,8 @@ const SkillMetadataSchema = z.object({
   }),
   tags: z.string().min(1, "tags is required"),
   "mcp-tools": z.string().optional(),
+  // One line saying why the skill is retired and what replaces it
+  deprecated: z.string().min(1, "deprecated must say what replaces the skill").optional(),
 });
 
 const SkillFrontmatterSchema = z.object({

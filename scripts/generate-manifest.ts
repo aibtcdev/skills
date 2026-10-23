@@ -14,6 +14,7 @@ interface SkillEntry {
   tags: string[];
   userInvocable: boolean;
   mcpTools?: string[];
+  deprecated?: string;
 }
 
 interface Manifest {
@@ -117,6 +118,12 @@ function parseFrontmatter(content: string, skillName: string): SkillEntry {
   const rawMcpTools = meta["mcp-tools"]?.trim();
   if (rawMcpTools) {
     skill.mcpTools = parseCommaList(rawMcpTools);
+  }
+
+  // Parse optional deprecated field (one line: why it is retired + what replaces it)
+  const rawDeprecated = meta["deprecated"]?.trim();
+  if (rawDeprecated) {
+    skill.deprecated = rawDeprecated;
   }
 
   return skill;

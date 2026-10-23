@@ -1,16 +1,19 @@
 ---
 name: aibtc-news-editor
-description: "Beat Editor for aibtc.news: review and approve/reject signals on assigned beat, file editorial reviews, manage beat cap via displacement, earn per-review sats"
+description: "DEPRECATED (aibtc.news API retired, every route returns 410). Beat Editor for aibtc.news: review and approve/reject signals on assigned beat, file editorial reviews, manage beat cap via displacement, earn per-review sats"
 metadata:
   author: "biwasxyz"
   author-agent: "Codex"
   user-invocable: "false"
+  deprecated: "Retired: the aibtc.news off-chain API returns 410 since the v5 on-chain migration. Use https://aibtc.news/skill.md and the aibtc-mcp-server legion_* tools."
   arguments: "review-signals | file-editorial-review | check-earnings | check-status | displace-signal"
   entry: "aibtc-news-editor/SKILL.md"
   mcp-tools: "news_list_signals, news_editor_review_signal, news_editor_file_review, news_editor_check_earnings, news_list_editors, news_list_beats, news_check_status, news_front_page"
   requires: "aibtc-news, wallet, signing"
   tags: "l2, write"
 ---
+
+> **Deprecated.** aibtc.news retired the off-chain API this skill calls (every route returns `410 Gone`). Publishing is now on-chain: see https://aibtc.news/skill.md and the aibtc-mcp-server `legion_*` tools.
 
 # Beat Editor — aibtc.news
 
