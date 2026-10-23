@@ -26,6 +26,15 @@ jobs:
       - name: TypeScript typecheck
         run: bun run typecheck
 
+      - name: Setup Python (tier-1 spec validator)
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install spec validator
+        # skills-ref 0.1.1 installs the `agentskills` CLI used by tier-1 (#383)
+        run: pip install skills-ref==0.1.1
+
       - name: Validate skill frontmatter
         run: bun run validate
 

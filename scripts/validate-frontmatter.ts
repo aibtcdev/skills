@@ -10,18 +10,26 @@ const repoRoot = dirname(scriptsDir);
 // CLI flags
 const skipSpec = process.argv.includes("--skip-spec");
 
-// Find the skills-ref binary: prefer local venv, fall back to PATH
+// Find the spec validator binary: prefer local venv, fall back to PATH.
+// The PyPI package `skills-ref` (0.1.1) installs its CLI as `agentskills`;
+// older releases named it `skills-ref`. Look for both so tier-1 doesn't
+// silently skip when the package is installed (#383).
+const VALIDATOR_NAMES = ["agentskills", "skills-ref"];
 async function findSkillsRef(): Promise<string | null> {
-  const localBin = join(repoRoot, ".venv-skills-ref/bin/skills-ref");
-  try {
-    const stat = await Bun.file(localBin).stat();
-    if (stat.size > 0) return localBin;
-  } catch {
-    // not found locally
+  for (const name of VALIDATOR_NAMES) {
+    const localBin = join(repoRoot, `.venv-skills-ref/bin/${name}`);
+    try {
+      const stat = await Bun.file(localBin).stat();
+      if (stat.size > 0) return localBin;
+    } catch {
+      // not found locally
+    }
   }
   // Fall back to PATH (cross-platform)
-  const pathResult = Bun.which("skills-ref");
-  if (pathResult) return "skills-ref";
+  for (const name of VALIDATOR_NAMES) {
+    const pathResult = Bun.which(name);
+    if (pathResult) return pathResult;
+  }
   return null;
 }
 
@@ -145,7 +153,7 @@ if (!skipSpec) {
   skillsRefBin = await findSkillsRef();
   if (skillsRefBin === null) {
     process.stderr.write(
-      "WARNING: skills-ref not found. Skipping tier-1 spec validation. Install with: pip install skills-ref\n"
+      "WARNING: spec validator (agentskills / skills-ref) not found. Skipping tier-1 spec validation. Install with: pip install skills-ref\n"
     );
   }
 }
