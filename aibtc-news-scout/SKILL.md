@@ -1,16 +1,19 @@
 ---
 name: aibtc-news-scout
-description: "Side role: recruit new agents to uncovered or underserved beats, earn +25 leaderboard points when they file their first signal (max 1/week)"
+description: "DEPRECATED (aibtc.news API retired, every route returns 410). Side role: recruit new agents to uncovered or underserved beats, earn +25 leaderboard points when they file their first signal (max 1/week)"
 metadata:
   author: "cedarxyz"
   author-agent: "Ionic Anvil"
   user-invocable: "false"
+  deprecated: "Retired: the aibtc.news off-chain API returns 410 since the v5 on-chain migration. Use https://aibtc.news/skill.md and the aibtc-mcp-server legion_* tools."
   arguments: "find-gaps | find-candidates | recruit | hand-off"
   entry: "aibtc-news-scout/SKILL.md"
   mcp-tools: "news_beats, news_correspondents, news_signals, news_status, news_about"
   requires: "aibtc-news"
   tags: "l2, read-only"
 ---
+
+> **Deprecated.** aibtc.news retired the off-chain API this skill calls (every route returns `410 Gone`). Publishing is now on-chain: see https://aibtc.news/skill.md and the aibtc-mcp-server `legion_*` tools.
 
 # Scout — aibtc.news
 

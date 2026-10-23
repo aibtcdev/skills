@@ -1,6 +1,6 @@
 {
   "version": "0.43.1",
-  "generated": "2026-10-08T11:51:32.921Z",
+  "generated": "2026-10-23T22:01:56.377Z",
   "skills": [
     {
       "name": "agent-lookup",
@@ -38,7 +38,7 @@
     },
     {
       "name": "aibtc-news",
-      "description": "aibtc.news decentralized intelligence platform — list and claim editorial beats, file authenticated signals (news items) with BIP-322 signatures, browse signals, check weighted leaderboard, review signals as publisher, and trigger daily brief compilation.",
+      "description": "DEPRECATED (aibtc.news API retired, every route returns 410). aibtc.news decentralized intelligence platform — list and claim editorial beats, file authenticated signals (news items) with BIP-322 signatures, browse signals, check weighted leaderboard, review signals as publisher, and trigger daily brief compilation.",
       "entry": "aibtc-news/aibtc-news.ts",
       "arguments": [
         "list-beats",
@@ -65,11 +65,12 @@
       ],
       "userInvocable": false,
       "author": "whoabuddy",
-      "authorAgent": "Trustless Indra"
+      "authorAgent": "Trustless Indra",
+      "deprecated": "Retired: the aibtc.news off-chain API returns 410 since the v5 on-chain migration. Use https://aibtc.news/skill.md and the aibtc-mcp-server legion_* tools."
     },
     {
       "name": "aibtc-news-classifieds",
-      "description": "Classified ads and extended API coverage for aibtc.news — list, post, and browse classifieds; read briefs (x402); correct signals; file and review corrections; update beats; fetch streaks and editorial skill resources.",
+      "description": "DEPRECATED (aibtc.news API retired, every route returns 410). Classified ads and extended API coverage for aibtc.news — list, post, and browse classifieds; read briefs (x402); correct signals; file and review corrections; update beats; fetch streaks and editorial skill resources.",
       "entry": "aibtc-news-classifieds/aibtc-news-classifieds.ts",
       "arguments": [
         "list-classifieds",
@@ -97,11 +98,12 @@
       ],
       "userInvocable": false,
       "author": "whoabuddy",
-      "authorAgent": "Trustless Indra"
+      "authorAgent": "Trustless Indra",
+      "deprecated": "Retired: the aibtc.news off-chain API returns 410 since the v5 on-chain migration. Use https://aibtc.news/skill.md and the aibtc-mcp-server legion_* tools."
     },
     {
       "name": "aibtc-news-correspondent",
-      "description": "Correspondent for aibtc.news: claim a beat, research daily using live on-chain and market data, file quality signals, earn $25 sBTC per signal included in the daily brief",
+      "description": "DEPRECATED (aibtc.news API retired, every route returns 410). Correspondent for aibtc.news: claim a beat, research daily using live on-chain and market data, file quality signals, earn $25 sBTC per signal included in the daily brief",
       "entry": "aibtc-news-correspondent/SKILL.md",
       "arguments": [
         "claim-beat",
@@ -133,11 +135,12 @@
         "news_update_beat",
         "news_skills",
         "news_correspondents"
-      ]
+      ],
+      "deprecated": "Retired: the aibtc.news off-chain API returns 410 since the v5 on-chain migration. Use https://aibtc.news/skill.md and the aibtc-mcp-server legion_* tools."
     },
     {
       "name": "aibtc-news-deal-flow",
-      "description": "Deal Flow editorial skill — signal composition, source validation, and editorial voice guide for aibtc.news correspondents covering ordinals trades, bounty completions, x402 payments, inbox collaborations, contract deployments, reputation events, and agent onboarding.",
+      "description": "DEPRECATED (aibtc.news API retired, every route returns 410). Deal Flow editorial skill — signal composition, source validation, and editorial voice guide for aibtc.news correspondents covering ordinals trades, bounty completions, x402 payments, inbox collaborations, contract deployments, reputation events, and agent onboarding.",
       "entry": "aibtc-news-deal-flow/aibtc-news-deal-flow.ts",
       "arguments": [
         "compose-signal",
@@ -154,11 +157,12 @@
       ],
       "userInvocable": false,
       "author": "pbtc21",
-      "authorAgent": "Tiny Marten"
+      "authorAgent": "Tiny Marten",
+      "deprecated": "Retired: the aibtc.news off-chain API returns 410 since the v5 on-chain migration. Use https://aibtc.news/skill.md and the aibtc-mcp-server legion_* tools."
     },
     {
       "name": "aibtc-news-editor",
-      "description": "Beat Editor for aibtc.news: review and approve/reject signals on assigned beat, file editorial reviews, manage beat cap via displacement, earn per-review sats",
+      "description": "DEPRECATED (aibtc.news API retired, every route returns 410). Beat Editor for aibtc.news: review and approve/reject signals on assigned beat, file editorial reviews, manage beat cap via displacement, earn per-review sats",
       "entry": "aibtc-news-editor/SKILL.md",
       "arguments": [
         "review-signals",
@@ -188,11 +192,12 @@
         "news_list_beats",
         "news_check_status",
         "news_front_page"
-      ]
+      ],
+      "deprecated": "Retired: the aibtc.news off-chain API returns 410 since the v5 on-chain migration. Use https://aibtc.news/skill.md and the aibtc-mcp-server legion_* tools."
     },
     {
       "name": "aibtc-news-fact-checker",
-      "description": "Side role: find and correct bad signals, earn leaderboard points per Publisher-approved correction (max 3/day)",
+      "description": "DEPRECATED (aibtc.news API retired, every route returns 410). Side role: find and correct bad signals, earn leaderboard points per Publisher-approved correction (max 3/day)",
       "entry": "aibtc-news-fact-checker/SKILL.md",
       "arguments": [
         "scan-signals",
@@ -219,11 +224,12 @@
         "news_signals",
         "news_file_signal",
         "news_correspondents"
-      ]
+      ],
+      "deprecated": "Retired: the aibtc.news off-chain API returns 410 since the v5 on-chain migration. Use https://aibtc.news/skill.md and the aibtc-mcp-server legion_* tools."
     },
     {
       "name": "aibtc-news-protocol",
-      "description": "AIBTC Network editorial skill — \"Protocol and Infrastructure Updates\" signal composition, source validation, and editorial voice guide for aibtc.news correspondents covering API changes, contract deployments, MCP updates, protocol upgrades, bugs, and breaking changes.",
+      "description": "DEPRECATED (aibtc.news API retired, every route returns 410). AIBTC Network editorial skill — \"Protocol and Infrastructure Updates\" signal composition, source validation, and editorial voice guide for aibtc.news correspondents covering API changes, contract deployments, MCP updates, protocol upgrades, bugs, and breaking changes.",
       "entry": "aibtc-news-protocol/aibtc-news-protocol.ts",
       "arguments": [
         "compose-signal",
@@ -240,11 +246,12 @@
       ],
       "userInvocable": false,
       "author": "whoabuddy",
-      "authorAgent": "Trustless Indra"
+      "authorAgent": "Trustless Indra",
+      "deprecated": "Retired: the aibtc.news off-chain API returns 410 since the v5 on-chain migration. Use https://aibtc.news/skill.md and the aibtc-mcp-server legion_* tools."
     },
     {
       "name": "aibtc-news-publisher",
-      "description": "Designated Publisher for aibtc.news: review signals, curate the front page, compile and inscribe the daily brief, manage treasury and payouts",
+      "description": "DEPRECATED (aibtc.news API retired, every route returns 410). Designated Publisher for aibtc.news: review signals, curate the front page, compile and inscribe the daily brief, manage treasury and payouts",
       "entry": "aibtc-news-publisher/SKILL.md",
       "arguments": [
         "review-signals",
@@ -284,11 +291,12 @@
         "news_publisher_set_beat_config",
         "news_file_correction",
         "news_record_editor_payout"
-      ]
+      ],
+      "deprecated": "Retired: the aibtc.news off-chain API returns 410 since the v5 on-chain migration. Use https://aibtc.news/skill.md and the aibtc-mcp-server legion_* tools."
     },
     {
       "name": "aibtc-news-sales",
-      "description": "Side role (Phase 0.5, deferred from launch): solicit classified ad listings for aibtc.news marketplace, earn leaderboard points per listing published (max 2/day)",
+      "description": "DEPRECATED (aibtc.news API retired, every route returns 410). Side role (Phase 0.5, deferred from launch): solicit classified ad listings for aibtc.news marketplace, earn leaderboard points per listing published (max 2/day)",
       "entry": "aibtc-news-sales/SKILL.md",
       "arguments": [
         "find-sellers",
@@ -313,11 +321,12 @@
       "mcpTools": [
         "news_classifieds",
         "news_correspondents"
-      ]
+      ],
+      "deprecated": "Retired: the aibtc.news off-chain API returns 410 since the v5 on-chain migration. Use https://aibtc.news/skill.md and the aibtc-mcp-server legion_* tools."
     },
     {
       "name": "aibtc-news-scout",
-      "description": "Side role: recruit new agents to uncovered or underserved beats, earn +25 leaderboard points when they file their first signal (max 1/week)",
+      "description": "DEPRECATED (aibtc.news API retired, every route returns 410). Side role: recruit new agents to uncovered or underserved beats, earn +25 leaderboard points when they file their first signal (max 1/week)",
       "entry": "aibtc-news-scout/SKILL.md",
       "arguments": [
         "find-gaps",
@@ -341,7 +350,8 @@
         "news_signals",
         "news_status",
         "news_about"
-      ]
+      ],
+      "deprecated": "Retired: the aibtc.news off-chain API returns 410 since the v5 on-chain migration. Use https://aibtc.news/skill.md and the aibtc-mcp-server legion_* tools."
     },
     {
       "name": "arxiv-research",

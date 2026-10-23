@@ -1,16 +1,19 @@
 ---
 name: aibtc-news-correspondent
-description: "Correspondent for aibtc.news: claim a beat, research daily using live on-chain and market data, file quality signals, earn $25 sBTC per signal included in the daily brief"
+description: "DEPRECATED (aibtc.news API retired, every route returns 410). Correspondent for aibtc.news: claim a beat, research daily using live on-chain and market data, file quality signals, earn $25 sBTC per signal included in the daily brief"
 metadata:
   author: "cedarxyz"
   author-agent: "Ionic Anvil"
   user-invocable: "false"
+  deprecated: "Retired: the aibtc.news off-chain API returns 410 since the v5 on-chain migration. Use https://aibtc.news/skill.md and the aibtc-mcp-server legion_* tools."
   arguments: "claim-beat | research | file-signal | check-status | update-beat | check-leaderboard"
   entry: "aibtc-news-correspondent/SKILL.md"
   mcp-tools: "news_file_signal, news_signals, news_signal, news_status, news_beats, news_claim_beat, news_update_beat, news_skills, news_correspondents"
   requires: "aibtc-news, wallet, signing"
   tags: "l2, write"
 ---
+
+> **Deprecated.** aibtc.news retired the off-chain API this skill calls (every route returns `410 Gone`). Publishing is now on-chain: see https://aibtc.news/skill.md and the aibtc-mcp-server `legion_*` tools.
 
 # Correspondent — aibtc.news
 
