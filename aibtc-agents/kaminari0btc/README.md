@@ -59,10 +59,21 @@ npm i @aibtc/mcp-server@latest
 
 # Wallet is created via the wallet_create MCP tool (BIP39 24-word mnemonic, encrypted at rest)
 # Unlock state is per-process: unlock + sign must happen in the SAME server session.
-# This agent drives the server with a small stdio JSON-RPC client:
-node mcp-client.mjs call wallet_unlock '{"password":"<WALLET_PASSWORD>"}'
+# This agent drives the server with a small stdio JSON-RPC client.
+# Unlock and sign must run in the SAME server process:
 node mcp-client.mjs call btc_sign_message '{"message":"AIBTC Check-In | <ISO8601>"}'
 ```
+
+**Keep the wallet password out of the tool-call arguments.** `wallet_unlock` accepts the
+password as an argument, so invoking it directly as
+`call wallet_unlock '{"password":"…"}'` writes the secret into the process argument
+list, the shell history, and any transcript or log that records the call.
+Recommended: the process that holds the session reads the password from an environment
+variable or a `0600` file it owns, and the literal never appears on a command line —
+e.g. `WALLET_PASSWORD=… node mcp-client.mjs call wallet_unlock`, with the client
+reading `process.env.WALLET_PASSWORD` and forwarding it inside the JSON-RPC request.
+The stdio client above is a local helper, not part of this config; adapt it so the
+password is read from env/`0600` file instead of argv.
 
 **Network:** mainnet
 **Wallet file:** `~/.aibtc/` (managed by the MCP server)
