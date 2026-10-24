@@ -21,6 +21,7 @@ import {
   mnemonicToAccount,
   parseDirectPaymentAmount,
   resolveDirectPaymentAsset,
+  resolveSponsoredPaymentTokenType,
   resolveDirectPaymentPolicy,
   resolvePaymentMode,
   resolvePreferredAsset,
@@ -283,6 +284,31 @@ describe("resolvePaymentMode", () => {
 
   test("rejects unknown values", () => {
     expect(() => resolvePaymentMode("auto")).toThrow(/Invalid X402_PAYMENT_MODE/);
+  });
+});
+
+describe("resolveSponsoredPaymentTokenType (#419)", () => {
+  test("pays STX, the canonical sBTC id, or the bare sbtc symbol", () => {
+    expect(resolveSponsoredPaymentTokenType("STX", network)).toBe("STX");
+    expect(resolveSponsoredPaymentTokenType("stx", network)).toBe("STX");
+    expect(resolveSponsoredPaymentTokenType(SBTC, network)).toBe("sBTC");
+    expect(resolveSponsoredPaymentTokenType(`${SBTC}::sbtc-token`, network)).toBe("sBTC");
+    expect(resolveSponsoredPaymentTokenType("sbtc", network)).toBe("sBTC");
+    expect(resolveSponsoredPaymentTokenType("sBTC", network)).toBe("sBTC");
+  });
+
+  test("refuses other sBTC deployments and other tokens instead of paying the pin or STX", () => {
+    const other = network === "mainnet" ? getContracts("testnet").SBTC_TOKEN : getContracts("mainnet").SBTC_TOKEN;
+    for (const bad of [
+      "SP2XYZ.sbtc-token", // a different sBTC deployment: was paid in our pinned token
+      other,
+      "SP2XYZ.usdcx::usdcx", // a different SIP-010: was offered as STX for the same raw amount
+      "USDC",
+      " STX",
+      "",
+    ]) {
+      expect(() => resolveSponsoredPaymentTokenType(bad, network)).toThrow(/x402 payment refused/);
+    }
   });
 });
 

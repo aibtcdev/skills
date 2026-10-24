@@ -202,6 +202,28 @@ export function resolveDirectPaymentAsset(asset: string, network: Network): Dire
   );
 }
 
+/**
+ * Token for a SPONSORED payment, fail-closed (#419). Same rule as
+ * resolveDirectPaymentAsset (native STX, or exactly the canonical sBTC id),
+ * plus the bare `sbtc` symbol for compatibility, since it can only mean the
+ * canonical token. Anything else is refused instead of being paid in our
+ * pinned sBTC, or silently as STX for the same raw amount.
+ */
+export function resolveSponsoredPaymentTokenType(asset: string, network: Network): "STX" | "sBTC" {
+  if (typeof asset === "string" && /^sbtc$/i.test(asset)) {
+    return "sBTC";
+  }
+  try {
+    return resolveDirectPaymentAsset(asset, network).kind;
+  } catch {
+    const canonical = getContracts(network).SBTC_TOKEN;
+    throw new Error(
+      `x402 payment refused: endpoint asks for asset "${asset || "(empty)"}" but this client ` +
+        `only pays in native STX or the canonical sBTC token ${canonical} on ${network}.`
+    );
+  }
+}
+
 export function parseDirectPaymentAmount(
   amount: string,
   asset: DirectPaymentAsset,
@@ -1254,8 +1276,9 @@ export async function createApiClient(
           directRequestKey = requestKey;
           transaction = directBuild.transaction;
         } else {
-        // Build a sponsored signed transaction (relay pays gas; fee: 0n)
-        const tokenType = detectTokenType(selectedOption.asset);
+        // Build a sponsored signed transaction (relay pays gas; fee: 0n).
+        // Refuse any asset we would not pay exactly as asked (#419).
+        const tokenType = resolveSponsoredPaymentTokenType(selectedOption.asset, account.network);
         const amount = BigInt(selectedOption.amount);
         const networkName = getStacksNetwork(account.network);
         await checkSponsoredPaymentBalance(account, tokenType, amount);
