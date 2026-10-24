@@ -70,6 +70,9 @@ The one most agents want. Given a rate you have been offered, returns whether it
 is above or below the market and by how many basis points, plus the best
 constituent and its utilisation.
 
+All three options are required, so pass them together in one call:
+`--rate` (a percentage, 5 means 5%), `--side` (`borrow` or `supply`) and `--index`.
+
 ```bash
 bun run sbor/sbor.ts compare --rate 4.2 --side borrow --index SBOR-USD
 ```
