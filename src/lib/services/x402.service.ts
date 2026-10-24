@@ -1278,7 +1278,14 @@ export async function createApiClient(
             ],
             senderKey: account.privateKey,
             network: networkName,
-            postConditionMode: PostConditionMode.Allow,
+            // The amount is known at build time, so pin it: deny mode plus an
+            // exact-amount FT post-condition means a misbehaving token contract
+            // can't move more than the quoted payment (same as the direct
+            // builder and aibtc-mcp-server's sponsored path).
+            postConditionMode: PostConditionMode.Deny,
+            postConditions: [
+              createFungiblePostCondition(account.address, contracts.SBTC_TOKEN, "sbtc-token", "eq", amount),
+            ],
             sponsored: true,
             fee: 0n,
           });

@@ -422,7 +422,7 @@ describe("createApiClient payment modes", () => {
     return fake;
   }
 
-  test("default (sponsored) mode is unchanged: sponsored auth, fee 0, no direct metadata", async () => {
+  test("default (sponsored) mode: sponsored auth, fee 0, pinned sBTC post-condition, no direct metadata", async () => {
     const f = await up();
     const api = await createApiClient(f.origin, "test.sponsored");
     const response = await api.request({ method: "GET", url: "/paid" });
@@ -432,7 +432,10 @@ describe("createApiClient payment modes", () => {
     const { auth, tx } = decodeTx(f.paidRequests[0]);
     expect(auth.authType).toBe(AuthType.Sponsored);
     expect(auth.spendingCondition.fee).toBe(0n);
-    expect(tx.postConditionMode).toBe(PostConditionMode.Allow);
+    // sBTC is pinned with deny mode + one exact-amount FT post-condition.
+    expect(tx.postConditionMode).toBe(PostConditionMode.Deny);
+    const pcs = tx.postConditions as unknown as { values?: unknown[] } | unknown[];
+    expect(Array.isArray(pcs) ? pcs.length : pcs.values?.length).toBe(1);
     expect(getDirectPaymentMetadata(response)).toEqual({
       mode: undefined,
       txid: undefined,
