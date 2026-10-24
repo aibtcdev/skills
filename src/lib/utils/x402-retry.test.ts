@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   classifyRetryableError,
   extractInboxPaymentMetadata,
+  extractServerIssuedPaymentIdentifier,
   resolveInboxPaymentTracking,
 } from "./x402-retry.js";
 
@@ -35,6 +36,64 @@ describe("extractInboxPaymentMetadata", () => {
       paymentStatus: undefined,
       compatShimUsed: false,
     });
+  });
+
+  test("falls back to server-issued paymentId in response body when inbox.paymentId is absent", () => {
+    expect(
+      extractInboxPaymentMetadata({
+        paymentId: "pay_server_issued_456",
+      })
+    ).toEqual({
+      paymentId: "pay_server_issued_456",
+      paymentStatus: undefined,
+      compatShimUsed: false,
+    });
+
+    expect(
+      extractInboxPaymentMetadata({
+        "payment-identifier": {
+          info: { id: "pay_server_ext_789" },
+        },
+      })
+    ).toEqual({
+      paymentId: "pay_server_ext_789",
+      paymentStatus: undefined,
+      compatShimUsed: false,
+    });
+  });
+});
+
+describe("extractServerIssuedPaymentIdentifier", () => {
+  test("extracts identifier from settlement extensions (payment-response header)", () => {
+    const settlement = {
+      success: true,
+      transaction: "0x123",
+      network: "stacks:1" as const,
+      extensions: {
+        "payment-identifier": {
+          info: { id: "pay_settlement_ext_123" },
+        },
+      },
+    };
+    expect(extractServerIssuedPaymentIdentifier(null, settlement)).toBe("pay_settlement_ext_123");
+  });
+
+  test("extracts identifier from settlement extensions direct paymentId key", () => {
+    const settlement = {
+      success: true,
+      transaction: "0x123",
+      network: "stacks:1" as const,
+      extensions: {
+        paymentId: "pay_direct_key_456",
+      },
+    };
+    expect(extractServerIssuedPaymentIdentifier(null, settlement)).toBe("pay_direct_key_456");
+  });
+
+  test("extracts identifier from response body payment_identifier", () => {
+    expect(
+      extractServerIssuedPaymentIdentifier({ payment_identifier: "pay_body_snake_789" })
+    ).toBe("pay_body_snake_789");
   });
 });
 

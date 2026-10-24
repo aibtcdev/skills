@@ -12,9 +12,20 @@ this file is about *how to behave*, not the API shape.
 
 ## Before doing anything
 
-1. **Fetch `GET /api/protocol?network=<target>` fresh, every session.**
-   Contract addresses have changed once already (2026-07-16 mainnet
-   redeploy). Never hardcode an address from memory or from an old run.
+1. **Let the two sources of contract addresses check each other.**
+   `launkr.ts` fetches `GET /api/protocol?network=<target>` on every command
+   *and* compares the result against the addresses pinned in `NET_CONFIG`;
+   a difference is refused, not silently adopted. Both halves matter.
+   Fetching live is how a redeploy gets noticed (addresses have changed once
+   already — 2026-07-16 mainnet). Pinning is what keeps the deploy
+   verification meaningful: `launch` byte-compares the API's `clarityCode`
+   against the on-chain source at the *template address*, so if that address
+   also came from the API, both sides of the check share an origin and it
+   can only catch launkr.io disagreeing with itself — not the compromised or
+   hijacked launkr.io it was written for. If a command refuses with a config
+   mismatch, **verify the new addresses on the explorer yourself** and update
+   `NET_CONFIG`; don't reach for `--allow-config-change` as the quick fix,
+   because that hands full trust to the API response for that run.
 2. **Know which network you're on.** Testnet and mainnet contracts are
    structurally identical but financially very different — testnet STX is
    free from a faucet, mainnet STX is real money. `launkr.ts` follows the
@@ -59,11 +70,21 @@ this file is about *how to behave*, not the API shape.
    deploy before failing.) For **direct mode**, separately confirm you
    actually hold ≥ `stxSeed` uSTX before attempting the call — the required
    flag only means the value was supplied, not that you can afford it.
-5. Pick `virtualStx`/`graduationThreshold` (bonding) deliberately, not just
+5. **`decimals` is set by pool creation, not by the deploy.** The template
+   ships `token-decimals u0`; only the one-shot `initialize()` the singleton
+   runs during pool creation ever sets it, from the `decimals` arg. So a
+   deployed-but-poolless token reports `get-decimals` → `u0`, and that value
+   is not its decimals — it has none yet. Pass `--decimals` explicitly
+   (default `6`) on both `launch` and `create-pool`; never read it back off
+   a token that has no pool. An earlier version of `create-pool` did exactly
+   that, which would have permanently initialized a recovered token with 0
+   decimals — `initialize()` runs once and answers
+   `ERR_ALREADY_INITIALIZED` forever after.
+6. Pick `virtualStx`/`graduationThreshold` (bonding) deliberately, not just
    at the floor minimums, unless the goal is specifically a cheap test
    token — floor values create a very "top-heavy" curve (large price impact
    per STX traded).
-6. **Trust but verify the Launkr API's response** — this is the part of
+7. **Trust but verify the Launkr API's response** — this is the part of
    `launch` most worth re-reading if you're extending it, since it's been
    wrong twice already in ways that only surfaced on-chain. `launkr.ts`
    checks, before spending any gas: the deploy step's `clarityCode`
@@ -73,11 +94,15 @@ this file is about *how to behave*, not the API shape.
    while every arg still looked fine); the pool-creation args are exactly
    the length the mode requires (not just "at least" — a short bonding
    response can read `fee-receiver` as `graduation-threshold`); and the
-   `token`/`name`/`symbol`/`supply`/`fee-receiver`/curve-parameter values
-   in those args match what was requested. Don't remove or narrow any of
-   these — each one closes a gap a previous version of this file actually
-   had.
-7. **`launch` is two transactions with no atomicity between them, but there
+   values in **all nine** args match what was requested — token principal,
+   name, symbol, decimals, supply, uri, curve parameters and fee-receiver.
+   Don't remove or narrow any of these — each one closes a gap a previous
+   version of this file actually had. Note also that the principal reported
+   back to you is the one derived from the deploying address and the
+   contract name actually being deployed, not the `tokenPrincipal` the API
+   echoes; if those disagree you get a warning on stderr rather than a
+   quietly wrong address.
+8. **`launch` is two transactions with no atomicity between them, but there
    is a recovery path.** If pool creation (step 2) fails or the process is
    interrupted after the token deploys, don't re-run `launch` — it deploys
    a *second* token. Use `create-pool --token <the-already-deployed-principal>`
@@ -110,6 +135,24 @@ this file is about *how to behave*, not the API shape.
 4. Set a `deadline` when the surrounding context is time-sensitive (e.g.
    part of a multi-step flow where a stale price is a real risk). Only fall
    back to `0xffffffff` (no deadline) for one-off manual actions.
+5. **Read the status fields, don't assume the txid means it worked.** Every
+   write waits for a terminal on-chain status by default and reports
+   `success: true, confirmed: true` only when the transaction actually
+   succeeded. If you pass `--no-wait`, you get `broadcast: true,
+   confirmed: false` instead — that is *not* a completed trade, and a swap
+   can still abort on slippage or a post-condition after broadcast. Don't
+   report a `--no-wait` result to a user as a finished trade.
+6. **`swap-and-burn` is not a swap you receive anything from.** It spends
+   STX to buy tokens and burns them in the same call; there is no
+   `recipient` arg and no payout. Fee-free, and the STX stays in the pool.
+   Graduated pools only — `quote-swap-and-burn` returns `none` on a bonding
+   pool, and calling it there aborts with `ERR_NOT_GRADUATED (u217)`. Quote
+   first and set `--min-tokens-burned` from the quote, same as any swap.
+7. **Check `is-paused` before a batch of writes.** It's a free read, and the
+   singleton's pause aborts every write on-chain after taking the fee.
+   `launch`, `create-pool`, both swaps and `swap-and-burn` pre-flight it
+   automatically, but if you're planning a sequence of operations, checking
+   once up front beats discovering it mid-sequence.
 
 ## Error handling
 
@@ -160,6 +203,11 @@ this file is about *how to behave*, not the API shape.
   — an agent checking `active` got a falsy value regardless of the pool's
   real state. Fixed by decoding the full Clarity-value tree instead of
   assuming a fixed unwrap depth; verified against a real pool.)
+- Don't reach for `--allow-config-change` or `--no-wait` to make an
+  inconvenient check go away. Both exist for real cases (a verified
+  redeploy; a caller that genuinely wants fire-and-forget), and both turn
+  off a safeguard that was added because its absence caused a real problem.
+  If a check is firing, the first move is to find out why.
 - Don't skip the confirmation-wait between launch steps to save time. A
   pool-creation call against an unconfirmed (or failed) token deploy will
   fail outright, and diagnosing "why" after the fact costs more time than

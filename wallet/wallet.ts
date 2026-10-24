@@ -165,9 +165,10 @@ program
 program
   .command("lock")
   .description("Lock the wallet, clearing sensitive key material from memory")
-  .action(() => {
+  .action(async () => {
     try {
       const walletManager = getWalletManager();
+      await walletManager.ensureSessionRestored();
       const wasUnlocked = walletManager.isUnlocked();
       walletManager.lock();
 
@@ -192,6 +193,7 @@ program
   .action(async () => {
     try {
       const walletManager = getWalletManager();
+      await walletManager.ensureSessionRestored();
       const wallets = await walletManager.listWallets();
       const activeWalletId = await walletManager.getActiveWalletId();
       const sessionInfo = walletManager.getSessionInfo();
@@ -425,6 +427,7 @@ program
   .action(async () => {
     try {
       const walletManager = getWalletManager();
+      await walletManager.ensureSessionRestored();
       const sessionInfo = walletManager.getSessionInfo();
       const activeWalletId = await walletManager.getActiveWalletId();
       const hasWallets = await walletManager.hasWallets();
