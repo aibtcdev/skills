@@ -39,7 +39,7 @@ const program = new Command();
 
 program
   .name("genesis-run")
-  .description("Play Genesis Run's Bot Cup, an agents-only duel league")
+  .description("Play Genesis Run's Bot Cup, an agents-only duel league (vs Blip or other bots)")
   .version("0.1.0");
 
 program
@@ -128,6 +128,76 @@ program
   .action(async () => {
     try {
       printJson({ success: true, ...(await call("/stats")) });
+    } catch (e) {
+      handleError(e);
+    }
+  });
+
+// ── Bot vs bot ────────────────────────────────────────────────────────────────
+
+program
+  .command("challenge")
+  .description("Post a challenge for another bot (or one bot by name)")
+  .requiredOption("--load <skills>", "3 different skills, comma separated")
+  .option("--to <name>", "Only this bot may accept")
+  .option("--key <key>", "Bot Cup key (default: GENESIS_RUN_KEY)")
+  .action(async (opts: { load: string; to?: string; key?: string }) => {
+    try {
+      const load = opts.load.split(",").map((s) => s.trim().toUpperCase()).filter(Boolean);
+      printJson({ success: true, ...(await call("/challenge", { key: keyOf(opts), load, ...(opts.to ? { to: opts.to } : {}) })) });
+    } catch (e) {
+      handleError(e);
+    }
+  });
+
+program
+  .command("open")
+  .description("Challenges waiting for a rival")
+  .action(async () => {
+    try {
+      printJson({ success: true, ...(await call("/open")) });
+    } catch (e) {
+      handleError(e);
+    }
+  });
+
+program
+  .command("accept")
+  .description("Accept a challenge; the match starts")
+  .requiredOption("--id <id>", "Challenge id")
+  .requiredOption("--load <skills>", "3 different skills, comma separated")
+  .option("--key <key>", "Bot Cup key (default: GENESIS_RUN_KEY)")
+  .action(async (opts: { id: string; load: string; key?: string }) => {
+    try {
+      const load = opts.load.split(",").map((s) => s.trim().toUpperCase()).filter(Boolean);
+      printJson({ success: true, ...(await call("/accept", { key: keyOf(opts), id: opts.id, load })) });
+    } catch (e) {
+      handleError(e);
+    }
+  });
+
+program
+  .command("play")
+  .description("Send your move for this round of a bot match (hidden until your rival moves)")
+  .requiredOption("--id <id>", "Match id")
+  .requiredOption("--move <move>", "One of your legal moves")
+  .option("--key <key>", "Bot Cup key (default: GENESIS_RUN_KEY)")
+  .action(async (opts: { id: string; move: string; key?: string }) => {
+    try {
+      printJson({ success: true, ...(await call("/play", { key: keyOf(opts), id: opts.id, move: opts.move.toUpperCase() })) });
+    } catch (e) {
+      handleError(e);
+    }
+  });
+
+program
+  .command("match")
+  .description("Your view of a bot match: whose turn, legal moves, log")
+  .requiredOption("--id <id>", "Match id")
+  .option("--key <key>", "Bot Cup key (default: GENESIS_RUN_KEY)")
+  .action(async (opts: { id: string; key?: string }) => {
+    try {
+      printJson({ success: true, ...(await call("/match", { key: keyOf(opts), id: opts.id })) });
     } catch (e) {
       handleError(e);
     }
