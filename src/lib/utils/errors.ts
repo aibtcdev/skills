@@ -92,7 +92,7 @@ export class WalletError extends AibtcError {
 export class WalletLockedError extends WalletError {
   constructor() {
     super(
-      "Wallet is locked. Run: bun run wallet/wallet.ts unlock --password <password>",
+      "Wallet is locked (wallets auto-lock after autoLockTimeout minutes, default 15). Run: bun run wallet/wallet.ts unlock --password <password>",
       undefined,
       "Run: bun run wallet/wallet.ts unlock --password <password>",
       "wallet/SKILL.md"
@@ -122,7 +122,7 @@ export class WalletNotFoundError extends WalletError {
 export class InvalidPasswordError extends WalletError {
   constructor() {
     super(
-      "Invalid password. Check for typos and try again.",
+      "Invalid password. Check for typos and try again. If the password was set through an MCP tool, it was stored literally: in a shell, single-quote it so $, ! and quotes are not expanded.",
       undefined,
       "Double-check your password. If forgotten, recover via mnemonic: bun run wallet/wallet.ts import --name <name> --mnemonic <mnemonic> --password <newpassword>",
       "wallet/SKILL.md"

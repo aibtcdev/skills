@@ -1587,7 +1587,9 @@ export async function getAccount(): Promise<Account> {
     throw new Error(
       "No wallet available. Either unlock a managed wallet " +
         "(bun run wallet/wallet.ts unlock --password <password>) " +
-        "or set CLIENT_MNEMONIC environment variable."
+        "or set CLIENT_MNEMONIC environment variable. " +
+        "If you unlocked earlier, the session may have auto-locked " +
+        "(autoLockTimeout in ~/.aibtc/config.json, default 15 minutes)."
     );
   }
   return mnemonicToAccount(mnemonic, NETWORK);
