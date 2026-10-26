@@ -63,10 +63,11 @@ The wallet must hold `amount + fee` of the token. The transaction carries a
 `Deny` post condition for exactly that amount.
 
 On-chain this is a call to the Bolt contract, which moves the fee to Bolt and
-then `--amount` to the recipient. A service that verifies a payment by looking
-for a direct `transfer` call on the token contract (aibtc bounty payouts, inbox
-payments recovered by txid) does not recognize it: pay those with `call` or
-`sponsor-call` on the token's own `transfer` instead.
+then `--amount` to the recipient. aibtc accepts it for sBTC bounty payouts
+(`--memo BNTY:{bountyId}`) and for inbox payments recovered by txid. A service
+that accepts only a direct `transfer` call on the token contract does not
+recognize it: pay those with `call` or `sponsor-call` on the token's own
+`transfer` instead.
 
 Output: `{ success, txid, from, recipient, token, amount, fee, unit, nonce, network, explorerUrl }`
 

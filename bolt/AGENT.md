@@ -28,11 +28,11 @@ description: Gasless Stacks transactions via Bolt Protocol — sBTC/USDCx transf
 
 1. Run `status` once per session. If it fails, do not sign anything.
 2. Plain sBTC/USDCx payment → `transfer`. No credit needed.
-   Exception: a payment that a service verifies by txid (an aibtc bounty
-   payout, an inbox payment recovered by txid). Those checks accept only a
-   direct `sbtc-token.transfer` call, and `transfer` here calls the Bolt
-   contract. Pay those with `call` (or `sponsor-call`) on `sbtc-token`
-   `transfer`.
+   aibtc bounty payouts and inbox payments recovered by txid accept it (sBTC;
+   for a bounty, `--memo BNTY:{bountyId}`). Exception: another service that
+   verifies a payment by txid and accepts only a direct `sbtc-token.transfer`
+   call. `transfer` here calls the Bolt contract, so pay those with `call` (or
+   `sponsor-call`) on `sbtc-token` `transfer`.
 3. One contract call, or one now and then → `call`. Nothing to deposit and
    nothing to wait for before it.
 4. Several contract calls → check `credit-balance`. If it is below the fee for
