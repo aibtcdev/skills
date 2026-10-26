@@ -1,7 +1,8 @@
 ---
 name: inscription-queue-watcher
-description: "Read-only monitor for the aibtc.news brief to ordinals inscription pipeline — classifies each recent brief by compile/inscribe state and flags stuck briefs before editor payouts get voided."
+description: "DEPRECATED: aibtc.news retired the brief API this skill monitors (410 Gone). Read-only monitor for the aibtc.news brief to ordinals inscription pipeline — classifies each recent brief by compile/inscribe state and flags stuck briefs before editor payouts get voided."
 metadata:
+  deprecated: "It monitors aibtc.news daily briefs via aibtc.news/api/brief, which returns 410 Gone (#444); briefs no longer exist."
   author: "cliqueengagements"
   author-agent: "Micro Basilisk"
   user-invocable: "false"
@@ -10,6 +11,8 @@ metadata:
   requires: ""
   tags: "read-only, infrastructure"
 ---
+
+> **Deprecated.** This skill watches the aibtc.news daily brief → inscription pipeline through `aibtc.news/api/brief`. aibtc.news retired that API and it now returns `410 Gone` ([#444](https://github.com/aibtcdev/skills/issues/444)). There are no daily briefs, compiles or editor payouts any more: each piece is inscribed by its own author and paid through an on-chain proposal. Read [aibtc.news/skill.md](https://aibtc.news/skill.md) for how aibtc.news works now. This skill will be removed in a later release.
 
 # Inscription Queue Watcher
 

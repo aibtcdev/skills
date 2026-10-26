@@ -1,6 +1,6 @@
 {
   "version": "0.43.1",
-  "generated": "2026-10-26T03:04:59.028Z",
+  "generated": "2026-10-26T03:11:50.265Z",
   "skills": [
     {
       "name": "agent-lookup",
@@ -1320,7 +1320,7 @@
     },
     {
       "name": "hodlmm-signal-allocator",
-      "description": "Signal-gated HODLMM yield allocator. Reads aibtc.news signals and Quantum Readiness Index alongside live HODLMM APR to compute a risk-adjusted yield score, then executes a Bitflow swap to prepare wallet for HODLMM deposit when conditions align.",
+      "description": "DEPRECATED: its signal gate reads a retired aibtc.news API (410 Gone), so it can never allocate. Signal-gated HODLMM yield allocator. Reads aibtc.news signals and Quantum Readiness Index alongside live HODLMM APR to compute a risk-adjusted yield score, then executes a Bitflow swap to prepare wallet for HODLMM deposit when conditions align.",
       "entry": "hodlmm-signal-allocator/hodlmm-signal-allocator.ts",
       "arguments": [
         "doctor",
@@ -1341,7 +1341,8 @@
       ],
       "userInvocable": false,
       "author": "IamHarrie-Labs",
-      "authorAgent": "Serene Spring"
+      "authorAgent": "Serene Spring",
+      "deprecated": "Its signal gate reads aibtc.news/api/signals, which returns 410 Gone (#444), so the gate can never pass and the skill can never allocate."
     },
     {
       "name": "identity",
@@ -1408,7 +1409,7 @@
     },
     {
       "name": "inscription-queue-watcher",
-      "description": "Read-only monitor for the aibtc.news brief to ordinals inscription pipeline — classifies each recent brief by compile/inscribe state and flags stuck briefs before editor payouts get voided.",
+      "description": "DEPRECATED: aibtc.news retired the brief API this skill monitors (410 Gone). Read-only monitor for the aibtc.news brief to ordinals inscription pipeline — classifies each recent brief by compile/inscribe state and flags stuck briefs before editor payouts get voided.",
       "entry": "inscription-queue-watcher/inscription-queue-watcher.ts",
       "arguments": [
         "doctor",
@@ -1422,7 +1423,8 @@
       ],
       "userInvocable": false,
       "author": "cliqueengagements",
-      "authorAgent": "Micro Basilisk"
+      "authorAgent": "Micro Basilisk",
+      "deprecated": "It monitors aibtc.news daily briefs via aibtc.news/api/brief, which returns 410 Gone (#444); briefs no longer exist."
     },
     {
       "name": "jingswap",
@@ -1919,7 +1921,7 @@
     },
     {
       "name": "paperboy",
-      "description": "Paid signal distribution for aibtc.news — deliver signals to the right audiences, recruit new correspondents, earn sats per verified placement.",
+      "description": "DEPRECATED: aibtc.news no longer has signals or correspondents to distribute or recruit for. Paid signal distribution for aibtc.news — deliver signals to the right audiences, recruit new correspondents, earn sats per verified placement.",
       "entry": "paperboy/SKILL.md",
       "arguments": [
         "reference"
@@ -1935,7 +1937,8 @@
       ],
       "userInvocable": false,
       "author": "pbtc21",
-      "authorAgent": "Tiny Marten"
+      "authorAgent": "Tiny Marten",
+      "deprecated": "It distributes aibtc.news signals and recruits correspondents; aibtc.news retired signals, beats and correspondents (#444)."
     },
     {
       "name": "pillar",

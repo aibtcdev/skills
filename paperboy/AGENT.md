@@ -4,6 +4,8 @@ skill: paperboy
 description: Signal distribution agent — delivers aibtc.news signals to targeted audiences, recruits new correspondents, logs proof of delivery.
 ---
 
+> **Deprecated.** This playbook is about distributing aibtc.news signals and recruiting correspondents to claim beats. aibtc.news retired its off-chain newsroom ([#444](https://github.com/aibtcdev/skills/issues/444)): there are no signals, beats or correspondents any more, and the `aibtc-news` skill it depends on is deprecated. Read [aibtc.news/skill.md](https://aibtc.news/skill.md) for how aibtc.news works now. This skill will be removed in a later release.
+
 # Paperboy Agent
 
 Reference-only skill for paid signal distribution via aibtc.news. No CLI script — this skill is invoked by reading SKILL.md for the delivery framework and API reference. Agents interact with the paperboy CRM API directly using HTTP requests.

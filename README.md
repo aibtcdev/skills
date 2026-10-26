@@ -12,7 +12,7 @@ Each skill is a self-contained directory with a `SKILL.md` (used by Claude Code 
 | [settings](./settings/) | `settings/settings.ts` | Configure the Hiro API key, custom Stacks API URL, and check the package version. Settings stored at `~/.aibtc/config.json`. |
 | [btc](./btc/) | `btc/btc.ts` | Bitcoin L1 — check balances, estimate fees, list UTXOs, transfer BTC, and classify UTXOs as cardinal (safe to spend), ordinal (inscriptions), or rune (rune tokens). Uses Unisat API. |
 | [mempool-watch](./mempool-watch/) | `mempool-watch/mempool-watch.ts` | Bitcoin mempool monitoring — check transaction confirmation status, retrieve address transaction history, and inspect current mempool state via mempool.space. |
-| [inscription-queue-watcher](./inscription-queue-watcher/) | `inscription-queue-watcher/inscription-queue-watcher.ts` | Read-only monitor for the aibtc.news brief to ordinals inscription pipeline — classifies each recent brief by compile/inscribe state and flags briefs stuck between compile and inscription before the retroactive void batch runs. |
+| [inscription-queue-watcher](./inscription-queue-watcher/) | `inscription-queue-watcher/inscription-queue-watcher.ts` | **Deprecated** ([#444](https://github.com/aibtcdev/skills/issues/444)): aibtc.news retired the API it relies on. Read-only monitor for the aibtc.news brief to ordinals inscription pipeline — classifies each recent brief by compile/inscribe state and flags briefs stuck between compile and inscription before the retroactive void batch runs. |
 | [ordinals](./ordinals/) | `ordinals/ordinals.ts` | Bitcoin ordinals — get Taproot address, estimate inscription fees, create inscriptions via the two-step commit/reveal pattern, transfer inscriptions, and fetch inscription content. |
 | [ordinals-marketplace](./ordinals-marketplace/) | doc-only (`SKILL.md`) | BTC ordinals marketplace via Magic Eden — browse active listings, list inscriptions for sale via PSBT flow, submit signed listings, buy inscriptions, and cancel active listings. BTC ordinals only. Mainnet-only. |
 | [runes](./runes/) | `runes/runes.ts` | Bitcoin runes — check rune balances, list rune-bearing UTXOs, and transfer runes with Runestone OP_RETURN encoding. Uses Unisat API. |
@@ -60,7 +60,7 @@ Each skill is a self-contained directory with a `SKILL.md` (used by Claude Code 
 | [clarity-test-scaffold](./clarity-test-scaffold/) | doc-only (`SKILL.md`) | Clarity test infrastructure generation — scaffold vitest configs, test stubs, Clarunit files, and Rendezvous fuzz tests. |
 | [clarity-audit](./clarity-audit/) | doc-only (`SKILL.md`) | Clarity security audit — structured review covering correctness, vulnerabilities, design concerns, and deployment readiness. |
 | [nonce-manager](./nonce-manager/) | `nonce-manager/nonce-manager.ts` | Cross-process Stacks nonce oracle — atomic acquire/release prevents mempool collisions across skills using file-locked state at `~/.aibtc/nonce-state.json`. |
-| [paperboy](./paperboy/) | doc-only (`SKILL.md`) | Paid signal distribution for aibtc.news — deliver signals to targeted audiences, recruit new correspondents, earn sats per verified placement. |
+| [paperboy](./paperboy/) | doc-only (`SKILL.md`) | **Deprecated** ([#444](https://github.com/aibtcdev/skills/issues/444)): aibtc.news retired the API it relies on. Paid signal distribution for aibtc.news — deliver signals to targeted audiences, recruit new correspondents, earn sats per verified placement. |
 
 ## Workflow Discovery (what-to-do/)
 
