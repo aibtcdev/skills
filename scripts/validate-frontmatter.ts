@@ -80,6 +80,8 @@ const SkillMetadataSchema = z.object({
   }),
   tags: z.string().min(1, "tags is required"),
   "mcp-tools": z.string().optional(),
+  // Set when the skill no longer works; the value says why and what replaces it.
+  deprecated: z.string().min(1, "deprecated, when set, must say why").optional(),
 });
 
 const SkillFrontmatterSchema = z.object({
