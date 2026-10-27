@@ -1,7 +1,8 @@
 #!/usr/bin/env bun
 /**
  * inbox skill CLI
- * x402-gated agent inbox — send paid messages, read received messages, check inbox status
+ * x402-gated agent inbox — send paid messages, read received messages, check inbox status,
+ * and auto-reply to paid messages via the AIBTC Inference Marketplace
  *
  * Usage: bun run inbox/inbox.ts <subcommand> [options]
  */
@@ -14,6 +15,16 @@ import {
   getWalletAddress,
 } from "../src/lib/services/x402.service.js";
 import { printJson, handleError } from "../src/lib/utils/cli.js";
+import { readAppConfig, writeAppConfig, type InboxAutoReplyConfig } from "../src/lib/utils/storage.js";
+import {
+  DEFAULT_AUTO_REPLY_MODEL,
+  DEFAULT_DAILY_CAP_SATS,
+  DEFAULT_MAX_REPLIES_PER_RUN,
+  MAX_REPLIES_PER_RUN,
+  listLiveModels,
+  marketplaceReplyGenerator,
+  runAutoReply,
+} from "../src/lib/services/inbox-auto-reply.service.js";
 
 // ---------------------------------------------------------------------------
 // Program
@@ -337,6 +348,163 @@ program
           unread: inboxData?.unreadCount ?? 0,
           lastReceived: messages[0]?.sentAt ?? null,
         },
+      });
+    } catch (error) {
+      handleError(error);
+    }
+  });
+
+// ---------------------------------------------------------------------------
+// auto-reply-config
+// ---------------------------------------------------------------------------
+
+function parseBoolean(value: string): boolean {
+  if (value === "true") return true;
+  if (value === "false") return false;
+  throw new Error(`--enabled must be true or false, got "${value}"`);
+}
+
+function parseNonNegativeInt(name: string, value: string): number {
+  if (!/^\d+$/.test(value)) throw new Error(`${name} must be a non-negative integer, got "${value}"`);
+  return Number(value);
+}
+
+function requireMainnet(): void {
+  if (NETWORK !== "mainnet") {
+    throw new Error(
+      "Inbox auto-reply is mainnet only: the aibtc.com inbox and the inference marketplace settle in mainnet sBTC. Set NETWORK=mainnet."
+    );
+  }
+}
+
+program
+  .command("auto-reply-config")
+  .description(
+    "Configure inbox auto-reply (stored in ~/.aibtc/config.json, shared with the aibtc MCP server). " +
+      "With no options, show the current settings. A system prompt is required before auto-reply can be enabled."
+  )
+  .option("--enabled <bool>", "Allow auto-reply to post replies (true|false). Dry runs work while disabled.")
+  .option(
+    "--model <id>",
+    `Inference marketplace model id, checked against https://inference.aibtc.com/v1/models (default ${DEFAULT_AUTO_REPLY_MODEL})`
+  )
+  .option("--system-prompt <text>", "Who the agent is, its tone, what it offers, what it won't do (max 4000 characters)")
+  .option(
+    "--daily-cap-sats <sats>",
+    `Most sats spent on reply inference per UTC day (default ${DEFAULT_DAILY_CAP_SATS})`
+  )
+  .action(
+    async (opts: { enabled?: string; model?: string; systemPrompt?: string; dailyCapSats?: string }) => {
+      try {
+        const config = await readAppConfig();
+        const current = config.inboxAutoReply;
+        if (
+          opts.enabled === undefined &&
+          opts.model === undefined &&
+          opts.systemPrompt === undefined &&
+          opts.dailyCapSats === undefined
+        ) {
+          printJson({
+            configured: Boolean(current),
+            settings: current ?? null,
+            ...(!current && { note: "Not configured. Set --system-prompt, then --enabled true." }),
+          });
+          return;
+        }
+
+        const enabled = opts.enabled === undefined ? undefined : parseBoolean(opts.enabled);
+        const dailyCapSats =
+          opts.dailyCapSats === undefined ? undefined : parseNonNegativeInt("--daily-cap-sats", opts.dailyCapSats);
+        if (opts.systemPrompt !== undefined) {
+          const trimmed = opts.systemPrompt.trim();
+          if (!trimmed) throw new Error("--system-prompt must not be empty");
+          if (trimmed.length > 4000) throw new Error("--system-prompt exceeds 4000 characters");
+        }
+        if (opts.model !== undefined) {
+          const live = await listLiveModels();
+          if (!live.includes(opts.model)) {
+            throw new Error(`Model "${opts.model}" is not live on the inference marketplace. Live models: ${live.join(", ")}`);
+          }
+        }
+
+        const next: InboxAutoReplyConfig = {
+          enabled: enabled ?? current?.enabled ?? false,
+          model: opts.model ?? current?.model ?? DEFAULT_AUTO_REPLY_MODEL,
+          systemPrompt: opts.systemPrompt?.trim() ?? current?.systemPrompt ?? "",
+          dailyCapSats: dailyCapSats ?? current?.dailyCapSats ?? DEFAULT_DAILY_CAP_SATS,
+        };
+        if (next.enabled && !next.systemPrompt) {
+          throw new Error("Set --system-prompt before enabling auto-reply.");
+        }
+
+        await writeAppConfig({ ...config, inboxAutoReply: next });
+        printJson({ success: true, settings: next });
+      } catch (error) {
+        handleError(error);
+      }
+    }
+  );
+
+// ---------------------------------------------------------------------------
+// auto-reply
+// ---------------------------------------------------------------------------
+
+program
+  .command("auto-reply")
+  .description(
+    "Answer paid, settled, unanswered inbox messages (oldest first). Each reply is written by an AIBTC " +
+      "Inference Marketplace model (x402, ~1 sat sBTC, gas sponsored), signed with BIP-322 and posted to the " +
+      "outbox (free). Never answers a message twice and stops at the daily cap. Mainnet only; requires an " +
+      "unlocked wallet with a bc1q address and a little sBTC. Configure first with auto-reply-config."
+  )
+  .option(
+    "--max-replies <n>",
+    `Most messages to answer in this run, 1-${MAX_REPLIES_PER_RUN} (default ${DEFAULT_MAX_REPLIES_PER_RUN})`
+  )
+  .option("--dry-run", "Generate replies (inference is still paid) without posting them or marking messages handled")
+  .action(async (opts: { maxReplies?: string; dryRun?: boolean }) => {
+    try {
+      requireMainnet();
+      const maxReplies =
+        opts.maxReplies === undefined
+          ? DEFAULT_MAX_REPLIES_PER_RUN
+          : parseNonNegativeInt("--max-replies", opts.maxReplies);
+      if (maxReplies < 1 || maxReplies > MAX_REPLIES_PER_RUN) {
+        throw new Error(`--max-replies must be between 1 and ${MAX_REPLIES_PER_RUN}`);
+      }
+      const config = (await readAppConfig()).inboxAutoReply;
+      if (!config?.systemPrompt) {
+        throw new Error(
+          'Inbox auto-reply is not configured. Run: bun run inbox/inbox.ts auto-reply-config --system-prompt "..."'
+        );
+      }
+      const dryRun = opts.dryRun ?? false;
+      if (!config.enabled && !dryRun) {
+        throw new Error(
+          "Inbox auto-reply is disabled. Enable it with: bun run inbox/inbox.ts auto-reply-config --enabled true " +
+            "(or pass --dry-run to preview replies)."
+        );
+      }
+
+      const account = await getAccount();
+      const summary = await runAutoReply({
+        account,
+        systemPrompt: config.systemPrompt,
+        dailyCapSats: config.dailyCapSats,
+        maxRepliesPerRun: maxReplies,
+        dryRun,
+        generator: marketplaceReplyGenerator(account, config.model),
+      });
+
+      printJson({
+        success: summary.failed.length === 0,
+        dryRun,
+        model: config.model,
+        ...summary,
+        repliedCount: summary.replied.length,
+        skippedCount: summary.skipped.length,
+        failedCount: summary.failed.length,
+        dailyCapSats: config.dailyCapSats,
       });
     } catch (error) {
       handleError(error);
