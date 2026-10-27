@@ -375,6 +375,36 @@ export async function checkSponsoredPaymentBalance(
 }
 
 /**
+ * Sign (do not broadcast) a sponsored sBTC transfer for an x402 payment: fee 0,
+ * the relay or the endpoint's fee payer pays gas. The amount is known at build
+ * time, so it is pinned: deny mode plus an exact-amount FT post-condition means
+ * a misbehaving token contract can't move more than the quoted payment (same
+ * as the direct builder and aibtc-mcp-server's sponsored path).
+ */
+export async function buildSponsoredSbtcTransfer(
+  account: Account,
+  payTo: string,
+  amount: bigint
+): Promise<StacksTransactionWire> {
+  const contracts = getContracts(account.network);
+  const { address: contractAddress, name: contractName } = parseContractId(contracts.SBTC_TOKEN);
+  return makeContractCall({
+    contractAddress,
+    contractName,
+    functionName: "transfer",
+    functionArgs: [uintCV(amount), principalCV(account.address), principalCV(payTo), noneCV()],
+    senderKey: account.privateKey,
+    network: getStacksNetwork(account.network),
+    postConditionMode: PostConditionMode.Deny,
+    postConditions: [
+      createFungiblePostCondition(account.address, contracts.SBTC_TOKEN, "sbtc-token", "eq", amount),
+    ],
+    sponsored: true,
+    fee: 0n,
+  });
+}
+
+/**
  * Build (sign, do not broadcast) a standard fee-paying transfer for a 402
  * challenge. Validates asset and amount, checks balances, fetches a
  * mempool-aware nonce, and pins the exact sBTC amount with a deny-mode
@@ -1284,34 +1314,7 @@ export async function createApiClient(
         await checkSponsoredPaymentBalance(account, tokenType, amount);
 
         if (tokenType === "sBTC") {
-          const contracts = getContracts(account.network);
-          const { address: contractAddress, name: contractName } = parseContractId(
-            contracts.SBTC_TOKEN
-          );
-
-          transaction = await makeContractCall({
-            contractAddress,
-            contractName,
-            functionName: "transfer",
-            functionArgs: [
-              uintCV(amount),
-              principalCV(account.address),
-              principalCV(selectedOption.payTo),
-              noneCV(),
-            ],
-            senderKey: account.privateKey,
-            network: networkName,
-            // The amount is known at build time, so pin it: deny mode plus an
-            // exact-amount FT post-condition means a misbehaving token contract
-            // can't move more than the quoted payment (same as the direct
-            // builder and aibtc-mcp-server's sponsored path).
-            postConditionMode: PostConditionMode.Deny,
-            postConditions: [
-              createFungiblePostCondition(account.address, contracts.SBTC_TOKEN, "sbtc-token", "eq", amount),
-            ],
-            sponsored: true,
-            fee: 0n,
-          });
+          transaction = await buildSponsoredSbtcTransfer(account, selectedOption.payTo, amount);
         } else {
           transaction = await makeSTXTokenTransfer({
             recipient: selectedOption.payTo,
