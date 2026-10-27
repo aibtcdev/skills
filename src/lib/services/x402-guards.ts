@@ -345,9 +345,23 @@ function installExitHooks(): void {
  * a reason to stop, not to guess.
  */
 export async function withDirectPaymentLock<T>(policy: DirectPaymentPolicy, fn: () => Promise<T>): Promise<T> {
+  return withLockDirs(lockDirsFor(policy), fn);
+}
+
+/**
+ * Run `fn` while holding the lock for `file`'s directory — the same
+ * `x402-guards.lock` lease the MCP server's `withSharedStateLock` takes, so
+ * any other `~/.aibtc` state file shared with it gets the same exclusion. Do
+ * not call it from inside `withDirectPaymentLock` on the same directory: the
+ * lease is not re-entrant.
+ */
+export async function withStateFileLock<T>(file: string, fn: () => Promise<T>): Promise<T> {
+  return withLockDirs([path.join(path.dirname(file), "x402-guards.lock")], fn);
+}
+
+async function withLockDirs<T>(dirs: string[], fn: () => Promise<T>): Promise<T> {
   installExitHooks();
   const token = randomBytes(8).toString("hex");
-  const dirs = lockDirsFor(policy);
   const held: string[] = [];
   const timer = setInterval(() => held.forEach(heartbeat), LOCK_HEARTBEAT_MS);
   timer.unref();
@@ -379,11 +393,11 @@ export const _lockTesting = {
 // State files: fail closed on anything that is not what we wrote
 // ---------------------------------------------------------------------------
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
+export function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-async function readStateFile(file: string): Promise<Record<string, unknown>> {
+export async function readStateFile(file: string): Promise<Record<string, unknown>> {
   let raw: string;
   try {
     raw = await fs.readFile(file, "utf8");
@@ -403,7 +417,7 @@ async function readStateFile(file: string): Promise<Record<string, unknown>> {
   return parsed;
 }
 
-async function writeStateFile(file: string, value: unknown): Promise<void> {
+export async function writeStateFile(file: string, value: unknown): Promise<void> {
   await fs.mkdir(path.dirname(file), { recursive: true, mode: 0o700 });
   const tempFile = `${file}.${process.pid}.tmp`;
   await fs.writeFile(tempFile, JSON.stringify(value, null, 2), { mode: 0o600 });
