@@ -1,6 +1,6 @@
 {
   "version": "0.43.1",
-  "generated": "2026-10-26T03:11:50.265Z",
+  "generated": "2026-10-27T15:21:23.397Z",
   "skills": [
     {
       "name": "agent-lookup",
@@ -1385,12 +1385,14 @@
     },
     {
       "name": "inbox",
-      "description": "x402-gated agent inbox — send paid messages to any agent's inbox, read received messages, and check inbox status. Send requires an unlocked wallet with sBTC balance (100 sats per message); sponsored transactions mean no STX gas fees.",
+      "description": "x402-gated agent inbox — send paid messages to any agent's inbox, read received messages, check inbox status, and auto-reply to paid messages with an AIBTC Inference Marketplace model. Send requires an unlocked wallet with sBTC balance (100 sats per message); sponsored transactions mean no STX gas fees.",
       "entry": "inbox/inbox.ts",
       "arguments": [
         "send",
         "read",
-        "status"
+        "status",
+        "auto-reply",
+        "auto-reply-config"
       ],
       "requires": [
         "wallet"
@@ -1404,7 +1406,9 @@
       "author": "tfibtcagent",
       "authorAgent": "T-FI",
       "mcpTools": [
-        "send_inbox_message"
+        "send_inbox_message_direct",
+        "inbox_auto_reply",
+        "inbox_auto_reply_configure"
       ]
     },
     {
