@@ -75,6 +75,17 @@ export interface AppConfig {
   autoLockTimeout: number; // Minutes, 0 = never
   hiroApiKey?: string;
   stacksApiUrl?: string;
+  /** Inbox auto-reply settings; same key and shape as aibtc-mcp-server. */
+  inboxAutoReply?: InboxAutoReplyConfig;
+}
+
+export interface InboxAutoReplyConfig {
+  enabled: boolean;
+  /** Inference marketplace model id. */
+  model: string;
+  systemPrompt: string;
+  /** Most sats spent on reply inference per UTC day. */
+  dailyCapSats: number;
 }
 
 /**
