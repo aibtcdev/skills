@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.44.1](https://github.com/aibtcdev/skills/compare/skills-v0.44.0...skills-v0.44.1) (2026-10-29)
+
+
+### Bug Fixes
+
+* **inbox:** stop auto-reply paying twice for one message ([#455](https://github.com/aibtcdev/skills/issues/455)) ([#459](https://github.com/aibtcdev/skills/issues/459)) ([bf47c25](https://github.com/aibtcdev/skills/commit/bf47c251eb41df67da44d60fb848a153d737b72b))
+* **lunarcrush:** meta reads the catalog from /meta, not / (404) ([#456](https://github.com/aibtcdev/skills/issues/456)) ([7a1e47c](https://github.com/aibtcdev/skills/commit/7a1e47cb929a9a5ce97b38fcfb9ae696a19054e2))
+
 ## [0.44.0](https://github.com/aibtcdev/skills/compare/skills-v0.43.1...skills-v0.44.0) (2026-10-27)
 
 
