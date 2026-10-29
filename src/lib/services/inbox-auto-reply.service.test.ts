@@ -14,8 +14,10 @@ import { mnemonicToAccount } from "./x402.service.js";
 import { PaidRequestError, postWithSponsoredPayment } from "./x402-post.js";
 import {
   AIBTC_API,
+  INFERENCE_GATEWAY,
   MAX_REPLY_CHARS,
   cleanReply,
+  marketplaceReplyGenerator,
   readAddressLedger,
   replySigningMessage,
   runAutoReply,
@@ -29,7 +31,14 @@ import {
 const TEST_MNEMONIC =
   "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
 
-const emptyLedger = (): AddressLedger => ({ handled: {}, pending: {}, spentSats: {} });
+const emptyLedger = (): AddressLedger => ({
+  handled: {},
+  pending: {},
+  spentSats: {},
+  claimed: {},
+  paidFailures: {},
+  drafts: {},
+});
 
 function msg(id: string, overrides: Partial<InboxMessage> = {}): InboxMessage {
   return {
@@ -73,6 +82,8 @@ describe("skipReason", () => {
     expect(skipReason(msg("a", { peerBtcAddress: "bc1qself" }), self, emptyLedger())).toBe("from_self");
     expect(skipReason(msg("a", { repliedAt: "2026-10-02T00:00:00Z" }), self, emptyLedger())).toBe("already_replied");
     expect(skipReason(msg("a"), self, { ...emptyLedger(), handled: { a: "x" } })).toBe("already_handled");
+    expect(skipReason(msg("a"), self, { ...emptyLedger(), paidFailures: { a: 2 } })).toBe("gave_up");
+    expect(skipReason(msg("a"), self, { ...emptyLedger(), paidFailures: { a: 1 } })).toBeNull();
   });
 });
 
@@ -176,19 +187,20 @@ describe("runAutoReply", () => {
     return posted;
   }
 
-  function fakeGenerator(price = 1): ReplyGenerator & { seen: string[] } {
+  function fakeGenerator(price = 1, gate?: Promise<void>): ReplyGenerator & { seen: string[] } {
     const seen: string[] = [];
     return {
       seen,
       async generate({ message, beforePay }) {
         await beforePay(price);
         seen.push(message.messageId);
+        await gate;
         return { text: `reply to ${message.messageId}`, inferenceCostSats: price };
       },
     };
   }
 
-  const base = { systemPrompt: "be brief", dailyCapSats: 1000, maxRepliesPerRun: 5, dryRun: false };
+  const base = { systemPrompt: "be brief", dailyCapSats: 1000, maxSatsPerReply: 10, maxRepliesPerRun: 5, dryRun: false };
 
   test("answers eligible messages oldest first, signs and posts them, and never answers twice", async () => {
     serveInbox([msg("c"), msg("b", { paymentStatus: "pending" }), msg("a")]);
@@ -267,6 +279,106 @@ describe("runAutoReply", () => {
     expect(summary.drafted.map((d) => d.messageId)).toEqual(["a"]);
     expect(posted).toEqual([]);
     expect((await readAddressLedger(btc)).handled).toEqual({});
+  });
+
+  test("a dry-run draft is paid once and reused by later dry runs and the real run", async () => {
+    serveInbox([msg("a")]);
+    const posted = serveOutbox(201);
+    const generator = fakeGenerator();
+
+    await runAutoReply({ ...base, dryRun: true, account, generator });
+    const again = await runAutoReply({ ...base, dryRun: true, account, generator });
+    expect(again.drafted).toEqual([expect.objectContaining({ messageId: "a", reusedDraft: true, inferenceCostSats: 0 })]);
+    expect(again.inferenceSatsSpent).toBe(0);
+    expect(generator.seen).toEqual(["a"]);
+
+    const real = await runAutoReply({ ...base, account, generator });
+    expect(real.replied).toEqual([expect.objectContaining({ messageId: "a", reusedDraft: true, reply: "reply to a" })]);
+    expect(posted.map((p) => p.reply)).toEqual(["reply to a"]);
+    expect(generator.seen).toEqual(["a"]);
+    expect((await readAddressLedger(btc)).drafts).toEqual({});
+  });
+
+  test("a draft written with another system prompt is not reused", async () => {
+    serveInbox([msg("a")]);
+    const generator = fakeGenerator();
+    await runAutoReply({ ...base, dryRun: true, account, generator });
+    const changed = await runAutoReply({ ...base, systemPrompt: "be formal", dryRun: true, account, generator });
+    expect(changed.drafted[0].reusedDraft).toBeUndefined();
+    expect(generator.seen).toEqual(["a", "a"]);
+  });
+
+  test("two overlapping runs pay for a message once", async () => {
+    serveInbox([msg("a")]);
+    const posted = serveOutbox(201);
+    let open!: () => void;
+    const generator = fakeGenerator(1, new Promise<void>((resolve) => (open = resolve)));
+
+    const first = runAutoReply({ ...base, account, generator });
+    // Let the first run claim "a" and pay before the second one starts.
+    while (generator.seen.length === 0) await new Promise((r) => setTimeout(r, 5));
+    const second = await runAutoReply({ ...base, account, generator });
+    open();
+    const done = await first;
+
+    expect(second.skipped).toEqual([{ messageId: "a", reason: "in_progress" }]);
+    expect(done.replied.map((r) => r.messageId)).toEqual(["a"]);
+    expect(generator.seen).toEqual(["a"]);
+    expect(posted.length).toBe(1);
+    expect((await readAddressLedger(btc)).claimed).toEqual({});
+  });
+
+  test("a message that keeps failing after payment is given up", async () => {
+    serveInbox([msg("a")]);
+    serveOutbox(201);
+    let attempts = 0;
+    const generator: ReplyGenerator = {
+      async generate({ beforePay }) {
+        await beforePay(1);
+        attempts++;
+        throw new PaidRequestError("Inference response is not JSON: <html>");
+      },
+    };
+
+    const first = await runAutoReply({ ...base, account, generator });
+    expect(first.failed).toEqual([expect.objectContaining({ messageId: "a", replySaved: false })]);
+    expect(first.failed[0].gaveUp).toBeUndefined();
+    const second = await runAutoReply({ ...base, account, generator });
+    expect(second.failed).toEqual([expect.objectContaining({ messageId: "a", gaveUp: true })]);
+    const third = await runAutoReply({ ...base, account, generator });
+    expect(third.skipped).toEqual([{ messageId: "a", reason: "gave_up" }]);
+    expect(attempts).toBe(2);
+    expect(third.inferenceSatsSpentToday).toBe(2);
+  });
+
+  test("a price above the per-reply ceiling stops the run before anything is booked", async () => {
+    serveInbox([msg("b"), msg("a")]);
+    serveOutbox(201);
+    const generator = fakeGenerator(1000);
+    const summary = await runAutoReply({ ...base, account, generator });
+    expect(summary.stoppedEarly).toBe("price_ceiling");
+    expect(summary.skipped).toEqual([
+      { messageId: "a", reason: "price_ceiling" },
+      { messageId: "b", reason: "price_ceiling" },
+    ]);
+    expect(generator.seen).toEqual([]);
+    expect(summary.inferenceSatsSpentToday).toBe(0);
+  });
+
+  test("refuses to run without a numeric daily cap", async () => {
+    serveInbox([msg("a")]);
+    await expect(
+      runAutoReply({ ...base, dailyCapSats: undefined as unknown as number, account, generator: fakeGenerator() })
+    ).rejects.toThrow(/dailyCapSats/);
+  });
+
+  test("keeps ledger fields it does not know about", async () => {
+    serveInbox([msg("a")]);
+    serveOutbox(201);
+    const file = path.join(stateDir, "inbox-auto-reply.json");
+    await Bun.write(file, JSON.stringify({ [btc]: { handled: {}, pending: {}, spentSats: {}, futureField: { x: 1 } } }));
+    await runAutoReply({ ...base, account, generator: fakeGenerator() });
+    expect(JSON.parse(await readFile(file, "utf8"))[btc].futureField).toEqual({ x: 1 });
   });
 
   test("a failure before payment releases the daily-cap booking", async () => {
@@ -409,6 +521,24 @@ describe("postWithSponsoredPayment", () => {
     ).rejects.toThrow("over cap");
     expect(await spentSats()).toBe(0);
     expect(calls.filter((c) => c.headers[X402_HEADERS.PAYMENT_SIGNATURE.toLowerCase()])).toEqual([]);
+  });
+
+  test("a malformed body after payment is a PaidRequestError", async () => {
+    const gateway = `${INFERENCE_GATEWAY}/v1/chat/completions`;
+    for (const body of ["<html>bad gateway</html>", JSON.stringify({ choices: [] }), JSON.stringify(null)]) {
+      routes = routes.filter((r) => !r.match(new URL(gateway), "POST"));
+      route(
+        (u, m) => m === "POST" && u.href === gateway,
+        (_u, init) =>
+          new Headers(init?.headers).get(X402_HEADERS.PAYMENT_SIGNATURE)
+            ? new Response(body, { status: 200 })
+            : new Response("{}", { status: 402, headers: { [X402_HEADERS.PAYMENT_REQUIRED]: challenge() } })
+      );
+      const failure = await marketplaceReplyGenerator(account, "m")
+        .generate({ systemPrompt: "s", message: msg("a"), beforePay: async () => {} })
+        .catch((e) => e);
+      expect(failure).toBeInstanceOf(PaidRequestError);
+    }
   });
 
   test("refuses an endpoint that does not sponsor gas", async () => {

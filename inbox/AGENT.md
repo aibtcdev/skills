@@ -23,7 +23,7 @@ This agent handles AIBTC inbox protocol operations: sending paid x402 messages t
 | Read unread messages from your inbox | `read` |
 | Read all messages (including already-read) | `read --status all` |
 | Check inbox state (total/unread counts, last received) | `status` |
-| Show or change auto-reply settings | `auto-reply-config [--system-prompt "..."] [--enabled true] [--model <id>] [--daily-cap-sats N]` |
+| Show or change auto-reply settings | `auto-reply-config [--system-prompt "..."] [--enabled true] [--model <id>] [--daily-cap-sats N] [--max-sats-per-reply N]` |
 | Preview replies before turning auto-reply on | `auto-reply --dry-run` |
 | Answer paid inbox messages from the autonomy loop | `auto-reply [--max-replies 5]` — call when the heartbeat or `status` shows unread messages |
 
@@ -35,7 +35,8 @@ This agent handles AIBTC inbox protocol operations: sending paid x402 messages t
 - `read` and `status` are free read-only operations — safe to call without balance checks
 - Before enabling `auto-reply`: run `auto-reply --dry-run` with the real system prompt and have the operator read the drafts. Small models invent commitments ("we'll follow up") despite instructions.
 - Never enable auto-reply on the agent's own initiative; enabling is the operator's decision
-- `auto-reply` books each inference price against its daily cap and the wallet-wide spend ledger before signing; do not raise `--daily-cap-sats` to get past a `daily_cap` stop without operator approval
+- `auto-reply` refuses a price above `--max-sats-per-reply`, and books each price against its daily cap and the wallet-wide spend ledger before signing; do not raise `--daily-cap-sats` or `--max-sats-per-reply` to get past a `daily_cap` or `price_ceiling` stop without operator approval
+- The first `--dry-run` draft of a message is paid; repeat dry runs reuse it for free while the system prompt and model are unchanged
 - Always use mainnet addresses (`SP...`) for live messages; testnet uses `ST...` addresses
 
 ## Error Handling
@@ -53,6 +54,7 @@ This agent handles AIBTC inbox protocol operations: sending paid x402 messages t
 | "Inbox auto-reply is mainnet only..." | `NETWORK` is not mainnet | Set `NETWORK=mainnet` |
 | "Auto-reply signs with the wallet's native SegWit (bc1q) key..." | Wallet has no bc1q address | Use a wallet with BIP-84 BTC derivation |
 | "Model ... is not live on the inference marketplace" | Bad `--model` | Pick an id from the listed live models |
+| "inboxAutoReply.dailyCapSats ... must be a non-negative integer" (or `maxSatsPerReply`) | Stored limit was hand-edited to a bad value | Set it with `auto-reply-config --daily-cap-sats N` / `--max-sats-per-reply N` |
 | "Refusing to trust malformed auto-reply ledger..." | `~/.aibtc/inbox-auto-reply.json` is corrupt | Move the file aside; handled ids are also protected by `repliedAt` and outbox 409 |
 | "Wallet is locked" | `send` attempted without unlocked wallet | Run `bun run wallet/wallet.ts unlock --password <password>` first |
 
@@ -60,5 +62,5 @@ This agent handles AIBTC inbox protocol operations: sending paid x402 messages t
 
 - `send`: read `success` (boolean); if `true`, `payment.txid` contains the sponsored sBTC transaction ID; `contentLength` confirms message was sent. If `payment.checkUrl` is present, treat it as a server-supplied canonical hint rather than a universally available local route pattern.
 - `read`: read `messages[]` array; each message has `id`, `from`, `content`, and `timestamp`; `count` is the total number returned
-- `auto-reply`: `repliedCount`, `failedCount` and `stoppedEarly` drive the next step. `failed[].replySaved: true` means the reply was paid for and will be posted on the next run at no extra cost; just run again later. `stoppedEarly: "daily_cap"` or `"spend_limit"` means wait for the next UTC day. `stoppedEarly: "rate_limited"` means wait before the next run. `inferenceCapRemainingSats` is today's remaining auto-reply budget.
+- `auto-reply`: `repliedCount`, `failedCount` and `stoppedEarly` drive the next step. `failed[].replySaved: true` means the reply was paid for and will be posted on the next run at no extra cost; just run again later. `stoppedEarly: "daily_cap"` or `"spend_limit"` means wait for the next UTC day. `stoppedEarly: "rate_limited"` means wait before the next run. `stoppedEarly: "price_ceiling"` means the model got more expensive; report it to the operator. `failed[].gaveUp: true` (later `skipped` as `gave_up`) means the message failed twice after payment and will not be retried automatically; report it rather than retrying. `skipped` with `in_progress` means another run is answering that message. `inferenceCapRemainingSats` is today's remaining auto-reply budget.
 - `status`: read `inbox.total` (all messages), `inbox.unread` (unread count), `inbox.lastReceived` (ISO timestamp of most recent message)

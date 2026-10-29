@@ -20,6 +20,7 @@ import {
   DEFAULT_AUTO_REPLY_MODEL,
   DEFAULT_DAILY_CAP_SATS,
   DEFAULT_MAX_REPLIES_PER_RUN,
+  DEFAULT_MAX_SATS_PER_REPLY,
   MAX_REPLIES_PER_RUN,
   listLiveModels,
   marketplaceReplyGenerator,
@@ -369,6 +370,28 @@ function parseNonNegativeInt(name: string, value: string): number {
   return Number(value);
 }
 
+/**
+ * The stored sat limits, defaulted and checked. The config file is plain JSON
+ * (and shared with the MCP server), so a missing or hand-edited value must not
+ * turn into "no limit" at run time.
+ */
+function autoReplyLimits(config: InboxAutoReplyConfig): { dailyCapSats: number; maxSatsPerReply: number } {
+  const limit = (name: string, value: unknown, fallback: number): number => {
+    if (value === undefined || value === null) return fallback;
+    if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
+      throw new Error(
+        `inboxAutoReply.${name} in ~/.aibtc/config.json must be a non-negative integer, got ${JSON.stringify(value)}. ` +
+          `Fix it with: bun run inbox/inbox.ts auto-reply-config --${name.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)} <sats>`
+      );
+    }
+    return value;
+  };
+  return {
+    dailyCapSats: limit("dailyCapSats", config.dailyCapSats, DEFAULT_DAILY_CAP_SATS),
+    maxSatsPerReply: limit("maxSatsPerReply", config.maxSatsPerReply, DEFAULT_MAX_SATS_PER_REPLY),
+  };
+}
+
 function requireMainnet(): void {
   if (NETWORK !== "mainnet") {
     throw new Error(
@@ -393,8 +416,18 @@ program
     "--daily-cap-sats <sats>",
     `Most sats spent on reply inference per UTC day (default ${DEFAULT_DAILY_CAP_SATS})`
   )
+  .option(
+    "--max-sats-per-reply <sats>",
+    `Most sats paid for one reply; a higher price stops the run before paying (default ${DEFAULT_MAX_SATS_PER_REPLY})`
+  )
   .action(
-    async (opts: { enabled?: string; model?: string; systemPrompt?: string; dailyCapSats?: string }) => {
+    async (opts: {
+      enabled?: string;
+      model?: string;
+      systemPrompt?: string;
+      dailyCapSats?: string;
+      maxSatsPerReply?: string;
+    }) => {
       try {
         const config = await readAppConfig();
         const current = config.inboxAutoReply;
@@ -402,7 +435,8 @@ program
           opts.enabled === undefined &&
           opts.model === undefined &&
           opts.systemPrompt === undefined &&
-          opts.dailyCapSats === undefined
+          opts.dailyCapSats === undefined &&
+          opts.maxSatsPerReply === undefined
         ) {
           printJson({
             configured: Boolean(current),
@@ -415,6 +449,10 @@ program
         const enabled = opts.enabled === undefined ? undefined : parseBoolean(opts.enabled);
         const dailyCapSats =
           opts.dailyCapSats === undefined ? undefined : parseNonNegativeInt("--daily-cap-sats", opts.dailyCapSats);
+        const maxSatsPerReply =
+          opts.maxSatsPerReply === undefined
+            ? undefined
+            : parseNonNegativeInt("--max-sats-per-reply", opts.maxSatsPerReply);
         if (opts.systemPrompt !== undefined) {
           const trimmed = opts.systemPrompt.trim();
           if (!trimmed) throw new Error("--system-prompt must not be empty");
@@ -432,10 +470,13 @@ program
           model: opts.model ?? current?.model ?? DEFAULT_AUTO_REPLY_MODEL,
           systemPrompt: opts.systemPrompt?.trim() ?? current?.systemPrompt ?? "",
           dailyCapSats: dailyCapSats ?? current?.dailyCapSats ?? DEFAULT_DAILY_CAP_SATS,
+          maxSatsPerReply: maxSatsPerReply ?? current?.maxSatsPerReply ?? DEFAULT_MAX_SATS_PER_REPLY,
         };
         if (next.enabled && !next.systemPrompt) {
           throw new Error("Set --system-prompt before enabling auto-reply.");
         }
+        // Don't carry a hand-edited, invalid stored limit forward.
+        autoReplyLimits(next);
 
         await writeAppConfig({ ...config, inboxAutoReply: next });
         printJson({ success: true, settings: next });
@@ -461,7 +502,11 @@ program
     "--max-replies <n>",
     `Most messages to answer in this run, 1-${MAX_REPLIES_PER_RUN} (default ${DEFAULT_MAX_REPLIES_PER_RUN})`
   )
-  .option("--dry-run", "Generate replies (inference is still paid) without posting them or marking messages handled")
+  .option(
+    "--dry-run",
+    "Draft replies without posting them or marking messages handled. The first draft of a message is paid; " +
+      "it is saved, so later dry runs and the real run reuse it while the system prompt and model are unchanged"
+  )
   .action(async (opts: { maxReplies?: string; dryRun?: boolean }) => {
     try {
       requireMainnet();
@@ -486,11 +531,12 @@ program
         );
       }
 
+      const limits = autoReplyLimits(config);
       const account = await getAccount();
       const summary = await runAutoReply({
         account,
         systemPrompt: config.systemPrompt,
-        dailyCapSats: config.dailyCapSats,
+        ...limits,
         maxRepliesPerRun: maxReplies,
         dryRun,
         generator: marketplaceReplyGenerator(account, config.model),
@@ -504,7 +550,7 @@ program
         repliedCount: summary.replied.length,
         skippedCount: summary.skipped.length,
         failedCount: summary.failed.length,
-        dailyCapSats: config.dailyCapSats,
+        ...limits,
       });
     } catch (error) {
       handleError(error);

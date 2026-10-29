@@ -86,6 +86,11 @@ export interface InboxAutoReplyConfig {
   systemPrompt: string;
   /** Most sats spent on reply inference per UTC day. */
   dailyCapSats: number;
+  /**
+   * Most sats paid for one reply. Optional: the MCP server does not write it,
+   * and runs fall back to DEFAULT_MAX_SATS_PER_REPLY.
+   */
+  maxSatsPerReply?: number;
 }
 
 /**
