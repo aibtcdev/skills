@@ -14,10 +14,14 @@ import { mnemonicToAccount } from "./x402.service.js";
 import { PaidRequestError, postWithSponsoredPayment } from "./x402-post.js";
 import {
   AIBTC_API,
+  DEFAULT_DAILY_CAP_SATS,
+  INFERENCE_GATEWAY,
   MAX_REPLY_CHARS,
   cleanReply,
+  marketplaceReplyGenerator,
   readAddressLedger,
   replySigningMessage,
+  resolveDailyCapSats,
   runAutoReply,
   setAutoReplyLedgerFile,
   skipReason,
@@ -73,6 +77,19 @@ describe("skipReason", () => {
     expect(skipReason(msg("a", { peerBtcAddress: "bc1qself" }), self, emptyLedger())).toBe("from_self");
     expect(skipReason(msg("a", { repliedAt: "2026-10-02T00:00:00Z" }), self, emptyLedger())).toBe("already_replied");
     expect(skipReason(msg("a"), self, { ...emptyLedger(), handled: { a: "x" } })).toBe("already_handled");
+  });
+});
+
+describe("resolveDailyCapSats", () => {
+  test("keeps a valid stored cap, including 0", () => {
+    expect(resolveDailyCapSats(250)).toBe(250);
+    expect(resolveDailyCapSats(0)).toBe(0);
+  });
+
+  test("a missing or malformed stored cap falls back to the default (#455)", () => {
+    for (const value of [undefined, null, "500", -1, 1.5, Number.NaN]) {
+      expect(resolveDailyCapSats(value)).toBe(DEFAULT_DAILY_CAP_SATS);
+    }
   });
 });
 
@@ -343,9 +360,9 @@ describe("postWithSponsoredPayment", () => {
     ).toString("base64");
   }
 
-  function serveEndpoint(paid: () => Response, extra?: Record<string, unknown>): void {
+  function serveEndpoint(paid: () => Response, extra?: Record<string, unknown>, url = endpoint): void {
     route(
-      (u, m) => m === "POST" && u.href === endpoint,
+      (u, m) => m === "POST" && u.href === url,
       (_u, init) => {
         const headers = new Headers(init?.headers);
         if (!headers.get(X402_HEADERS.PAYMENT_SIGNATURE)) {
@@ -393,6 +410,18 @@ describe("postWithSponsoredPayment", () => {
     const failure = await postWithSponsoredPayment({ account, url: endpoint, body: {} }).catch((e) => e);
     expect(failure).toBeInstanceOf(PaidRequestError);
     expect(await spentSats()).toBe(1);
+  });
+
+  test("a paid inference with an unusable body fails as paid, so the cap booking is kept (#455)", async () => {
+    const generator = marketplaceReplyGenerator(account, "m");
+    let body = "";
+    serveEndpoint(() => new Response(body, { status: 200 }), undefined, `${INFERENCE_GATEWAY}/v1/chat/completions`);
+    for (body of ["not json", JSON.stringify({ choices: [] }), JSON.stringify({ choices: [{ message: { content: "  " } }] })]) {
+      const failure = await generator
+        .generate({ systemPrompt: "s", message: msg("a"), beforePay: async () => {} })
+        .catch((e) => e);
+      expect(failure).toBeInstanceOf(PaidRequestError);
+    }
   });
 
   test("refusing in beforePay signs and books nothing", async () => {

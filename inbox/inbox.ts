@@ -23,6 +23,7 @@ import {
   MAX_REPLIES_PER_RUN,
   listLiveModels,
   marketplaceReplyGenerator,
+  resolveDailyCapSats,
   runAutoReply,
 } from "../src/lib/services/inbox-auto-reply.service.js";
 
@@ -490,7 +491,7 @@ program
       const summary = await runAutoReply({
         account,
         systemPrompt: config.systemPrompt,
-        dailyCapSats: config.dailyCapSats,
+        dailyCapSats: resolveDailyCapSats(config.dailyCapSats),
         maxRepliesPerRun: maxReplies,
         dryRun,
         generator: marketplaceReplyGenerator(account, config.model),
@@ -504,7 +505,7 @@ program
         repliedCount: summary.replied.length,
         skippedCount: summary.skipped.length,
         failedCount: summary.failed.length,
-        dailyCapSats: config.dailyCapSats,
+        dailyCapSats: resolveDailyCapSats(config.dailyCapSats),
       });
     } catch (error) {
       handleError(error);

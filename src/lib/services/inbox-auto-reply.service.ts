@@ -22,7 +22,7 @@ import type { Account } from "../transactions/builder.js";
 import { bip322Sign } from "../utils/bip322.js";
 import { getStorageDir } from "../utils/storage.js";
 import { isPlainObject, readStateFile, SpendLimitError, withStateFileLock, writeStateFile } from "./x402-guards.js";
-import { paymentWasSent, postWithSponsoredPayment } from "./x402-post.js";
+import { PaidRequestError, paymentWasSent, postWithSponsoredPayment } from "./x402-post.js";
 
 export const AIBTC_API = "https://aibtc.com/api";
 export const INFERENCE_GATEWAY = "https://inference.aibtc.com";
@@ -277,18 +277,21 @@ export function marketplaceReplyGenerator(account: Account, model: string): Repl
           await beforePay(price);
         },
       });
+      // Once paid, a bad body is still a spent payment: a plain Error here would
+      // release the daily-cap booking and the next run would pay again (#455).
+      const fail = (message: string): Error => (result.paid ? new PaidRequestError(message) : new Error(message));
       let data: { choices?: Array<{ message?: { content?: string } }> };
       try {
         data = JSON.parse(result.text);
       } catch {
-        throw new Error(`Inference response is not JSON: ${result.text.slice(0, 300)}`);
+        throw fail(`Inference response is not JSON: ${result.text.slice(0, 300)}`);
       }
       const content = data.choices?.[0]?.message?.content;
       if (typeof content !== "string") {
-        throw new Error(`Inference response has no choices[0].message.content: ${result.text.slice(0, 300)}`);
+        throw fail(`Inference response has no choices[0].message.content: ${result.text.slice(0, 300)}`);
       }
       const text = cleanReply(content);
-      if (!text) throw new Error("Model returned an empty reply");
+      if (!text) throw fail("Model returned an empty reply");
       const pricing = result.paid ? (result.accept.extra?.pricing as { provider?: string } | undefined) : undefined;
       return {
         text,
@@ -386,8 +389,18 @@ export interface AutoReplyRunSummary {
   inferenceCapRemainingSats: number;
 }
 
+/**
+ * The cap to enforce for a stored config value. The config file is read without
+ * validation, so a missing or malformed `dailyCapSats` falls back to the default
+ * instead of comparing against `undefined`, which never trips the cap (#455).
+ */
+export function resolveDailyCapSats(value: unknown): number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : DEFAULT_DAILY_CAP_SATS;
+}
+
 export async function runAutoReply(opts: AutoReplyRunOptions): Promise<AutoReplyRunSummary> {
-  const { account, systemPrompt, dailyCapSats, maxRepliesPerRun, dryRun, generator } = opts;
+  const { account, systemPrompt, maxRepliesPerRun, dryRun, generator } = opts;
+  const dailyCapSats = resolveDailyCapSats(opts.dailyCapSats);
   const btcAddress = account.btcAddress;
   if (!btcAddress?.startsWith("bc1q")) {
     throw new Error(
