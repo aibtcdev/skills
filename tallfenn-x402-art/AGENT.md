@@ -49,6 +49,9 @@ description: Deterministic generative-art seed packs, 512x512 SVG previews, and 
   `--piece-version` a positive integer, and `--hash` 16–64 hex characters. The
   CLI enforces these checks before touching the wallet so bad flags cost 0 sats.
 - Confirm sBTC balance before running a batch of prompts.
+- For unattended runs set `X402_MAX_SATS_PER_PAYMENT=150`: the shared x402
+  guard refuses any quote above that cap, so the highest payable price stays at
+  this service's `full-bundle` price.
 - Do not loop paid calls on identical prompts.
 - If a network hiccup occurs after signing, the worker caches settled responses
   by `(signedTx, resourceUrl)` via the Cloudflare Workers Cache API so an

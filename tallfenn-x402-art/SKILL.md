@@ -132,6 +132,10 @@ live worker (`stacks:1`). Payments settle in sBTC via the AIBTC x402 v2
 facilitator (`https://x402-relay.aibtc.com`) to recipient
 `SP3F9T1HAHTMK5AV29Q9DK1VNHCQFH3F5T5FXKQAC` (Tall Fenn).
 
+For unattended use set `X402_MAX_SATS_PER_PAYMENT=150`: the shared x402 guard
+refuses any quote above that cap, so the highest payable price stays at this
+service's `full-bundle` price.
+
 ## Reference
 
 - Worker: https://tallfenn-x402-art.petrasynthetic.workers.dev
