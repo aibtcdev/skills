@@ -2663,6 +2663,32 @@
       ]
     },
     {
+      "name": "tallfenn-x402-art",
+      "description": "Deterministic generative-art seed packs, 512x512 SVG previews, and keyframed motion timelines via x402 v2 on Stacks — free teaser/samples plus sBTC pay-per-call generation.",
+      "entry": "tallfenn-x402-art/tallfenn-x402-art.ts",
+      "arguments": [
+        "meta",
+        "health",
+        "teaser",
+        "samples",
+        "seed-pack",
+        "svg-preview",
+        "motion-timeline",
+        "full-bundle"
+      ],
+      "requires": [
+        "wallet"
+      ],
+      "tags": [
+        "l2",
+        "read-only",
+        "requires-funds"
+      ],
+      "userInvocable": false,
+      "author": "Luis-Cwk",
+      "authorAgent": "Tall Fenn"
+    },
+    {
       "name": "taproot-multisig",
       "description": "Bitcoin Taproot M-of-N multisig coordination between agents — share x-only Taproot pubkeys, sign BIP-341 sighashes with Schnorr, verify co-signer signatures, and navigate the OP_CHECKSIGADD workflow. Proven on mainnet (2-of-2 block 937,849 and 3-of-3 block 938,206).",
       "entry": "taproot-multisig/taproot-multisig.ts",
