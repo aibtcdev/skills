@@ -133,8 +133,10 @@ facilitator (`https://x402-relay.aibtc.com`) to recipient
 `SP3F9T1HAHTMK5AV29Q9DK1VNHCQFH3F5T5FXKQAC` (Tall Fenn).
 
 The CLI caps payments itself before signing: it verifies the worker's 402 quote
-against the route's known price (100 or 150 sats) and payTo, so a changed quote
-is refused locally. `X402_MAX_SATS_PER_PAYMENT` is only effective in direct mode
+against the route's known price (100 or 150 sats) and payTo, so a quote that
+differs from the published price is refused before signing. This does not
+protect against a host that changes its answer between this check and the
+payment. `X402_MAX_SATS_PER_PAYMENT` is only effective in direct mode
 (`X402_PAYMENT_MODE=direct`) and does not protect the default sponsored path.
 
 ## Reference

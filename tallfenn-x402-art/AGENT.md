@@ -53,7 +53,10 @@ description: Deterministic generative-art seed packs, 512x512 SVG previews, and 
   `SP3F9T1HAHTMK5AV29Q9DK1VNHCQFH3F5T5FXKQAC`, the asset must be `sBTC`, the
   network must be `stacks:1`, and the amount must equal the route's known price
   (100 sats for `seed-pack`, `svg-preview`, `motion-timeline`; 150 sats for
-  `full-bundle`). A changed quote is refused before the wallet spends anything.
+  `full-bundle`). A quote that differs from the published price is refused before
+  the wallet spends anything. It does not protect against a host that changes its
+  answer between this check and the payment (that guarantee belongs to the shared
+  x402 client, not this PR).
 - Note: `X402_MAX_SATS_PER_PAYMENT` is only effective in direct mode
   (`X402_PAYMENT_MODE=direct`). The default sponsored path does not honour it,
   so do not rely on that env var as the guard for this skill.
