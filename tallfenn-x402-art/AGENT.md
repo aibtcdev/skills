@@ -49,13 +49,20 @@ description: Deterministic generative-art seed packs, 512x512 SVG previews, and 
   `--piece-version` a positive integer, and `--hash` 16–64 hex characters. The
   CLI enforces these checks before touching the wallet so bad flags cost 0 sats.
 - Confirm sBTC balance before running a batch of prompts.
-- For unattended runs set `X402_MAX_SATS_PER_PAYMENT=150`: the shared x402
-  guard refuses any quote above that cap, so the highest payable price stays at
-  this service's `full-bundle` price.
+- Before signing, the CLI verifies the worker's 402 quote locally: `payTo` must be
+  `SP3F9T1HAHTMK5AV29Q9DK1VNHCQFH3F5T5FXKQAC`, the asset must be `sBTC`, the
+  network must be `stacks:1`, and the amount must equal the route's known price
+  (100 sats for `seed-pack`, `svg-preview`, `motion-timeline`; 150 sats for
+  `full-bundle`). A changed quote is refused before the wallet spends anything.
+- Note: `X402_MAX_SATS_PER_PAYMENT` is only effective in direct mode
+  (`X402_PAYMENT_MODE=direct`). The default sponsored path does not honour it,
+  so do not rely on that env var as the guard for this skill.
 - Do not loop paid calls on identical prompts.
-- If a network hiccup occurs after signing, the worker caches settled responses
-  by `(signedTx, resourceUrl)` via the Cloudflare Workers Cache API so an
-  idempotent retry with the same signed transaction does not double-charge.
+- Each CLI run signs a new transaction. Re-running a command after a timeout is
+  therefore a new payment, not an idempotent retry: check whether the previous
+  transaction settled (via its txid or the Hiro explorer) before re-running. (The
+  worker does cache settled responses by `(signedTx, resourceUrl)`, but the CLI
+  never reuses a signed transaction across runs.)
 
 ## Error handling
 
@@ -82,5 +89,7 @@ description: Deterministic generative-art seed packs, 512x512 SVG previews, and 
 
 - Read-only generation: the worker performs no on-chain writes beyond settling
   the x402 payment transfer via the facilitator.
-- Verify `payTo` in `meta` / 402 challenge matches
-  `SP3F9T1HAHTMK5AV29Q9DK1VNHCQFH3F5T5FXKQAC`.
+- The CLI verifies `payTo` in the 402 challenge against
+  `SP3F9T1HAHTMK5AV29Q9DK1VNHCQFH3F5T5FXKQAC` before signing; a mismatch fails
+  the command before any sats are spent. Cross-check `meta` manually only when
+  auditing an endpoint off-band.

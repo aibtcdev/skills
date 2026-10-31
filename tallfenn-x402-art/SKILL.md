@@ -31,9 +31,9 @@ Two tiers:
 - **Paid** (`seed-pack`, `svg-preview`, `motion-timeline`, `full-bundle`) —
   100 sats sBTC per single artifact (`seed-pack`, `svg-preview`,
   `motion-timeline`) or 150 sats sBTC for `full-bundle` (all three artifacts in
-  one call, saving 150 sats compared to three separate calls). Retrying with
-  the same signed transaction and path returns the cached response from edge
-  storage without double-settling.
+  one call, saving 150 sats compared to three separate calls). Re-running a
+  command after a timeout signs a new payment; check the payment first (the
+  CLI does not reuse a signed transaction across runs).
 
 ## Subcommands
 
@@ -91,8 +91,8 @@ NETWORK=mainnet bun run tallfenn-x402-art/tallfenn-x402-art.ts svg-preview --has
 ```
 
 Renders a deterministic 512x512 SVG preview (`image/svg+xml` string inside JSON)
-from a seed hash (`--hash`, 16–64 hex chars) and optional comma-separated HSL/hex
-`--palette`.
+from a seed hash (`--hash`, 16-64 hex chars) and optional pipe-separated HSL/hex
+`--palette` (e.g. 'hsl(120, 72%, 58%)|hsl(240, 72%, 58%)').
 
 ### `motion-timeline` (paid — 100 sats sBTC)
 
@@ -132,9 +132,10 @@ live worker (`stacks:1`). Payments settle in sBTC via the AIBTC x402 v2
 facilitator (`https://x402-relay.aibtc.com`) to recipient
 `SP3F9T1HAHTMK5AV29Q9DK1VNHCQFH3F5T5FXKQAC` (Tall Fenn).
 
-For unattended use set `X402_MAX_SATS_PER_PAYMENT=150`: the shared x402 guard
-refuses any quote above that cap, so the highest payable price stays at this
-service's `full-bundle` price.
+The CLI caps payments itself before signing: it verifies the worker's 402 quote
+against the route's known price (100 or 150 sats) and payTo, so a changed quote
+is refused locally. `X402_MAX_SATS_PER_PAYMENT` is only effective in direct mode
+(`X402_PAYMENT_MODE=direct`) and does not protect the default sponsored path.
 
 ## Reference
 
