@@ -391,6 +391,41 @@ describe("resolveDirectPaymentPolicy", () => {
     expect(generateDedupKey({ ...base, params: { a: 1 } })).not.toBe(generateDedupKey({ ...base, params: { a: 2 } }));
     expect(generateDedupKey({ ...base, amount: "2" })).not.toBe(generateDedupKey(base));
   });
+
+  test("dedup keys collapse to obligationId when provided (#460)", () => {
+    const base = { method: "post", url: "http://x/jobs/J1/run", payer: "SPX", payTo: "SPY", amount: "1", asset: "STX" };
+    const k1 = generateDedupKey({ ...base, params: { attempt: 1 }, headers: { "x-request-id": "abc-1" }, obligationId: "run-job-J1" });
+    const k2 = generateDedupKey({ ...base, method: "GET", url: "http://different.example/J1", params: { attempt: 2 }, headers: { "x-request-id": "xyz-2" }, obligationId: "run-job-J1" });
+    // Same obligation id, payer, payTo, amount, asset → same key, even though
+    // method/url/params/headers all differ.
+    expect(k1).toBe(k2);
+    // A different obligation id → different key
+    const k3 = generateDedupKey({ ...base, obligationId: "run-job-J2" });
+    expect(k3).not.toBe(k1);
+    // A different amount with same obligation id → different key
+    const k4 = generateDedupKey({ ...base, obligationId: "run-job-J1", amount: "2" });
+    expect(k4).not.toBe(k1);
+  });
+
+  test("dedup keys collapse to X-Payment-Obligation-Id header when present (#460)", () => {
+    const base = { method: "post", url: "http://x/reply", payer: "SPX", payTo: "SPY", amount: "1", asset: "STX" };
+    const k1 = generateDedupKey({ ...base, headers: { "X-Payment-Obligation-Id": "reply-to-msg-42", "x-request-id": "abc-1" } });
+    const k2 = generateDedupKey({ ...base, method: "GET", url: "http://different/reply", headers: { "x-payment-obligation-id": "reply-to-msg-42", "x-request-id": "xyz-2" } });
+    expect(k1).toBe(k2);
+    // The header is stripped from the forwarded headers (would have been
+    // part of the content hash without obligation handling).
+    const k3 = generateDedupKey({ ...base, headers: { "x-payment-obligation-id": "reply-to-msg-43" } });
+    expect(k3).not.toBe(k1);
+  });
+
+  test("dedup keys fall back to content hash when obligationId is empty/whitespace", () => {
+    const base = { method: "post", url: "http://x/paid", payer: "SPX", payTo: "SPY", amount: "1", asset: "STX" };
+    const kReal = generateDedupKey({ ...base, headers: { accept: "json" } });
+    const kEmpty = generateDedupKey({ ...base, headers: { accept: "json" }, obligationId: "" });
+    const kWhitespace = generateDedupKey({ ...base, headers: { accept: "json" }, obligationId: "   " });
+    expect(kEmpty).toBe(kReal);
+    expect(kWhitespace).toBe(kReal);
+  });
 });
 
 const ENV_KEYS = [

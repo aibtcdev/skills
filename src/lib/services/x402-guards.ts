@@ -454,12 +454,21 @@ const NON_IDENTITY_HEADERS = new Set([
   "accept-encoding",
   "connection",
   "user-agent",
+  // Caller-supplied stable id (RFC for issue #460): present in the dedup key
+  // via `obligationId` below; never part of the header hash, never forwarded.
+  "x-payment-obligation-id",
 ]);
 
 /**
  * Stable key for "the same paid request": method, absolute URL, canonicalized
  * params and body, the caller's request headers, the payer and the challenge
  * terms — so a different price or recipient is a different key.
+ *
+ * If `obligationId` is present (caller-supplied, or read from the
+ * `X-Payment-Obligation-Id` request header), the key collapses to that id +
+ * payer + payTo + amount + asset, ignoring method/url/params/data/headers.
+ * That lets a caller regenerate per-attempt request ids (most HTTP client
+ * wrappers do) without being charged twice for the same logical purchase.
  */
 export function generateDedupKey(input: {
   method: string;
@@ -471,13 +480,48 @@ export function generateDedupKey(input: {
   payTo: string;
   amount: string;
   asset: string;
+  /** Caller-supplied stable id (e.g. "reply-to-message-M"). Bypasses content hash. */
+  obligationId?: string;
 }): string {
+  // Caller says: "this is attempt N of obligation X". Key on what makes the
+  // obligation unique (the caller's id + the payment terms) — never on the
+  // per-attempt transport details.
+  if (input.obligationId && input.obligationId.trim()) {
+    const payload = canonicalJson({
+      obligationId: input.obligationId.trim(),
+      payer: input.payer,
+      payTo: input.payTo,
+      amount: input.amount,
+      asset: input.asset,
+    });
+    return createHash("sha256").update(payload).digest("hex");
+  }
+
+  // Look for an `X-Payment-Obligation-Id` header the caller passed without
+  // knowing about the parameter, then strip it from the forwarded headers
+  // (it is dedup identity, not request identity).
+  let headerObligation: string | undefined;
   const headers: Record<string, string> = {};
   for (const [name, value] of Object.entries(input.headers ?? {})) {
     const lower = name.toLowerCase();
+    if (lower === "x-payment-obligation-id") {
+      if (typeof value === "string" && value.trim()) headerObligation = value.trim();
+      continue;
+    }
     if (NON_IDENTITY_HEADERS.has(lower) || value === undefined || value === null) continue;
     headers[lower] = String(value);
   }
+  if (headerObligation) {
+    const payload = canonicalJson({
+      obligationId: headerObligation,
+      payer: input.payer,
+      payTo: input.payTo,
+      amount: input.amount,
+      asset: input.asset,
+    });
+    return createHash("sha256").update(payload).digest("hex");
+  }
+
   const payload = canonicalJson({
     method: input.method.toUpperCase(),
     url: input.url,
@@ -516,13 +560,29 @@ function parseDedupEntry(file: string, key: string, value: unknown): DedupEntry 
   return { txid: value.txid, timestamp: value.timestamp };
 }
 
-/** Return the fresh prior entry for `key`, or null. */
-export async function checkDedup(key: string, policy: DirectPaymentPolicy): Promise<DedupEntry | null> {
+/** Return the fresh prior entry for `key`, or null.
+ *
+ * If the entry has passed `dedupTtlMs`, instead of just returning null, call
+ * the optional `reconcileExpired` callback so the caller can verify the
+ * payment's actual fate via the Hiro API before allowing a fresh payment.
+ * The reconciliation returns the still-valid entry (treat as duplicate), or
+ * null (entry was a dead-end, fresh payment allowed).
+ *
+ * Without `reconcileExpired`, the TTL is silently forgotten — that is the
+ * original behaviour, kept for backwards compatibility with callers that do
+ * not have a Hiro client available.
+ */
+export async function checkDedup(
+  key: string,
+  policy: DirectPaymentPolicy,
+  reconcileExpired?: (entry: DedupEntry) => Promise<DedupEntry | null>
+): Promise<DedupEntry | null> {
   const state = await readStateFile(policy.dedupStateFile);
   if (!(key in state)) return null;
   const entry = parseDedupEntry(policy.dedupStateFile, key, state[key]);
-  if (Date.now() - entry.timestamp > policy.dedupTtlMs) return null;
-  return entry;
+  if (Date.now() - entry.timestamp <= policy.dedupTtlMs) return entry;
+  if (reconcileExpired) return reconcileExpired(entry);
+  return null;
 }
 
 /** Record a signed payment for `key`; prunes expired entries while writing. */

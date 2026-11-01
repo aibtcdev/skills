@@ -440,8 +440,32 @@ export async function buildDirectPaymentTransaction(
   // the earlier txid. This is what stops "retry after an ambiguous failure"
   // from paying twice — the per-instance guard cannot, since callers build a
   // client per invocation.
+  //
+  // If the dedup entry has expired its TTL, reconcile via Hiro before
+  // accepting a fresh payment: a payment that landed on-chain but whose
+  // response was lost should not be silently retried (issue #460).
   if (requestKey) {
-    const prior = await checkDedup(requestKey, policy);
+    const hiroApi = getHiroApi(account.network);
+    const prior = await checkDedup(requestKey, policy, async (entry) => {
+      try {
+        const tx = await hiroApi.getTransaction(entry.txid);
+        // success / pending / abort_by_response / abort_by_post_condition
+        // Anything that isn't a definitive failure means money moved (or
+        // may still move) and we must not pay again for this obligation.
+        if (tx.tx_status === "success" || tx.tx_status === "pending") {
+          return entry; // still valid — refuse fresh payment
+        }
+        // abort_by_response / abort_by_post_condition: money did not move.
+        // Drop the stale record and let the caller pay again.
+        await clearDedup(requestKey, entry.txid, policy);
+        return null;
+      } catch {
+        // Hiro lookup failed (network, 404, etc.). Fail-closed: treat the
+        // expired entry as still pending until the caller can prove
+        // otherwise via clearDedup.
+        return entry;
+      }
+    });
     if (prior) {
       const ageSeconds = Math.round((Date.now() - prior.timestamp) / 1000);
       throw new DuplicatePaymentError(
