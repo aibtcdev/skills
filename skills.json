@@ -2443,6 +2443,7 @@
       "tags": [
         "l2",
         "read-only",
+        "mainnet-only",
         "requires-funds"
       ],
       "userInvocable": false,

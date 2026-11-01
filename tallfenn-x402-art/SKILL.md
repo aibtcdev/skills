@@ -8,7 +8,7 @@ metadata:
   arguments: "meta | health | teaser | samples | seed-pack | svg-preview | motion-timeline | full-bundle"
   entry: "tallfenn-x402-art/tallfenn-x402-art.ts"
   requires: "wallet"
-  tags: "l2, read-only, requires-funds"
+  tags: "l2, read-only, mainnet-only, requires-funds"
 ---
 
 # tallfenn-x402-art
@@ -91,8 +91,11 @@ NETWORK=mainnet bun run tallfenn-x402-art/tallfenn-x402-art.ts svg-preview --has
 ```
 
 Renders a deterministic 512x512 SVG preview (`image/svg+xml` string inside JSON)
-from a seed hash (`--hash`, 16-64 hex chars) and optional pipe-separated HSL/hex
-`--palette` (e.g. 'hsl(120, 72%, 58%)|hsl(240, 72%, 58%)').
+from a seed hash (`--hash`, exactly 64 hex characters — the SHA-256 that
+`seed-pack` and `teaser` return) and optional pipe-separated HSL/hex
+`--palette` (e.g. 'hsl(120, 72%, 58%)|hsl(240, 72%, 58%)'). The worker answers
+402 before it inspects the hash and will render any string of 16 or more
+characters, so a shorter hash is refused here and costs 0 sats.
 
 ### `motion-timeline` (paid — 100 sats sBTC)
 
@@ -132,12 +135,13 @@ live worker (`stacks:1`). Payments settle in sBTC via the AIBTC x402 v2
 facilitator (`https://x402-relay.aibtc.com`) to recipient
 `SP3F9T1HAHTMK5AV29Q9DK1VNHCQFH3F5T5FXKQAC` (Tall Fenn).
 
-The CLI caps payments itself before signing: it verifies the worker's 402 quote
-against the route's known price (100 or 150 sats) and payTo, so a quote that
-differs from the published price is refused before signing. This does not
-protect against a host that changes its answer between this check and the
-payment. `X402_MAX_SATS_PER_PAYMENT` is only effective in direct mode
-(`X402_PAYMENT_MODE=direct`) and does not protect the default sponsored path.
+Before signing, the CLI checks the worker's 402 quote against the route's known
+price (100 or 150 sats), `payTo`, asset, and `stacks:1`, and refuses a quote
+that differs. That check and the payment are two requests, so a host can still
+change its answer between them. No mode currently caps this skill. Direct mode
+cannot pay it: the worker names the asset as the bare string `sBTC`, and direct
+mode accepts only native STX or the canonical sBTC contract id. The route-price
+check in this CLI is the only guard.
 
 ## Reference
 

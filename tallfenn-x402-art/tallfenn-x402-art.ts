@@ -10,7 +10,7 @@
  */
 
 import { Command } from "commander";
-import { createApiClient, selectStacksPaymentOption } from "../src/lib/services/x402.service.js";
+import { createApiClient, resolveSponsoredPaymentTokenType, selectStacksPaymentOption } from "../src/lib/services/x402.service.js";
 import { decodePaymentRequired, decodePaymentResponse } from "../src/lib/utils/x402-protocol.js";
 import { printJson, handleError } from "../src/lib/utils/cli.js";
 
@@ -61,9 +61,12 @@ async function verifyPaymentQuote(baseUrl: string, path: string, body: Record<st
   }
 
   if (probe.status !== 402) {
+    const text = await probe.text().catch(() => "");
+    const detail = text.slice(0, 300);
     throw new Error(
-      `Refusing payment: expected a 402 challenge from ${baseUrl}${path} before paying, got HTTP ${probe.status}. ` +
-        `Nothing was signed or paid.`
+      `Refusing payment: expected a 402 challenge from ${baseUrl}${path} before paying, got HTTP ${probe.status}` +
+        (detail ? `: ${detail}` : "") +
+        `. Nothing was signed or paid.`
     );
   }
 
@@ -82,7 +85,17 @@ async function verifyPaymentQuote(baseUrl: string, path: string, body: Record<st
       `Refusing payment: payTo ${selected.payTo} does not match expected ${EXPECTED_PAY_TO}. Nothing was signed or paid.`
     );
   }
-  if (!/^sBTC$/i.test(selected.asset)) {
+  // stacks:1 only, so the allowlist is mainnet's. Bare "sBTC" and the canonical
+  // contract id both pass; anything else throws and is refused before signing.
+  // The wallet's NETWORK defaults to testnet, so it must not pick the contract.
+  let tokenType: "STX" | "sBTC";
+  try {
+    tokenType = resolveSponsoredPaymentTokenType(selected.asset, "mainnet");
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    throw new Error(`Refusing payment: ${reason} Nothing was signed or paid.`);
+  }
+  if (tokenType !== "sBTC") {
     throw new Error(
       `Refusing payment: quoted asset ${selected.asset} is not sBTC. Nothing was signed or paid.`
     );
@@ -137,9 +150,12 @@ function validateVersion(raw: string | undefined): number {
 
 function validateHash(raw: string | undefined): string {
   const hash = String(raw ?? "").trim().toLowerCase();
-  if (!/^[0-9a-f]{16,64}$/.test(hash)) {
+  // seed-pack and teaser emit SHA-256 (64 hex). svg-preview returns 402 before
+  // it looks at the hash and will render any string of 16+ characters, so a
+  // shorter hash would be paid for. Refuse it here, before the wallet.
+  if (!/^[0-9a-f]{64}$/.test(hash)) {
     throw new Error(
-      `--hash must be 16 to 64 lowercase hex characters (e.g. from seed-pack or teaser), got "${raw ?? ""}" (nothing was signed or paid).`
+      `--hash must be exactly 64 lowercase hex characters (a SHA-256 seed from seed-pack or teaser), got "${raw ?? ""}" (nothing was signed or paid).`
     );
   }
   return hash;
@@ -181,10 +197,9 @@ async function paidPost(
   tool: string
 ): Promise<Record<string, unknown>> {
   // Verify the worker's 402 quote (amount, payTo, asset, network) before the
-  // shared x402 client signs anything. This makes AGENT.md's "verify payTo"
-  // safety check a real gate instead of documentation, and keeps a changed
-  // quote (or a mismatched recipient) from being paid in sponsored mode, where
-  // the shared X402_MAX_SATS_PER_PAYMENT guard does not apply.
+  // shared x402 client signs anything. No payment mode caps this skill: direct
+  // mode cannot pay the worker's bare "sBTC" asset. This route-price check is
+  // the only guard, and it is a separate request from the one that pays.
   await verifyPaymentQuote(baseUrl, path, body);
 
   const api = await createApiClient(baseUrl, tool);
@@ -302,7 +317,7 @@ program
 program
   .command("svg-preview")
   .description("Paid (100 sats sBTC). Deterministic 512x512 SVG preview from a seed hash.")
-  .requiredOption("--hash <hex>", "Seed hash (16-64 hex chars, e.g. from seed-pack or teaser)")
+  .requiredOption("--hash <hex>", "Seed hash (exactly 64 hex chars, from seed-pack or teaser)")
   .option("--palette <colors>", "Optional pipe-separated color list (e.g. 'hsl(120, 72%, 58%)|hsl(240, 72%, 58%)')")
   .action(async (options) => {
     try {
