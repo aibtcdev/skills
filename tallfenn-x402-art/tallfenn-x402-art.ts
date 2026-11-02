@@ -10,7 +10,7 @@
  */
 
 import { Command } from "commander";
-import { createApiClient, resolveSponsoredPaymentTokenType } from "../src/lib/services/x402.service.js";
+import { createApiClient, getDirectPaymentMetadata, resolveDirectPaymentAsset } from "../src/lib/services/x402.service.js";
 import { decodePaymentResponse, type PaymentRequirementsV2 } from "../src/lib/utils/x402-protocol.js";
 import { printJson, handleError } from "../src/lib/utils/cli.js";
 
@@ -49,18 +49,18 @@ function assertAcceptedQuote(path: string, selected: PaymentRequirementsV2): voi
       `Refusing payment: payTo ${selected.payTo} does not match expected ${EXPECTED_PAY_TO}. Nothing was signed or paid.`
     );
   }
-  // The quote must be stacks:1, so the allowlist is mainnet's canonical sBTC.
-  // The wallet NETWORK defaults to testnet and must not choose the contract.
-  let tokenType: "STX" | "sBTC";
+  // Same allowlist the direct builder uses: native STX or the canonical
+  // mainnet sBTC contract id. Bare "sBTC" is refused here, before signing.
+  let assetKind: "STX" | "sBTC";
   try {
-    tokenType = resolveSponsoredPaymentTokenType(selected.asset, "mainnet");
+    assetKind = resolveDirectPaymentAsset(selected.asset, "mainnet").kind;
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
     throw new Error(`Refusing payment: ${reason} Nothing was signed or paid.`);
   }
-  if (tokenType !== "sBTC") {
+  if (assetKind !== "sBTC") {
     throw new Error(
-      `Refusing payment: quoted asset ${selected.asset} is not sBTC. Nothing was signed or paid.`
+      `Refusing payment: quoted asset ${selected.asset} is not the canonical sBTC contract. Nothing was signed or paid.`
     );
   }
   if (selected.network !== "stacks:1") {
@@ -178,23 +178,16 @@ async function paidPost(
   body: Record<string, unknown>,
   tool: string
 ): Promise<Record<string, unknown>> {
-  // The relay settles a self-paid transfer and refuses a fee-0 sponsor slot,
-  // so this skill signs in direct mode. beforePay runs on the same 402 the
-  // client then signs; there is no earlier probe.
-  const previousMode = process.env.X402_PAYMENT_MODE;
-  process.env.X402_PAYMENT_MODE = "direct";
-  let api;
-  try {
-    api = await createApiClient(baseUrl, tool, {
-      preferredAsset: "sBTC",
-      beforePay: async (accept) => {
-        assertAcceptedQuote(path, accept);
-      },
-    });
-  } finally {
-    if (previousMode === undefined) delete process.env.X402_PAYMENT_MODE;
-    else process.env.X402_PAYMENT_MODE = previousMode;
-  }
+  // The relay settles a self-paid transfer and refuses a fee-0 sponsor slot.
+  // paymentMode is an option, not an environment mutation: beforePay runs on
+  // the same 402 the client then signs.
+  const api = await createApiClient(baseUrl, tool, {
+    paymentMode: "direct",
+    preferredAsset: "sBTC",
+    beforePay: async (accept) => {
+      assertAcceptedQuote(path, accept);
+    },
+  });
   const response = await api.request({
     method: "POST",
     url: path,
@@ -208,6 +201,7 @@ async function paidPost(
       : { data: response.data }),
     endpoint: `${baseUrl}${path}`,
     network: "mainnet",
+    ...getDirectPaymentMetadata(response),
   };
   const receiptHeader = response.headers?.["payment-response"];
   const receipt =

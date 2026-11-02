@@ -127,6 +127,9 @@ Every paid subcommand returns:
 - `payment` — `{ txId, sender }` reported by the worker after facilitator
   settlement
 - `payment_receipt` — decoded `payment-response` header (`{ success, payer, transaction, network }`)
+- `mode`, `txid`, `txStatus`, `settlementState` — direct-mode metadata for the
+  transfer that was signed. `settlementState` stays `submitted` while that
+  transfer is still pending, even if the HTTP body is already 2xx
 - `endpoint` and `network`
 
 ## Payment & Network
@@ -141,12 +144,22 @@ asset as the canonical sBTC contract id
 
 The price check runs on the same 402 that is signed. It refuses a quote whose
 amount is not the route's price (100 or 150 sats), whose `payTo` is not the
-address above, whose asset is not mainnet sBTC, or whose network is not
-`stacks:1`. Nothing is signed when that check throws. If the paid request
-fails after the transfer was sent, the error includes the txid: check that
-transaction before running the command again. `X402_PAYMENT_MODE` is ignored;
-this skill always signs in direct mode. The shared per-payment cap still
-applies on top of the exact route price.
+address above, whose asset is not the canonical sBTC contract id, or whose
+network is not `stacks:1`. Nothing is signed when that check throws. The client
+is constructed with `paymentMode: "direct"`, so `X402_PAYMENT_MODE` does not
+choose the mode. The shared per-payment cap still applies on top of the exact
+route price.
+
+`TALLFENN_ART_URL`, when set, replaces the worker host for every request,
+including the POST that carries the signed transfer. `payTo` is still pinned
+to the address above: a host that names a different recipient is refused
+before anything is signed. Leave the variable unset to use the production worker.
+
+An identical paid command inside `X402_DEDUP_TTL_SECONDS` (default 900 seconds)
+is refused with `DuplicatePaymentError` and the earlier txid. That refusal is
+not a new payment. After the window, a new run signs a new transfer. If a paid
+request fails after the transfer was sent, the error includes the txid: check
+that transaction before paying again.
 
 ## Reference
 
