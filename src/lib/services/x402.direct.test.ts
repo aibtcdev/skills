@@ -547,6 +547,20 @@ describe("createApiClient payment modes", () => {
     expect(f.paidRequests).toHaveLength(0);
   });
 
+  test("beforePay throw signs nothing and writes no dedup or spend record", async () => {
+    const f = await up();
+    const api = await createApiClient(f.origin, "test.before-pay-refuse", {
+      paymentMode: "direct",
+      beforePay: async () => {
+        throw new Error("refused by hook");
+      },
+    });
+    await expect(api.request({ method: "GET", url: "/paid" })).rejects.toThrow(/refused by hook/);
+    expect(f.paidRequests).toHaveLength(0);
+    expect(existsSync(process.env.X402_DEDUP_STATE_FILE!)).toBe(false);
+    expect(existsSync(process.env.X402_SPEND_STATE_FILE!)).toBe(false);
+  });
+
   test("direct mode signs a standard fee-paying sBTC transfer with a deny-mode post-condition", async () => {
     process.env.X402_PAYMENT_MODE = "direct";
     const f = await up({ nonce: 42 });

@@ -14,7 +14,9 @@ description: Deterministic generative-art seed packs, 512x512 SVG previews, and 
   `full-bundle`): an unlocked wallet (`wallet` skill) holding at least 100 sats
   sBTC (150 sats for `full-bundle`) plus enough STX for the transaction fee,
   with `NETWORK=mainnet` set. The CLI signs a self-paid transfer. The relay
-  does not pay the gas.
+  does not pay the gas. `TALLFENN_ART_URL`, if set, sends every request —
+  including the signed transfer — to that host instead of the production
+  worker. `payTo` stays pinned to `SP3F9T1HAHTMK5AV29Q9DK1VNHCQFH3F5T5FXKQAC`.
 
 ## When to invoke
 
@@ -63,17 +65,22 @@ description: Deterministic generative-art seed packs, 512x512 SVG previews, and 
   `motion-timeline`; 150 sats for `full-bundle`). A mismatch throws before
   anything is signed. There is no earlier probe.
 - Do not loop paid calls on identical prompts.
-- Each CLI run signs a new transaction. Re-running a command after a timeout is
-  a new payment, not an idempotent retry. If the paid request fails after the
-  transfer was sent, the error includes the txid: check that transaction on
-  Hiro before running the command again. The worker caches a settled response
-  by `(signedTx, resourceUrl)`, but the CLI never reuses a signed transaction.
+- Direct mode keeps a duplicate record for `X402_DEDUP_TTL_SECONDS` (default
+  900 seconds). Re-running the same command inside that window is refused with
+  `DuplicatePaymentError` and the earlier txid. That is not a new payment.
+  After the window, a new run signs a new transfer. If a paid request fails
+  after the transfer was sent, the error includes the txid: check it on Hiro
+  before paying again. The worker caches a settled response by
+  `(signedTx, resourceUrl)`, but the CLI never reuses a signed transaction.
 
 ## Error handling
 
 | Error | Meaning | Action |
 | --- | --- | --- |
 | `--prompt is required` / `--hash must be exactly 64 lowercase hex characters` / `--palette entry` | Local input validation failed before wallet access | Fix CLI arguments; nothing was signed or spent |
+| `Refusing payment:` … `Nothing was signed or paid` | The 402 quote failed the route price, payTo, asset, or network check | Do not retry until the quote matches the published price and recipient. Nothing was signed |
+| `DuplicatePaymentError` | The same request was already signed within `X402_DEDUP_TTL_SECONDS` (default 900s) | Read the earlier txid in the error and check Hiro. Do not treat this as a fresh payment |
+| `SpendLimitError` | The quote would pass the wallet's daily sBTC or STX cap | Wait for the next day or raise the cap. Nothing was signed |
 | `x402 paid request failed after the signed transfer was sent` | The signed transfer left the process and settlement is ambiguous | Read the txid in the error and check Hiro before paying again |
 | `Network mismatch: endpoint requires mainnet...` | Wallet is on testnet (`NETWORK` not set to `mainnet`) | Re-run with `NETWORK=mainnet` |
 | `Insufficient sBTC...` | Wallet has < 100 sats (or < 150 sats for `full-bundle`) | Check balance via `sbtc/sbtc.ts get-balance` and fund wallet before retrying |
@@ -88,8 +95,10 @@ description: Deterministic generative-art seed packs, 512x512 SVG previews, and 
   identifier.
 - Extract `data.svg` (or `data.seedPack`, `data.motionTimeline` in
   `full-bundle`) for rendering or inscription.
-- Cite `payment.txId` or `payment_receipt.transaction` as the on-chain sBTC
-  settlement receipt on Stacks mainnet.
+- Cite `txid` (direct-mode metadata) or `payment.txId` as the on-chain sBTC
+  transfer. `settlementState` is `submitted` while the transfer is still
+  pending, `confirmed` after it lands, and `failed` if it aborts. A 2xx body
+  can arrive before the transfer confirms.
 
 ## Safety checks
 
