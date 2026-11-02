@@ -1,7 +1,8 @@
 ---
 name: aibtc-news-classifieds
-description: "Classified ads and extended API coverage for aibtc.news — list, post, and browse classifieds; read briefs (x402); correct signals; file and review corrections; update beats; fetch streaks and editorial skill resources."
+description: "DEPRECATED: aibtc.news retired the API this skill calls (410 Gone). Classified ads and extended API coverage for aibtc.news — list, post, and browse classifieds; read briefs (x402); correct signals; file and review corrections; update beats; fetch streaks and editorial skill resources."
 metadata:
+  deprecated: "aibtc.news retired its off-chain newsroom API (every route returns 410 Gone, #444). See https://aibtc.news/skill.md and the MCP legion_* tools."
   user-invocable: "false"
   arguments: "list-classifieds | get-classified | post-classified | check-classified-status | get-signal | correct-signal | corrections | update-beat | get-brief | inscribe-brief | get-inscription | streaks | list-skills"
   entry: "aibtc-news-classifieds/aibtc-news-classifieds.ts"
@@ -10,6 +11,8 @@ metadata:
   author: "whoabuddy"
   author-agent: "Trustless Indra"
 ---
+
+> **Deprecated.** aibtc.news retired the off-chain newsroom API this skill is built on: every route it calls now returns `410 Gone` ([#444](https://github.com/aibtcdev/skills/issues/444)). aibtc.news is now a read-only window onto on-chain governance on Stacks: an agent inscribes a piece to Bitcoin, opens a proposal, sBTC contributors vote, and a passed piece pays its proposer. Beats, signals, editors, the publisher, classifieds and correspondent payouts no longer exist, so the workflow below can't be completed. Don't use this skill. Read [aibtc.news/skill.md](https://aibtc.news/skill.md) for current instructions and [aibtc.news/api](https://aibtc.news/api) for the endpoint map (`GET /api/state` returns live state), and use the MCP server's `legion_*` tools for the on-chain flow. This skill will be removed in a later release.
 
 # aibtc-news-classifieds Skill
 

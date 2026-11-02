@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.44.0](https://github.com/aibtcdev/skills/compare/skills-v0.43.1...skills-v0.44.0) (2026-10-27)
+
+
+### Features
+
+* **inbox:** add auto-reply subcommand via the inference marketplace ([#453](https://github.com/aibtcdev/skills/issues/453)) ([#454](https://github.com/aibtcdev/skills/issues/454)) ([4375ec7](https://github.com/aibtcdev/skills/commit/4375ec7bc91fc816ed0a05075b3ac929e990fc20))
+* **stacking:** move the stacking skill to pox-5 ([#430](https://github.com/aibtcdev/skills/issues/430)) ([e9e886c](https://github.com/aibtcdev/skills/commit/e9e886ca7a646d857e304e3ab3402a109ee8930f))
+* **vibewatch-sentiment:** --asset sBTC|STX picks the 402 option to pay ([#431](https://github.com/aibtcdev/skills/issues/431)) ([e4ddb86](https://github.com/aibtcdev/skills/commit/e4ddb863026d0ee0d1a559342f85a4d547915848))
+* **vibewatch-sentiment:** add vibewatch-sentiment skill ([#421](https://github.com/aibtcdev/skills/issues/421)) ([61a67fd](https://github.com/aibtcdev/skills/commit/61a67fd0ed0ea67e267aacff61aad1cc92abdb03))
+
+
+### Bug Fixes
+
+* **aibtc-news:** deprecate three skills that depend on the retired aibtc.news API ([#444](https://github.com/aibtcdev/skills/issues/444)) ([#451](https://github.com/aibtcdev/skills/issues/451)) ([aada32f](https://github.com/aibtcdev/skills/commit/aada32f03b9154e3a3bd4d1922c7ea9dc51f45fc))
+* **aibtc-news:** mark the ten aibtc-news skills deprecated ([#444](https://github.com/aibtcdev/skills/issues/444)) ([#450](https://github.com/aibtcdev/skills/issues/450)) ([8eb3995](https://github.com/aibtcdev/skills/commit/8eb3995130b6a93165a34ec025e544815194140d))
+* **launkr:** pin contract addresses, fix create-pool decimals, wait for swap confirmations ([#416](https://github.com/aibtcdev/skills/issues/416)) ([3e1d526](https://github.com/aibtcdev/skills/commit/3e1d526fa96c9f9eca621537736279231d1bc7c6))
+* **wallet:** don't let the auto-lock timer keep a one-shot CLI process alive ([#446](https://github.com/aibtcdev/skills/issues/446)) ([079861b](https://github.com/aibtcdev/skills/commit/079861b6fda90f3332ec052531610036242f9bac)), closes [#418](https://github.com/aibtcdev/skills/issues/418)
+* **wallet:** restore session from disk before status/list/lock check it ([#437](https://github.com/aibtcdev/skills/issues/437)) ([f2dcc1c](https://github.com/aibtcdev/skills/commit/f2dcc1c96204cd014697c0524e4c6faf9e06b31f))
+* **wallet:** say why a wallet may be locked (auto-lock) and that MCP-set passwords are literal ([#418](https://github.com/aibtcdev/skills/issues/418) items 5, 6) ([#452](https://github.com/aibtcdev/skills/issues/452)) ([953db64](https://github.com/aibtcdev/skills/commit/953db64664cd06edd2c459aca789aab5b295a9b9))
+* **x402:** derive payment-identifier with HMAC from account secret ([#434](https://github.com/aibtcdev/skills/issues/434)) ([#438](https://github.com/aibtcdev/skills/issues/438)) ([9e75572](https://github.com/aibtcdev/skills/commit/9e755723e94c0148efb2237630562e6817e670e4))
+* **x402:** derive the payment-identifier from the signed transaction ([#427](https://github.com/aibtcdev/skills/issues/427)) ([d8f011f](https://github.com/aibtcdev/skills/commit/d8f011f529637b1d88d3bfa4a223f84aaa9b6f63))
+* **x402:** exclude stacked STX from balance checks; check inbox and news payments ([#436](https://github.com/aibtcdev/skills/issues/436)) ([702ff4b](https://github.com/aibtcdev/skills/commit/702ff4bd2592208ec7ec383162b40ddc9b9eca80))
+* **x402:** pin sponsored sBTC payments with a deny-mode exact-amount post-condition ([#448](https://github.com/aibtcdev/skills/issues/448)) ([2ebf2c5](https://github.com/aibtcdev/skills/commit/2ebf2c5598f748c448ee456d30a3974af116e9b3))
+* **x402:** refuse non-canonical assets in sponsored mode too ([#419](https://github.com/aibtcdev/skills/issues/419)) ([#447](https://github.com/aibtcdev/skills/issues/447)) ([34675c4](https://github.com/aibtcdev/skills/commit/34675c49f69b81cbcc771a62129f95f563a5adbb))
+* **x402:** refuse sponsored payments the wallet cannot cover before signing ([#435](https://github.com/aibtcdev/skills/issues/435)) ([0639709](https://github.com/aibtcdev/skills/commit/063970975d5b5fbb1fe6821f318daa3aa2dfae22))
+
 ## [0.43.1](https://github.com/aibtcdev/skills/compare/skills-v0.43.0...skills-v0.43.1) (2026-09-16)
 
 

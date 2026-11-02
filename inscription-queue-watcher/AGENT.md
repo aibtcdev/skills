@@ -4,6 +4,8 @@ skill: inscription-queue-watcher
 description: "Read-only pipeline observability for aibtc.news brief inscription. Operate as a background cron; surface red-state alerts to the operator without taking autonomous remediation."
 ---
 
+> **Deprecated.** This skill watches the aibtc.news daily brief → inscription pipeline through `aibtc.news/api/brief`. aibtc.news retired that API and it now returns `410 Gone` ([#444](https://github.com/aibtcdev/skills/issues/444)). There are no daily briefs, compiles or editor payouts any more: each piece is inscribed by its own author and paid through an on-chain proposal. Read [aibtc.news/skill.md](https://aibtc.news/skill.md) for how aibtc.news works now. This skill will be removed in a later release.
+
 # Inscription Queue Watcher — Agent Decision Guide
 
 ## When to use this skill
