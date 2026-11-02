@@ -12,9 +12,9 @@ description: Deterministic generative-art seed packs, 512x512 SVG previews, and 
   funds, no API keys.
 - Paid subcommands (`seed-pack`, `svg-preview`, `motion-timeline`,
   `full-bundle`): an unlocked wallet (`wallet` skill) holding at least 100 sats
-  sBTC (150 sats for `full-bundle`) with `NETWORK=mainnet` set. Default
-  sponsored mode (`X402_PAYMENT_MODE=sponsored`) settles gaslessly through
-  `https://x402-relay.aibtc.com`.
+  sBTC (150 sats for `full-bundle`) plus enough STX for the transaction fee,
+  with `NETWORK=mainnet` set. The CLI signs a self-paid transfer. The relay
+  does not pay the gas.
 
 ## When to invoke
 
@@ -45,38 +45,36 @@ description: Deterministic generative-art seed packs, 512x512 SVG previews, and 
 
 ## Cost guardrails
 
-- Validate inputs locally before calling: `--prompt` must be 1–500 characters,
-  `--piece-version` a positive integer, and `--hash` exactly 64 hex characters
-  (the SHA-256 that `seed-pack` and `teaser` return). `svg-preview` returns 402
-  before it checks the hash and will render any string of 16 or more characters,
-  so a shorter hash would be paid for. The CLI refuses it first. These checks
-  run before the wallet, so bad flags cost 0 sats.
+- Validate inputs locally before calling. `--prompt` is 1–500 characters with
+  no leading or trailing whitespace (the CLI does not trim it). `--piece-version`
+  is an integer from 1 to 1000000. `--hash` is exactly 64 lowercase hex
+  characters with no surrounding whitespace (the SHA-256 that `seed-pack` and
+  `teaser` return; the CLI does not lowercase it). `--palette` entries must be
+  `#RGB`, `#RRGGBB`, or `hsl(h, s%, l%)`. `svg-preview` returns 402 before it
+  checks the body, so anything the CLI lets through would be paid for. These
+  checks run before the wallet, so bad flags cost 0 sats.
 - Confirm sBTC balance before running a batch of prompts.
-- Before signing, the CLI verifies the worker's 402 quote locally: `payTo` must be
-  `SP3F9T1HAHTMK5AV29Q9DK1VNHCQFH3F5T5FXKQAC`, the asset must be `sBTC`, the
-  network must be `stacks:1`, and the amount must equal the route's known price
-  (100 sats for `seed-pack`, `svg-preview`, `motion-timeline`; 150 sats for
-  `full-bundle`). A quote that differs from the published price is refused before
-  the wallet spends anything. It does not protect against a host that changes its
-  answer between this check and the payment (that guarantee belongs to the shared
-  x402 client, not this PR).
-- No mode currently caps this skill. Direct mode cannot pay this worker: its
-  402 names the asset as the bare string `sBTC`, and direct mode accepts only
-  native STX or the canonical sBTC contract id. Do not set
-  `X402_PAYMENT_MODE=direct` to get `X402_MAX_SATS_PER_PAYMENT`. The route-price
-  check in this CLI is the only guard.
+- The CLI signs a self-paid sBTC transfer in direct mode. The relay does not
+  co-sign a fee-0 transaction, so sponsored mode is not used. `beforePay` checks
+  the same 402 that is signed: `payTo` must be
+  `SP3F9T1HAHTMK5AV29Q9DK1VNHCQFH3F5T5FXKQAC`, the asset must be mainnet sBTC
+  (the canonical contract id), the network must be `stacks:1`, and the amount
+  must equal the route's price (100 sats for `seed-pack`, `svg-preview`,
+  `motion-timeline`; 150 sats for `full-bundle`). A mismatch throws before
+  anything is signed. There is no earlier probe.
 - Do not loop paid calls on identical prompts.
 - Each CLI run signs a new transaction. Re-running a command after a timeout is
-  therefore a new payment, not an idempotent retry: check whether the previous
-  transaction settled (via its txid or the Hiro explorer) before re-running. (The
-  worker does cache settled responses by `(signedTx, resourceUrl)`, but the CLI
-  never reuses a signed transaction across runs.)
+  a new payment, not an idempotent retry. If the paid request fails after the
+  transfer was sent, the error includes the txid: check that transaction on
+  Hiro before running the command again. The worker caches a settled response
+  by `(signedTx, resourceUrl)`, but the CLI never reuses a signed transaction.
 
 ## Error handling
 
 | Error | Meaning | Action |
 | --- | --- | --- |
-| `--prompt is required` / `--hash must be exactly 64 lowercase hex characters` | Local input validation failed before wallet access | Fix CLI arguments; nothing was signed or spent |
+| `--prompt is required` / `--hash must be exactly 64 lowercase hex characters` / `--palette entry` | Local input validation failed before wallet access | Fix CLI arguments; nothing was signed or spent |
+| `x402 paid request failed after the signed transfer was sent` | The signed transfer left the process and settlement is ambiguous | Read the txid in the error and check Hiro before paying again |
 | `Network mismatch: endpoint requires mainnet...` | Wallet is on testnet (`NETWORK` not set to `mainnet`) | Re-run with `NETWORK=mainnet` |
 | `Insufficient sBTC...` | Wallet has < 100 sats (or < 150 sats for `full-bundle`) | Check balance via `sbtc/sbtc.ts get-balance` and fund wallet before retrying |
 | `402 AMOUNT_TOO_LOW` | Payment amount below endpoint requirement | Let `createApiClient` read the advertised amount from the 402 header |
@@ -97,7 +95,6 @@ description: Deterministic generative-art seed packs, 512x512 SVG previews, and 
 
 - Read-only generation: the worker performs no on-chain writes beyond settling
   the x402 payment transfer via the facilitator.
-- The CLI verifies `payTo` in the 402 challenge against
-  `SP3F9T1HAHTMK5AV29Q9DK1VNHCQFH3F5T5FXKQAC` before signing; a mismatch fails
-  the command before any sats are spent. Cross-check `meta` manually only when
-  auditing an endpoint off-band.
+- `beforePay` verifies `payTo` on the 402 that is signed, against
+  `SP3F9T1HAHTMK5AV29Q9DK1VNHCQFH3F5T5FXKQAC`. A mismatch fails the command
+  before any sats are spent.

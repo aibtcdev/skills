@@ -10,8 +10,8 @@
  */
 
 import { Command } from "commander";
-import { createApiClient, resolveSponsoredPaymentTokenType, selectStacksPaymentOption } from "../src/lib/services/x402.service.js";
-import { decodePaymentRequired, decodePaymentResponse } from "../src/lib/utils/x402-protocol.js";
+import { createApiClient, resolveSponsoredPaymentTokenType } from "../src/lib/services/x402.service.js";
+import { decodePaymentResponse, type PaymentRequirementsV2 } from "../src/lib/utils/x402-protocol.js";
 import { printJson, handleError } from "../src/lib/utils/cli.js";
 
 // ---------------------------------------------------------------------------
@@ -37,57 +37,20 @@ const ROUTE_PRICE_SATS: Record<string, number> = {
   "/api/art/full-bundle": 150,
 };
 
-async function verifyPaymentQuote(baseUrl: string, path: string, body: Record<string, unknown>): Promise<void> {
+function assertAcceptedQuote(path: string, selected: PaymentRequirementsV2): void {
   const expectedPrice = ROUTE_PRICE_SATS[path];
   if (expectedPrice === undefined) {
     throw new Error(
       `Refusing payment: paid route ${path} has no locally configured price. Nothing was signed or paid.`
     );
   }
-
-  let probe: Response;
-  try {
-    probe = await fetch(`${baseUrl}${path}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(15_000),
-    });
-  } catch (error) {
-    throw new Error(
-      `Refusing payment: could not fetch the payment challenge from ${baseUrl}${path} ` +
-        `(${error instanceof Error ? error.message : String(error)}). Nothing was signed or paid.`
-    );
-  }
-
-  if (probe.status !== 402) {
-    const text = await probe.text().catch(() => "");
-    const detail = text.slice(0, 300);
-    throw new Error(
-      `Refusing payment: expected a 402 challenge from ${baseUrl}${path} before paying, got HTTP ${probe.status}` +
-        (detail ? `: ${detail}` : "") +
-        `. Nothing was signed or paid.`
-    );
-  }
-
-  const required = decodePaymentRequired(probe.headers.get("payment-required"));
-  if (!required || !Array.isArray(required.accepts) || required.accepts.length === 0) {
-    throw new Error("Refusing payment: the 402 challenge did not include valid payment requirements. Nothing was signed or paid.");
-  }
-
-  const selected = selectStacksPaymentOption(required.accepts);
-  if (!selected) {
-    throw new Error("Refusing payment: no compatible Stacks payment option in the 402 challenge. Nothing was signed or paid.");
-  }
-
   if (selected.payTo !== EXPECTED_PAY_TO) {
     throw new Error(
       `Refusing payment: payTo ${selected.payTo} does not match expected ${EXPECTED_PAY_TO}. Nothing was signed or paid.`
     );
   }
-  // stacks:1 only, so the allowlist is mainnet's. Bare "sBTC" and the canonical
-  // contract id both pass; anything else throws and is refused before signing.
-  // The wallet's NETWORK defaults to testnet, so it must not pick the contract.
+  // The quote must be stacks:1, so the allowlist is mainnet's canonical sBTC.
+  // The wallet NETWORK defaults to testnet and must not choose the contract.
   let tokenType: "STX" | "sBTC";
   try {
     tokenType = resolveSponsoredPaymentTokenType(selected.asset, "mainnet");
@@ -126,7 +89,10 @@ async function verifyPaymentQuote(baseUrl: string, path: string, body: Record<st
 // ---------------------------------------------------------------------------
 
 function validatePrompt(raw: string | undefined): string {
-  const prompt = String(raw ?? "").trim();
+  const prompt = String(raw ?? "");
+  if (prompt !== prompt.trim()) {
+    throw new Error("--prompt must not have leading or trailing whitespace (nothing was signed or paid).");
+  }
   if (!prompt) {
     throw new Error("--prompt is required and cannot be empty (nothing was signed or paid).");
   }
@@ -137,9 +103,9 @@ function validatePrompt(raw: string | undefined): string {
 }
 
 function validateVersion(raw: string | undefined): number {
-  const s = String(raw ?? "1").trim();
-  if (!/^[1-9]\d*$/.test(s)) {
-    throw new Error(`--piece-version must be a positive integer, got "${raw}" (nothing was signed or paid).`);
+  const s = String(raw ?? "1");
+  if (s !== s.trim() || !/^[1-9]\d*$/.test(s)) {
+    throw new Error(`--piece-version must be an integer from 1 to 1000000 with no surrounding whitespace, got "${raw}" (nothing was signed or paid).`);
   }
   const n = Number(s);
   if (!Number.isSafeInteger(n) || n < 1 || n > 1_000_000) {
@@ -149,16 +115,25 @@ function validateVersion(raw: string | undefined): number {
 }
 
 function validateHash(raw: string | undefined): string {
-  const hash = String(raw ?? "").trim().toLowerCase();
-  // seed-pack and teaser emit SHA-256 (64 hex). svg-preview returns 402 before
-  // it looks at the hash and will render any string of 16+ characters, so a
-  // shorter hash would be paid for. Refuse it here, before the wallet.
+  const hash = String(raw ?? "");
+  // seed-pack and teaser emit lowercase SHA-256. svg-preview returns 402 before
+  // it looks at the hash, so a shorter or uppercase hash would be paid for.
   if (!/^[0-9a-f]{64}$/.test(hash)) {
     throw new Error(
-      `--hash must be exactly 64 lowercase hex characters (a SHA-256 seed from seed-pack or teaser), got "${raw ?? ""}" (nothing was signed or paid).`
+      `--hash must be exactly 64 lowercase hex characters, with no surrounding whitespace (a SHA-256 seed from seed-pack or teaser), got "${raw ?? ""}" (nothing was signed or paid).`
     );
   }
   return hash;
+}
+
+function isPaletteColor(value: string): boolean {
+  if (/^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(value)) return true;
+  const match = /^hsl\(\s*(\d{1,3}(?:\.\d+)?)\s*,\s*(\d{1,3}(?:\.\d+)?)%\s*,\s*(\d{1,3}(?:\.\d+)?)%\s*\)$/.exec(value);
+  if (!match) return false;
+  const hue = Number(match[1]);
+  const saturation = Number(match[2]);
+  const lightness = Number(match[3]);
+  return hue >= 0 && hue <= 360 && saturation >= 0 && saturation <= 100 && lightness >= 0 && lightness <= 100;
 }
 
 function validatePalette(raw: string | undefined): string[] | undefined {
@@ -168,7 +143,14 @@ function validatePalette(raw: string | undefined): string[] | undefined {
     .map((s) => s.trim())
     .filter((s) => s.length > 0);
   if (items.length === 0 || items.length > 16) {
-    throw new Error("--palette must contain between 1 and 16 pipe-separated color strings (nothing was signed or paid).");
+    throw new Error("--palette must contain between 1 and 16 pipe-separated colors (nothing was signed or paid).");
+  }
+  for (const color of items) {
+    if (!isPaletteColor(color)) {
+      throw new Error(
+        `--palette entry "${color}" must be #RGB, #RRGGBB, or hsl(h, s%, l%) (nothing was signed or paid).`
+      );
+    }
   }
   return items;
 }
@@ -196,13 +178,23 @@ async function paidPost(
   body: Record<string, unknown>,
   tool: string
 ): Promise<Record<string, unknown>> {
-  // Verify the worker's 402 quote (amount, payTo, asset, network) before the
-  // shared x402 client signs anything. No payment mode caps this skill: direct
-  // mode cannot pay the worker's bare "sBTC" asset. This route-price check is
-  // the only guard, and it is a separate request from the one that pays.
-  await verifyPaymentQuote(baseUrl, path, body);
-
-  const api = await createApiClient(baseUrl, tool);
+  // The relay settles a self-paid transfer and refuses a fee-0 sponsor slot,
+  // so this skill signs in direct mode. beforePay runs on the same 402 the
+  // client then signs; there is no earlier probe.
+  const previousMode = process.env.X402_PAYMENT_MODE;
+  process.env.X402_PAYMENT_MODE = "direct";
+  let api;
+  try {
+    api = await createApiClient(baseUrl, tool, {
+      preferredAsset: "sBTC",
+      beforePay: async (accept) => {
+        assertAcceptedQuote(path, accept);
+      },
+    });
+  } finally {
+    if (previousMode === undefined) delete process.env.X402_PAYMENT_MODE;
+    else process.env.X402_PAYMENT_MODE = previousMode;
+  }
   const response = await api.request({
     method: "POST",
     url: path,
@@ -296,7 +288,7 @@ program
     "Paid (100 sats sBTC). Deterministic seed pack (hash, palette, motion grammar, videodanza pipeline params, Art Blocks JSON) from a prompt."
   )
   .requiredOption("--prompt <text>", "Prompt text (1-500 chars)")
-  .option("--piece-version <int>", "Deterministic version integer (default: 1)", "1")
+  .option("--piece-version <int>", "Deterministic version integer from 1 to 1000000 (default: 1)", "1")
   .action(async (options) => {
     try {
       const prompt = validatePrompt(options.prompt);
@@ -317,8 +309,8 @@ program
 program
   .command("svg-preview")
   .description("Paid (100 sats sBTC). Deterministic 512x512 SVG preview from a seed hash.")
-  .requiredOption("--hash <hex>", "Seed hash (exactly 64 hex chars, from seed-pack or teaser)")
-  .option("--palette <colors>", "Optional pipe-separated color list (e.g. 'hsl(120, 72%, 58%)|hsl(240, 72%, 58%)')")
+  .requiredOption("--hash <hex>", "Seed hash (exactly 64 lowercase hex chars, from seed-pack or teaser)")
+  .option("--palette <colors>", "Optional pipe-separated #RGB, #RRGGBB, or hsl(h, s%, l%) colors")
   .action(async (options) => {
     try {
       const hash = validateHash(options.hash);
@@ -342,7 +334,7 @@ program
   .command("motion-timeline")
   .description("Paid (100 sats sBTC). Deterministic 24fps keyframed motion timeline from a prompt.")
   .requiredOption("--prompt <text>", "Prompt text (1-500 chars)")
-  .option("--piece-version <int>", "Deterministic version integer (default: 1)", "1")
+  .option("--piece-version <int>", "Deterministic version integer from 1 to 1000000 (default: 1)", "1")
   .action(async (options) => {
     try {
       const prompt = validatePrompt(options.prompt);
@@ -364,7 +356,7 @@ program
   .command("full-bundle")
   .description("Paid (150 sats sBTC). Seed pack + 512x512 SVG preview + motion timeline in one deterministic call.")
   .requiredOption("--prompt <text>", "Prompt text (1-500 chars)")
-  .option("--piece-version <int>", "Deterministic version integer (default: 1)", "1")
+  .option("--piece-version <int>", "Deterministic version integer from 1 to 1000000 (default: 1)", "1")
   .action(async (options) => {
     try {
       const prompt = validatePrompt(options.prompt);
