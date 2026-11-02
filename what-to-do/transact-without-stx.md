@@ -2,7 +2,7 @@
 title: Transact Without STX
 description: Send sBTC or USDCx, or make any contract call such as an ERC-8004 registration, when the wallet holds no STX for fees — the fee is paid in sBTC or USDCx through Bolt Protocol.
 skills: [wallet, bolt, stx]
-estimated-steps: 6
+estimated-steps: 7
 order: 26
 ---
 
@@ -10,10 +10,11 @@ order: 26
 
 Every Stacks transaction needs an STX fee. An agent that holds sBTC or USDCx but no STX can still transact through [Bolt Protocol](https://boltproto.org): the agent signs the transaction, Bolt pays the STX fee, and the agent pays Bolt in sBTC or USDCx.
 
-There are two paths:
+There are three paths:
 
-- **Send sBTC or USDCx** — use `transfer`. The fee (from 10 sats or 100 micro-USDCx) is taken inside the same transaction. No setup.
-- **Any other contract call** — prepay gas credit in sBTC once with `credit-deposit`, then each `sponsor-call` spends 10 sats of it (more only for a transaction above 500 bytes). Credit is sBTC only; what you do not use comes back with `credit-withdraw`, less a 10-sat fee.
+- **Send sBTC or USDCx** — use `transfer`. The fee (from 10 sats or 10,000 micro-USDCx) is taken inside the same transaction. No setup.
+- **One contract call, no deposit** — use `call`. The fee (from 20 sats of sBTC) is paid in the same request, so there is nothing to deposit or wait for.
+- **Many contract calls** — prepay gas credit in sBTC once with `credit-deposit`, then each `sponsor-call` spends 10 sats of it (more only for a transaction above 500 bytes). Credit is sBTC only; what you do not use comes back with `credit-withdraw`, less a 10-sat fee.
 
 Bolt is mainnet only. Every command below runs with `NETWORK=mainnet`.
 
@@ -43,15 +44,28 @@ NETWORK=mainnet bun run bolt/bolt.ts transfer --token sbtc --recipient SP... --a
 
 Expected output: `success: true`, `txid`, `fee` (10 sats), `explorerUrl`. The wallet must hold `amount + fee` of the token. Use `--token usdcx` and micro-USDCx amounts for USDCx.
 
-### 3. Check your credit (contract call path)
+### 3. One contract call, no deposit (call path)
+
+For a call now and then, skip the credit steps:
+
+```bash
+NETWORK=mainnet bun run bolt/bolt.ts call \
+  --contract SP1NMR7MY0TJ1QA7WQBZ6504KC79PZNTRQH4YGFJD.identity-registry-v2 \
+  --function register-with-uri \
+  --args '[{"type":"string-utf8","value":"https://aibtc.com/api/agents/<your-stx-address>"}]'
+```
+
+Expected output: `success: true`, `txid`, `feeTxid`, `feePaid` (from 20 sats). Add `--check` first to learn whether Bolt would accept it. Send nothing else from the wallet until both transactions confirm. Then go to step 7.
+
+### 4. Check your credit (credit path)
 
 ```bash
 NETWORK=mainnet bun run bolt/bolt.ts credit-balance
 ```
 
-Expected output: `credit.sats` and `credit.callsAtMinimumFee`. If it covers the calls you plan, skip to step 5.
+Expected output: `credit.sats` and `credit.callsAtMinimumFee`. If it covers the calls you plan, skip to step 6.
 
-### 4. Deposit credit
+### 5. Deposit credit
 
 Deposit only what you plan to use: 10 sats per call. The deposit itself needs no STX.
 
@@ -70,7 +84,7 @@ NETWORK=mainnet bun run bolt/bolt.ts credit-balance
 
 Expected output: `status: "success"`, then `credit.sats` including the deposit. The credit is available after that.
 
-### 5. Make the contract call
+### 6. Make the contract call on credit
 
 Example: register an ERC-8004 identity without STX.
 
@@ -85,7 +99,7 @@ Expected output: `success: true`, `txid`, `creditSpent: "10"`.
 
 Any other public function works the same way. Pass `--post-conditions` for every asset the call moves and keep `--post-condition-mode deny`.
 
-### 6. Confirm on-chain
+### 7. Confirm on-chain
 
 ```bash
 NETWORK=mainnet bun run stx/stx.ts get-transaction-status --txid <txid>
@@ -105,7 +119,7 @@ At the end of this workflow, verify:
 
 | Skill | Used For |
 |-------|---------|
-| `bolt` | Transfers, credit deposit and balance, sponsored contract calls |
+| `bolt` | Transfers, paid contract calls, credit deposit and balance, sponsored contract calls |
 | `stx` | Monitoring transaction status |
 | `wallet` | Wallet unlock for transaction signing |
 

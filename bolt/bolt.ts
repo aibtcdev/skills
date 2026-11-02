@@ -15,6 +15,8 @@ import {
   signMessageHashRsv,
   Cl,
   PostConditionMode,
+  deserializeTransaction,
+  validateStacksAddress,
   type ClarityValue,
   type PostCondition,
 } from "@stacks/transactions";
@@ -23,6 +25,7 @@ import { bytesToHex } from "@stacks/common";
 import { NETWORK, getExplorerTxUrl } from "../src/lib/config/networks.js";
 import { getAccount, getWalletAddress } from "../src/lib/services/x402.service.js";
 import { getHiroApi } from "../src/lib/services/hiro-api.js";
+import { advanceNonce } from "../src/lib/services/nonce-tracker.js";
 import { parseArgToClarityValue } from "../src/lib/transactions/clarity-values.js";
 import {
   createFungiblePostCondition,
@@ -38,6 +41,10 @@ import { printJson, handleError } from "../src/lib/utils/cli.js";
 const BOLT_API = "https://boltproto.org/api";
 const BOLT_DOCS = "https://boltproto.org/llms-full.txt";
 const BOLT_DEPLOYER = "SP3QZNX3CGT6V7PE1PBK17FCRK1TP1AT02ZHQCMVJ";
+/** How long one request to Bolt may take before it counts as unanswered. */
+const BOLT_TIMEOUT_MS = 30_000;
+/** Without --max-fee the fee follows a higher minimum from Bolt up to this multiple of the first fee. */
+const DEFAULT_MAX_FEE_MULTIPLE = 10n;
 
 /** Path segment the v1 credit routes use for the sBTC credit ledger. */
 const CREDIT_TOKEN = "sbtc-token";
@@ -46,7 +53,7 @@ const MIN_CREDIT_FEE = 10n;
 /** Above 500 bytes the minimum grows by 1 sat per 50 bytes of transaction. */
 const CREDIT_BYTES_PER_SAT = 50n;
 
-function minCreditFee(serializedTx: string): bigint {
+export function minCreditFee(serializedTx: string): bigint {
   const bytes = BigInt(Math.ceil(serializedTx.length / 2));
   const bySize = (bytes + CREDIT_BYTES_PER_SAT - 1n) / CREDIT_BYTES_PER_SAT;
   return bySize > MIN_CREDIT_FEE ? bySize : MIN_CREDIT_FEE;
@@ -123,6 +130,36 @@ function memoArg(memo: string | undefined): ClarityValue {
   return Cl.some(Cl.bufferFromUtf8(memo));
 }
 
+/** A mainnet address (SP... or SM...), optionally followed by .contract-name when `contract` is true. */
+export function assertMainnetPrincipal(value: string, flag: string, contract = false): void {
+  const [address = "", name, ...rest] = value.split(".");
+  // validateStacksAddress checks the c32 checksum (any length, testnet too): the SP/SM prefix keeps it to mainnet.
+  // The contract name only has to be present: Clarity allows `_`, and the network checks the rest.
+  const addressOk = /^S[PM]/.test(address) && validateStacksAddress(address);
+  const ok = name === undefined ? addressOk : contract && rest.length === 0 && addressOk && name.length > 0;
+  if (!ok) {
+    throw new AibtcError(
+      `${flag} must be a mainnet Stacks ${contract ? "address or contract principal" : "address"} (SP… or SM…)`,
+      "BOLT_INVALID_ARGUMENT",
+      { [flag]: value }
+    );
+  }
+}
+
+/** `--post-condition-mode`: allow or deny, in any case. */
+export function parsePostConditionMode(value: string): PostConditionMode {
+  switch (value.toLowerCase()) {
+    case "allow":
+      return PostConditionMode.Allow;
+    case "deny":
+      return PostConditionMode.Deny;
+    default:
+      throw new AibtcError("--post-condition-mode must be allow or deny", "BOLT_INVALID_ARGUMENT", {
+        "--post-condition-mode": value,
+      });
+  }
+}
+
 /** What Bolt's error body carries besides `message`. Older answers have none of it. */
 interface BoltErrorBody {
   /** Stable refusal code; see the Errors section of the API guide. */
@@ -152,10 +189,12 @@ const SUGGESTIONS: Record<string, string> = {
   BOLT_INVALID_ARGUMENT:
     "Nothing was withdrawn. Check --amount and that the active wallet owns the credit.",
   BOLT_REJECTED:
-    "Nothing was charged. The message names the network's reason: fix that, then run the command again.",
+    "Nothing was charged. The network refused the transaction; the message names its reason: fix that, then run the command again.",
+  BOLT_UNRECOGNIZED:
+    "Bolt's answer was not recognised, so the outcome is unknown and so is whether anything was charged. Check the address's recent transactions with the query skill and credit-balance or credit-ledger before running the command again.",
   BOLT_TEMPORARILY_UNAVAILABLE: "Nothing was charged. Try again later.",
   BOLT_INVALID_NONCE:
-    "Wait for this address's pending transactions to confirm, then run the command again.",
+    "A transaction with this nonce from this address is pending or already used. Wait for the address's pending transactions to confirm, then run the command again.",
   BOLT_INSUFFICIENT_CREDIT:
     "Not enough credit. For sponsor-call: run credit-deposit, wait for it to confirm, then credit-balance. For credit-withdraw: lower --amount.",
   BOLT_CONTRACT_NOT_ON_CREDIT:
@@ -170,10 +209,6 @@ const SUGGESTIONS: Record<string, string> = {
   BOLT_CALL_NOT_SENT:
     "The payment was sent and the call was not. Do not run the command again as is: fix what the message names. The fee of the call (details.credit) becomes prepaid credit once the payment (details.feeTxid) confirms; spend it with sponsor-call or take it back with credit-withdraw.",
 };
-
-/** Suggestion when nothing above applies: an answer with no known code or wording. */
-const UNRECOGNIZED_REFUSAL =
-  "The network refused the transaction. When the message names a reason, fix that before sending again.";
 
 /** Bolt's `code` -> skill error code, where one decides the other. */
 const BY_BOLT_CODE: Record<string, string> = {
@@ -211,7 +246,6 @@ const BY_MESSAGE: Array<[RegExp, string]> = [
     "BOLT_INVALID_ARGUMENT",
   ],
   [/rejected by the network/i, "BOLT_REJECTED"],
-  [/Try again|Nothing was charged/i, "BOLT_TEMPORARILY_UNAVAILABLE"],
   [/Invalid nonce/i, "BOLT_INVALID_NONCE"],
   [/Insufficient sponsor credit/i, "BOLT_INSUFFICIENT_CREDIT"],
   [/not sponsored on credit/i, "BOLT_CONTRACT_NOT_ON_CREDIT"],
@@ -221,6 +255,8 @@ const BY_MESSAGE: Array<[RegExp, string]> = [
     /serializedTx|not sponsored$|Only contract calls|signature|Invalid fee|not allowed|not supported|Post condition|too large/i,
     "BOLT_INVALID_TRANSACTION",
   ],
+  // Last: "Try again" and "Nothing was charged" also close the specific refusals above.
+  [/Try again|Nothing was charged/i, "BOLT_TEMPORARILY_UNAVAILABLE"],
 ];
 
 /** What a repeated withdrawal request says about the original one. */
@@ -241,13 +277,13 @@ function repeatedWithdrawalSuggestion(body: BoltErrorBody): string {
 }
 
 /** Map a Bolt error response to a structured error an agent can act on. */
-function boltError(status: number, message: string, body: BoltErrorBody = {}): AibtcError {
+export function boltError(status: number, message: string, body: BoltErrorBody = {}): AibtcError {
   const known =
     (body.code !== undefined ? BY_BOLT_CODE[body.code] : undefined) ??
     BY_MESSAGE.find(([pattern]) => pattern.test(message))?.[1] ??
     (body.code !== undefined ? BY_BROAD_BOLT_CODE[body.code] : undefined) ??
     (status === 429 ? "BOLT_RATE_LIMITED" : undefined);
-  const code = known ?? "BOLT_REJECTED";
+  const code = known ?? "BOLT_UNRECOGNIZED";
   const details = {
     status,
     ...(body.code !== undefined && { boltCode: body.code }),
@@ -257,21 +293,44 @@ function boltError(status: number, message: string, body: BoltErrorBody = {}): A
     ...(body.feeTxid !== undefined && { feeTxid: body.feeTxid }),
     ...(body.credit !== undefined && { credit: body.credit }),
   };
-  let suggestion = known === undefined ? UNRECOGNIZED_REFUSAL : SUGGESTIONS[code];
+  let suggestion = SUGGESTIONS[code];
   if (code === "BOLT_WITHDRAWAL_REPEATED") {
     suggestion = repeatedWithdrawalSuggestion(body);
   } else if (/feeSignature/.test(message)) {
     suggestion =
       "Nothing was charged. The fee is signed by the wallet that signed the transaction: --serialized-tx takes only a transaction the active wallet signed.";
-  } else if (code === "BOLT_INVALID_NONCE" && body.txid !== undefined) {
-    suggestion = `Bolt already broadcast a call with this nonce: txid ${body.txid}. If it is the call you meant, it is done; do not send it again.`;
   }
   return new AibtcError(message, code, details, suggestion, BOLT_DOCS);
 }
 
+/** No answer from Bolt: timeout, dropped connection, or a reply that is not Bolt's (a proxy's error page). */
+class BoltNoAnswer extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "BoltNoAnswer";
+  }
+}
+
+/** Whether a parsed body looks like one of Bolt's own answers: a string `code` or a `message`. */
+function isBoltBody(body: unknown): body is BoltErrorBody & { message?: unknown } {
+  if (typeof body !== "object" || body === null || Array.isArray(body)) return false;
+  const { code, message } = body as { code?: unknown; message?: unknown };
+  return typeof code === "string" || typeof message === "string" || Array.isArray(message);
+}
+
+/**
+ * One request to Bolt. Throws BoltNoAnswer when there is no answer from Bolt,
+ * and a mapped AibtcError when Bolt answered with a refusal (any status).
+ */
 async function boltRequest<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${BOLT_API}${path}`, init);
-  const text = await response.text();
+  let response: Response;
+  let text: string;
+  try {
+    response = await fetch(`${BOLT_API}${path}`, { ...init, signal: AbortSignal.timeout(BOLT_TIMEOUT_MS) });
+    text = await response.text();
+  } catch (error) {
+    throw new BoltNoAnswer(`No answer from Bolt (${error instanceof Error ? error.message : String(error)})`);
+  }
   let body: unknown;
   try {
     body = text ? JSON.parse(text) : undefined;
@@ -279,8 +338,21 @@ async function boltRequest<T>(path: string, init?: RequestInit): Promise<T> {
     body = undefined;
   }
   if (!response.ok) {
-    const errorBody = (body ?? {}) as BoltErrorBody & { message?: unknown };
-    const { message: raw, reason } = errorBody;
+    if (!isBoltBody(body)) {
+      // A 4xx page that is not Bolt's JSON (a proxy or firewall refusing: 403, 413, 429...) never reached Bolt.
+      if (response.status >= 400 && response.status < 500 && response.status !== 408) {
+        throw new AibtcError(
+          `HTTP ${response.status} without a Bolt error body: a proxy or firewall answered. Nothing reached Bolt; nothing was sent or charged`,
+          "BOLT_TEMPORARILY_UNAVAILABLE",
+          { status: response.status },
+          "Nothing was sent or charged. Try again later.",
+          BOLT_DOCS
+        );
+      }
+      // A 5xx page (a proxy's 502/504) or a 408 says nothing about whether Bolt got the request.
+      throw new BoltNoAnswer(`Bolt answered HTTP ${response.status} without a Bolt error body`);
+    }
+    const { message: raw, reason } = body;
     const text = Array.isArray(raw)
       ? raw.join("; ")
       : typeof raw === "string"
@@ -288,74 +360,258 @@ async function boltRequest<T>(path: string, init?: RequestInit): Promise<T> {
         : `Bolt answered HTTP ${response.status}`;
     // A refused transfer names the network's reason in a field of its own.
     const message = typeof reason === "string" && !text.includes(reason) ? `${text} (${reason})` : text;
-    throw boltError(response.status, message, errorBody);
+    throw boltError(response.status, message, body);
   }
   return body as T;
 }
 
-function boltPost<T>(path: string, body: unknown): Promise<T> {
-  return boltRequest<T>(path, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
-  });
+/** A read whose answer is unusable: nothing was sent, so nothing was charged. */
+function unreadableAnswer(message: string, details?: Record<string, unknown>): AibtcError {
+  return new AibtcError(
+    `${message}. Nothing was sent or charged`,
+    "BOLT_TEMPORARILY_UNAVAILABLE",
+    details,
+    "Nothing was sent or charged. Try again later.",
+    BOLT_DOCS
+  );
 }
 
 /**
- * POST a signed write. When no answer arrives (timeout, dropped connection)
- * nobody knows whether Bolt received it, so the very same body is sent once
- * more: Bolt runs a signed request once, and the repeat either goes through or
- * says what became of the first. `recover` turns that answer into the result
- * of the first attempt when it names its transaction.
- *
- * Never sign again here: a re-signed transaction carries a new nonce and would
- * run the operation a second time.
+ * A request that changes nothing (GET, or a check): no answer is a temporary
+ * failure, and so is a 2xx whose body is not a JSON object.
  */
-async function boltWrite<T>(
-  path: string,
-  body: unknown,
-  recover: (refusal: AibtcError) => T | undefined
-): Promise<T> {
+export async function boltRead<T extends object>(path: string, init?: RequestInit): Promise<T> {
+  let answer: unknown;
   try {
-    return await boltPost<T>(path, body);
-  } catch (first) {
-    if (first instanceof AibtcError) throw first; // Bolt answered: nothing to recover.
-    let refusal: AibtcError;
-    try {
-      return await boltPost<T>(path, body);
-    } catch (second) {
-      if (!(second instanceof AibtcError)) throw second; // Still no answer.
-      refusal = second;
-    }
-    const recovered = recover(refusal);
-    if (recovered !== undefined) return recovered;
-    if (refusal.code === "BOLT_INVALID_NONCE") {
-      // Not BOLT_INVALID_NONCE on purpose: that one makes signAndSend sign again.
-      throw new AibtcError(
-        refusal.message,
-        "BOLT_SENT_UNCONFIRMED",
-        refusal.details,
-        "The first attempt got no answer and its nonce is now taken: it was most likely broadcast. Check the address's recent transactions before running the command again.",
-        BOLT_DOCS
-      );
-    }
-    throw refusal;
+    answer = await boltRequest<unknown>(path, init);
+  } catch (error) {
+    if (!(error instanceof BoltNoAnswer)) throw error;
+    throw new AibtcError(
+      `${error.message}. Nothing was sent or charged`,
+      "BOLT_TEMPORARILY_UNAVAILABLE",
+      undefined,
+      "Nothing was sent or charged. Try again later.",
+      BOLT_DOCS
+    );
+  }
+  if (typeof answer !== "object" || answer === null || Array.isArray(answer)) {
+    throw unreadableAnswer("Bolt answered success but the reply is empty or not a JSON object");
+  }
+  return answer as T;
+}
+
+function postInit(body: unknown): RequestInit {
+  return { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) };
+}
+
+function boltPost<T>(path: string, body: unknown): Promise<T> {
+  return boltRequest<T>(path, postInit(body));
+}
+
+/** A POST that only asks (a check route): nothing is signed over, paid or broadcast, so reads' rules apply. */
+export function boltCheck<T extends object>(path: string, body: unknown): Promise<T> {
+  return boltRead<T>(path, postInit(body));
+}
+
+/** The advice every "may have gone out" error gives first. */
+const CHECK_BEFORE_SIGNING_AGAIN =
+  "Do not sign again: check the address's recent transactions with the query skill";
+
+/** Who sent a write and with which nonce, so an unconfirmed one can be looked up. */
+export interface WriteContext {
+  sender: string;
+  /** Nonce of the signed transaction (of the payment, for `call`). Absent for a withdrawal. */
+  nonce?: bigint;
+  /** The operation is on the credit ledger: `credit-ledger --nonce` can find it. */
+  credit?: boolean;
+}
+
+/** The write may have reached Bolt, and nothing says whether it did. Never sign again. */
+function sentUnconfirmed(
+  ctx: WriteContext,
+  message: string,
+  extra: Record<string, unknown> = {},
+  suggestion?: string
+): AibtcError {
+  const lookup = ctx.credit
+    ? ctx.nonce !== undefined
+      ? `, and credit-ledger --nonce ${ctx.nonce}`
+      : ", and credit-ledger"
+    : "";
+  return new AibtcError(
+    message,
+    "BOLT_SENT_UNCONFIRMED",
+    { sender: ctx.sender, ...(ctx.nonce !== undefined && { nonce: ctx.nonce.toString() }), ...extra },
+    suggestion ??
+      `Bolt may have received it. ${CHECK_BEFORE_SIGNING_AGAIN}${lookup} before running the command again.`,
+    BOLT_DOCS
+  );
+}
+
+type PostOutcome = { answer: unknown } | { refusal: AibtcError } | { noAnswer: BoltNoAnswer };
+
+async function tryPost(path: string, body: unknown): Promise<PostOutcome> {
+  try {
+    return { answer: await boltPost<unknown>(path, body) };
+  } catch (error) {
+    if (error instanceof BoltNoAnswer) return { noAnswer: error };
+    if (error instanceof AibtcError) return { refusal: error };
+    throw error;
   }
 }
 
-/** The call Bolt already broadcast for this nonce, when a nonce refusal names it. */
-function broadcastFromNonceRefusal(refusal: AibtcError): { txid: string } | undefined {
-  const txid = (refusal.details as { txid?: unknown } | undefined)?.txid;
-  return refusal.code === "BOLT_INVALID_NONCE" && typeof txid === "string" ? { txid } : undefined;
+/** The transactions Bolt already broadcast for this nonce, when a nonce refusal names them. */
+function broadcastFromNonceRefusal(refusal: AibtcError): { txid: string; feeTxid?: string } | undefined {
+  if (refusal.code !== "BOLT_INVALID_NONCE") return undefined;
+  const { txid, feeTxid } = (refusal.details ?? {}) as { txid?: unknown; feeTxid?: unknown };
+  if (typeof txid !== "string") return undefined;
+  return { txid, ...(typeof feeTxid === "string" && { feeTxid }) };
+}
+
+/**
+ * A nonce refusal turned into BOLT_SENT_UNCONFIRMED, never into BOLT_INVALID_NONCE
+ * (that one may make signAndSend sign again): when it names the transaction Bolt
+ * already broadcast, and when the first attempt got no answer and its nonce is now taken.
+ */
+function unconfirmedFromNonceRefusal(refusal: AibtcError, ctx: WriteContext, resent: boolean): AibtcError | undefined {
+  if (refusal.code !== "BOLT_INVALID_NONCE") return undefined;
+  const broadcast = broadcastFromNonceRefusal(refusal);
+  if (broadcast) {
+    return sentUnconfirmed(
+      ctx,
+      refusal.message,
+      broadcast,
+      `Bolt already broadcast a transaction with this nonce (txid ${broadcast.txid}). If it is this operation it is done; otherwise wait for it to confirm and run the command again.`
+    );
+  }
+  if (!resent) return undefined;
+  return sentUnconfirmed(
+    ctx,
+    refusal.message,
+    {},
+    `The first attempt got no answer and its nonce is now taken: it was most likely broadcast. ${CHECK_BEFORE_SIGNING_AGAIN} before running the command again.`
+  );
+}
+
+/**
+ * POST a signed write. When no answer arrives (timeout, dropped connection, a
+ * reply that is not Bolt's) nobody knows whether Bolt received it, so the very
+ * same body is sent once more: Bolt runs a signed request once, and the repeat
+ * either goes through or says what became of the first. `recover` turns that
+ * answer into the result of the first attempt when it names its transaction.
+ * Still no answer, or a 2xx that does not name the transaction, is
+ * BOLT_SENT_UNCONFIRMED.
+ *
+ * Never sign again here: a re-signed transaction carries a new nonce and would
+ * run the operation a second time.
+ *
+ * Once the same body has been sent again, any refusal `recover` does not turn
+ * into a result is BOLT_SENT_UNCONFIRMED too (details.refusal keeps its code and
+ * message): the first attempt may have gone out.
+ *
+ * A txid in the result (answered or recovered) is recorded in the local nonce
+ * tracker under `ctx.nonce`, when the write has one.
+ */
+export async function boltWrite<T extends { txid: string }>(
+  path: string,
+  body: unknown,
+  ctx: WriteContext,
+  recover?: (refusal: AibtcError) => T | undefined
+): Promise<T> {
+  const result = await postWrite(path, body, ctx, recover);
+  await trackWrite(ctx, result);
+  return result;
+}
+
+async function postWrite<T extends { txid: string }>(
+  path: string,
+  body: unknown,
+  ctx: WriteContext,
+  recover?: (refusal: AibtcError) => T | undefined
+): Promise<T> {
+  let outcome = await tryPost(path, body);
+  const first = outcome;
+  const resent = "noAnswer" in first;
+  if (resent) {
+    outcome = await tryPost(path, body);
+    if ("noAnswer" in outcome) {
+      throw sentUnconfirmed(
+        ctx,
+        `No answer from Bolt to the request (${first.noAnswer.message}) or to the same request sent again (${outcome.noAnswer.message})`
+      );
+    }
+  }
+  if ("refusal" in outcome) {
+    const refusal = outcome.refusal;
+    if (resent) {
+      const recovered = recover?.(refusal);
+      if (recovered !== undefined) return recovered;
+    }
+    const unconfirmed = unconfirmedFromNonceRefusal(refusal, ctx, resent);
+    if (unconfirmed) throw unconfirmed;
+    if (!resent) throw refusal;
+    // The first attempt got no answer and may have been broadcast: whatever the repeat was refused for
+    // (a rate limit, a balance the first attempt already spent...), the operation may be done.
+    throw sentUnconfirmed(ctx, refusal.message, { refusal: { code: refusal.code, message: refusal.message } });
+  }
+  const answer = (outcome as { answer: unknown }).answer;
+  if (typeof answer !== "object" || answer === null || typeof (answer as { txid?: unknown }).txid !== "string") {
+    throw sentUnconfirmed(
+      ctx,
+      "Bolt answered success but the reply names no transaction (empty or not JSON), so whether it was sent is unknown"
+    );
+  }
+  return answer as T;
+}
+
+/**
+ * The nonce to sign with: Hiro's possible_next_nonce, nothing else. A local
+ * tracker ahead of Hiro may hold nonces other processes took and never used,
+ * which would leave a gap and stall every later transaction.
+ */
+export function nonceFromHiro(possibleNext: unknown): bigint {
+  if (typeof possibleNext !== "number" || !Number.isSafeInteger(possibleNext) || possibleNext < 0) {
+    throw new AibtcError(
+      "Could not read the next nonce of the address",
+      "BOLT_TEMPORARILY_UNAVAILABLE",
+      undefined,
+      "Nothing was sent. Try again later."
+    );
+  }
+  return BigInt(possibleNext);
 }
 
 /** Next nonce for the account, counting its pending transactions. */
 async function nextNonce(address: string): Promise<bigint> {
   const info = await getHiroApi(NETWORK).getNonceInfo(address);
-  const executed = info.last_executed_tx_nonce as number | null;
-  const confirmedNext = executed === null ? 0 : executed + 1;
-  const mempool = info.last_mempool_tx_nonce;
-  return BigInt(mempool !== null && mempool >= confirmedNext ? mempool + 1 : confirmedNext);
+  return nonceFromHiro(info.possible_next_nonce);
+}
+
+/**
+ * Tell the local nonce tracker a nonce went out in a transaction Bolt broadcast
+ * (not through acquireNonce), so other processes sharing it do not reuse it.
+ * A tracker failure never fails the command.
+ */
+async function trackNonce(address: string, nonce: bigint, txid: string): Promise<void> {
+  try {
+    await advanceNonce(address, Number(nonce), txid);
+  } catch {
+    // Best effort: the next nonce is read from Hiro anyway.
+  }
+}
+
+/**
+ * Record what a write sent: `ctx.nonce` -> txid; a call paid in the same request
+ * (it answers `feeTxid` too) sent the payment at that nonce and the call at the next.
+ */
+async function trackWrite(ctx: WriteContext, answer: { txid: string; feeTxid?: unknown }): Promise<void> {
+  if (ctx.nonce === undefined) return;
+  if (typeof answer.feeTxid === "string") {
+    await trackNonce(ctx.sender, ctx.nonce, answer.feeTxid);
+    await trackNonce(ctx.sender, ctx.nonce + 1n, answer.txid);
+  } else {
+    await trackNonce(ctx.sender, ctx.nonce, answer.txid);
+  }
 }
 
 interface CallSpec {
@@ -385,9 +641,13 @@ async function signSponsored(
   return { serializedTx: transaction.serialize(), sender: account.address, nonce };
 }
 
-/** The nonce to sign with instead, when Bolt's refusal names one. */
-function nonceFromRefusal(error: unknown): bigint | undefined {
+/**
+ * The nonce to sign with instead, when Bolt's refusal names one. Never when the
+ * refusal names a transaction Bolt already broadcast with that nonce.
+ */
+export function nonceFromRefusal(error: unknown): bigint | undefined {
   if (!(error instanceof AibtcError) || error.code !== "BOLT_INVALID_NONCE") return undefined;
+  if (typeof (error.details as { txid?: unknown } | undefined)?.txid === "string") return undefined;
   const pending = error.message.match(/nonce (\d+) from \S+ is already pending/);
   if (pending) return BigInt(pending[1]) + 1n;
   const stale = error.message.match(/transaction has (\d+), the next nonce for \S+ is (\d+)/);
@@ -396,7 +656,7 @@ function nonceFromRefusal(error: unknown): bigint | undefined {
 }
 
 /** The minimum fee to pay instead, when Bolt's refusal names one. */
-function minimumFeeFromRefusal(error: unknown): bigint | undefined {
+export function minimumFeeFromRefusal(error: unknown): bigint | undefined {
   if (!(error instanceof AibtcError) || error.code !== "BOLT_FEE_TOO_LOW") return undefined;
   const fromBody = (error.details as { minimumFee?: unknown } | undefined)?.minimumFee;
   if (typeof fromBody === "number" && Number.isSafeInteger(fromBody)) return BigInt(fromBody);
@@ -404,19 +664,86 @@ function minimumFeeFromRefusal(error: unknown): bigint | undefined {
   return minimum ? BigInt(minimum[1]) : undefined;
 }
 
-/** Sign and send; if Bolt names a different nonce, sign again with it, once. */
-async function signAndSend<T>(
+/**
+ * Whether a fee refusal is worth one resend at the minimum Bolt names.
+ * Returns the fee to resend with, or undefined to rethrow the refusal.
+ * Throws BOLT_FEE_TOO_LOW when the minimum is above the ceiling (`maxFee`, or
+ * 10 times `firstFee`). A fee the caller chose (`userFee`) is never changed.
+ */
+export function feeToResend(
+  refusal: unknown,
+  opts: { userFee: boolean; sentFee: bigint; firstFee: bigint; maxFee?: bigint }
+): bigint | undefined {
+  if (opts.userFee) return undefined;
+  const minimum = minimumFeeFromRefusal(refusal);
+  if (minimum === undefined || minimum <= opts.sentFee) return undefined;
+  const maxFee = opts.maxFee ?? DEFAULT_MAX_FEE_MULTIPLE * opts.firstFee;
+  if (minimum > maxFee) {
+    throw new AibtcError(
+      `Bolt's minimum fee ${minimum} is above the ceiling of ${maxFee}`,
+      "BOLT_FEE_TOO_LOW",
+      { minimumFee: Number(minimum), maxFee: Number(maxFee) },
+      `Nothing was charged. Run again with --fee ${minimum} or a higher --max-fee.`,
+      BOLT_DOCS
+    );
+  }
+  return minimum;
+}
+
+/** `--max-fee` is the most the command may spend: a first fee above it is refused before anything is signed or sent. */
+export function assertFirstFeeWithinMax(fee: bigint, maxFee: bigint | undefined): void {
+  if (maxFee !== undefined && fee > maxFee) {
+    throw new AibtcError(
+      `fee ${fee} is above --max-fee ${maxFee}`,
+      "BOLT_INVALID_ARGUMENT",
+      { fee: fee.toString(), maxFee: maxFee.toString() },
+      "Nothing was signed or sent. Raise --max-fee or lower --fee.",
+      BOLT_DOCS
+    );
+  }
+}
+
+/** `--max-fee`, when given. */
+function parseMaxFee(value: string | undefined): bigint | undefined {
+  return value === undefined ? undefined : parseAmount(value, "--max-fee");
+}
+
+/**
+ * Sign and send. With `autoResign` (routes whose nonce refusals name Bolt's own
+ * broadcast, so a re-sign cannot repeat the operation) a refusal that names
+ * another nonce is answered by signing again with it, once. Otherwise a nonce
+ * refusal ends the command: the pending transaction may be an earlier attempt of
+ * this same operation. `credit` marks the operation as one on the credit ledger
+ * (the lookup hint of a BOLT_SENT_UNCONFIRMED). `sign` is injectable for tests.
+ */
+export async function signAndSend<T>(
   spec: CallSpec,
-  send: (serializedTx: string) => Promise<T>
+  send: (serializedTx: string, ctx: WriteContext) => Promise<T>,
+  opts: { autoResign?: boolean; credit?: boolean; sign?: typeof signSponsored } = {}
 ): Promise<{ result: T; sender: string; nonce: bigint }> {
-  const first = await signSponsored(spec);
+  const sign = opts.sign ?? signSponsored;
+  const first = await sign(spec);
+  const attempt = async (signed: { serializedTx: string; sender: string; nonce: bigint }) => ({
+    result: await send(signed.serializedTx, { sender: signed.sender, nonce: signed.nonce, credit: opts.credit }),
+    sender: signed.sender,
+    nonce: signed.nonce,
+  });
   try {
-    return { result: await send(first.serializedTx), sender: first.sender, nonce: first.nonce };
+    return await attempt(first);
   } catch (error) {
+    if (!(error instanceof AibtcError) || error.code !== "BOLT_INVALID_NONCE") throw error;
+    if (!opts.autoResign) {
+      throw new AibtcError(
+        error.message,
+        "BOLT_INVALID_NONCE",
+        error.details,
+        "A transaction with this nonce from this address is pending or already used, possibly an earlier attempt of this same payment. Check the address's recent transactions with the query skill and run the command again only if it is not there.",
+        BOLT_DOCS
+      );
+    }
     const retryNonce = nonceFromRefusal(error);
     if (retryNonce === undefined) throw error;
-    const second = await signSponsored(spec, retryNonce);
-    return { result: await send(second.serializedTx), sender: second.sender, nonce: second.nonce };
+    return attempt(await sign(spec, retryNonce));
   }
 }
 
@@ -433,8 +760,21 @@ function parseJsonArray(value: string, flag: string): unknown[] {
   }
 }
 
+/** A post condition amount: a string of digits or a non-negative safe integer. */
+function postConditionAmount(amount: string | number): bigint {
+  const ok = typeof amount === "string" ? /^\d+$/.test(amount) : Number.isSafeInteger(amount) && amount >= 0;
+  if (!ok) {
+    throw new AibtcError(
+      "A post condition amount must be a non-negative integer (digits only)",
+      "BOLT_INVALID_ARGUMENT",
+      { amount }
+    );
+  }
+  return BigInt(amount);
+}
+
 /** Post conditions in the same JSON shape the contract skill takes (stx, ft). */
-function parsePostCondition(pc: unknown): PostCondition {
+export function parsePostCondition(pc: unknown): PostCondition {
   const { type, principal, conditionCode, amount, asset, assetName } = (pc ?? {}) as Record<string, unknown>;
   const codes = ["eq", "gt", "gte", "lt", "lte"] as const;
   type Code = (typeof codes)[number];
@@ -449,10 +789,10 @@ function parsePostCondition(pc: unknown): PostCondition {
     );
   }
   if (type === "stx") {
-    return createStxPostCondition(principal, conditionCode as Code, BigInt(amount));
+    return createStxPostCondition(principal, conditionCode as Code, postConditionAmount(amount));
   }
   if (type === "ft" && typeof asset === "string" && typeof assetName === "string") {
-    return createFungiblePostCondition(principal, asset, assetName, conditionCode as Code, BigInt(amount));
+    return createFungiblePostCondition(principal, asset, assetName, conditionCode as Code, postConditionAmount(amount));
   }
   throw new AibtcError(
     "Post condition type must be 'stx' or 'ft' (ft also needs asset and assetName)",
@@ -483,7 +823,7 @@ program
   .action(async () => {
     try {
       requireMainnet();
-      const health = await boltRequest<{ status: string }>("/health");
+      const health = await boltRead<{ status: string }>("/health");
       printJson({
         network: NETWORK,
         endpoint: BOLT_API,
@@ -540,6 +880,7 @@ program
       if (!token) {
         throw new AibtcError("--token must be sbtc or usdcx", "BOLT_INVALID_ARGUMENT");
       }
+      assertMainnetPrincipal(opts.recipient, "--recipient", true);
       const amount = parseAmount(opts.amount, "--amount");
       const fee = opts.fee ? parseAmount(opts.fee, "--fee") : token.minFee;
       const sender = await getWalletAddress();
@@ -555,12 +896,7 @@ program
           ],
           postConditionMode: PostConditionMode.Deny,
         },
-        (serializedTx) =>
-          boltWrite<{ txid: string }>(
-            `/v2/transaction/transfer?token=${key}`,
-            { serializedTx },
-            broadcastFromNonceRefusal
-          )
+        (serializedTx, ctx) => boltWrite<{ txid: string }>(`/v2/transaction/transfer?token=${key}`, { serializedTx }, ctx)
       );
 
       printJson({
@@ -587,19 +923,21 @@ program
 
 /** Both transactions Bolt already broadcast for this nonce, when a nonce refusal names them. */
 function paidCallFromNonceRefusal(refusal: AibtcError): { txid: string; feeTxid: string } | undefined {
-  const { txid, feeTxid } = (refusal.details ?? {}) as { txid?: unknown; feeTxid?: unknown };
-  return refusal.code === "BOLT_INVALID_NONCE" && typeof txid === "string" && typeof feeTxid === "string"
-    ? { txid, feeTxid }
-    : undefined;
+  const broadcast = broadcastFromNonceRefusal(refusal);
+  return broadcast?.feeTxid === undefined ? undefined : { txid: broadcast.txid, feeTxid: broadcast.feeTxid };
+}
+
+/** The call on credit Bolt already broadcast for this nonce, when a nonce refusal names it. */
+function creditCallFromNonceRefusal(refusal: AibtcError): { txid: string } | undefined {
+  const broadcast = broadcastFromNonceRefusal(refusal);
+  return broadcast && { txid: broadcast.txid };
 }
 
 /** One attempt of `call`: `result` when the pair was sent, `checked` when it was only checked. */
-interface PaidCallAttempt {
-  result?: { txid: string; feeTxid: string };
-  checked?: { minimumFee?: number };
-  nonce: bigint;
-  total: bigint;
-}
+type PaidCallAttempt = { nonce: bigint; total: bigint } & (
+  | { checked: { minimumFee?: number }; result?: undefined }
+  | { result: { txid: string; feeTxid: string }; checked?: undefined }
+);
 
 program
   .command("call")
@@ -612,6 +950,7 @@ program
   .option("--post-condition-mode <mode>", "'deny' (default) blocks unexpected transfers; 'allow' permits any", "deny")
   .option("--post-conditions <json>", "Post conditions as JSON array (stx and ft). See SKILL.md for format.")
   .option("--fee <sats>", "Total to pay, in sats (default: the minimum, twice what the call costs on credit, from 20)")
+  .option("--max-fee <sats>", "The most this command may pay: a higher first fee is refused, and so is a higher minimum from Bolt (default ceiling for the latter: 10 times the first fee)")
   .option("--check", "Ask Bolt whether it would accept this call, without sending it: nothing is paid or broadcast")
   .action(
     async (opts: {
@@ -621,6 +960,7 @@ program
       postConditionMode: string;
       postConditions?: string;
       fee?: string;
+      maxFee?: string;
       check?: boolean;
     }) => {
       try {
@@ -646,16 +986,22 @@ program
           postConditions: opts.postConditions
             ? parseJsonArray(opts.postConditions, "--post-conditions").map(parsePostCondition)
             : [],
-          postConditionMode: opts.postConditionMode === "allow" ? PostConditionMode.Allow : PostConditionMode.Deny,
+          postConditionMode: parsePostConditionMode(opts.postConditionMode),
         };
         const chosenFee = opts.fee ? parseAmount(opts.fee, "--fee") : undefined;
+        const maxFee = parseMaxFee(opts.maxFee);
         const sender = await getWalletAddress();
 
         // The payment takes the next nonce and the call the one after it: Bolt
         // broadcasts them in that order.
+        let attemptedTotal = 0n;
+        let firstTotal: bigint | undefined;
         const send = async (nonce: bigint, fee: bigint | undefined): Promise<PaidCallAttempt> => {
           const call = await signSponsored(spec, nonce + 1n);
           const total = fee ?? PAID_CALL_MULTIPLE * minCreditFee(call.serializedTx);
+          if (firstTotal === undefined) assertFirstFeeWithinMax(total, maxFee);
+          attemptedTotal = total;
+          firstTotal ??= total;
           const payment = await signSponsored(
             {
               contractAddress: BOLT_DEPLOYER,
@@ -672,34 +1018,39 @@ program
           const body = { feeTx: payment.serializedTx, serializedTx: call.serializedTx };
           if (opts.check) {
             // Same checks as the request, up to the point where the payment would go out.
-            const checked = await boltPost<{ minimumFee?: number }>("/v2/transaction/call/check?token=sbtc", body);
+            const checked = await boltCheck<{ minimumFee?: number }>("/v2/transaction/call/check?token=sbtc", body);
             return { checked, nonce, total };
           }
           const result = await boltWrite<{ txid: string; feeTxid: string }>(
             "/v2/transaction/call?token=sbtc",
             body,
+            { sender, nonce, credit: true },
             paidCallFromNonceRefusal
           );
           return { result, nonce, total };
         };
 
         // One correction, as elsewhere: the nonce Bolt names, or (when the
-        // caller did not choose the fee) the minimum it names.
+        // caller did not choose the fee) the minimum it names, within the ceiling.
         let nonce = await nextNonce(sender);
         let sent: PaidCallAttempt;
         try {
           sent = await send(nonce, chosenFee);
         } catch (error) {
+          // Bolt's nonce here is the payment's: it refers to the first of the two transactions.
           const retryNonce = nonceFromRefusal(error);
-          const minimum = chosenFee === undefined ? minimumFeeFromRefusal(error) : undefined;
+          const minimum = feeToResend(error, {
+            userFee: chosenFee !== undefined,
+            sentFee: attemptedTotal,
+            firstFee: firstTotal ?? attemptedTotal,
+            maxFee,
+          });
           if (retryNonce === undefined && minimum === undefined) throw error;
           nonce = retryNonce ?? nonce;
           sent = await send(nonce, minimum ?? chosenFee);
         }
 
-        // On the flag, not on the shape of the answer: a check is never reported as sent.
-        const result = sent.result;
-        if (opts.check || result === undefined) {
+        if (sent.checked) {
           printJson({
             success: true,
             checked: true,
@@ -707,7 +1058,7 @@ program
             contract: opts.contract,
             function: opts.function,
             fee: sent.total.toString(),
-            ...(sent.checked?.minimumFee !== undefined && { minimumFee: String(sent.checked.minimumFee) }),
+            ...(sent.checked.minimumFee !== undefined && { minimumFee: String(sent.checked.minimumFee) }),
             unit: "sats",
             nonce: (sent.nonce + 1n).toString(),
             feeNonce: sent.nonce.toString(),
@@ -716,6 +1067,7 @@ program
           return;
         }
 
+        const result = sent.result;
         printJson({
           success: true,
           txid: result.txid,
@@ -739,6 +1091,20 @@ program
 // credit-balance
 // ---------------------------------------------------------------------------
 
+/** The balance in a credit-balance answer; a missing or malformed one is an error, not a crash. */
+export function parseCreditBalance(result: unknown): bigint {
+  const raw = (result as { balance?: unknown } | undefined)?.balance;
+  if (typeof raw === "string" && /^\d+$/.test(raw)) return BigInt(raw);
+  if (typeof raw === "number" && Number.isSafeInteger(raw) && raw >= 0) return BigInt(raw);
+  throw new AibtcError(
+    "Bolt's answer carries no valid credit balance. Nothing was sent or charged",
+    "BOLT_TEMPORARILY_UNAVAILABLE",
+    { balance: raw },
+    "Nothing was sent or charged. Try again later.",
+    BOLT_DOCS
+  );
+}
+
 program
   .command("credit-balance")
   .description(
@@ -749,8 +1115,11 @@ program
     try {
       requireMainnet();
       const address = opts.address ?? (await getWalletAddress());
-      const result = await boltRequest<{ balance: string }>(`/v1/sponsor/${CREDIT_TOKEN}/balance/${address}`);
-      const balance = BigInt(result.balance);
+      assertMainnetPrincipal(address, "--address");
+      const result = await boltRead<{ balance?: unknown }>(
+        `/v1/sponsor/${CREDIT_TOKEN}/balance/${encodeURIComponent(address)}`
+      );
+      const balance = parseCreditBalance(result);
       printJson({
         address,
         network: NETWORK,
@@ -792,7 +1161,7 @@ program
       const address = opts.address ?? (await getWalletAddress());
       const invalid = (flag: string, expected: string) =>
         new AibtcError(`${flag} must be ${expected}`, "BOLT_INVALID_ARGUMENT");
-      if (!/^S[PM][0-9A-Z]{30,40}$/.test(address)) throw invalid("--address", "a mainnet Stacks address (SP… or SM…)");
+      assertMainnetPrincipal(address, "--address");
       const query = new URLSearchParams();
       if (opts.limit !== undefined) {
         if (!/^([1-9]\d?|100)$/.test(opts.limit)) throw invalid("--limit", "an integer from 1 to 100");
@@ -813,9 +1182,12 @@ program
         query.set("hash", hash);
       }
       const suffix = query.size > 0 ? `?${query}` : "";
-      const result = await boltRequest<{ balance: string; entries: CreditLedgerEntry[] }>(
+      const result = await boltRead<{ balance: string; entries?: CreditLedgerEntry[] }>(
         `/v1/sponsor/${CREDIT_TOKEN}/ledger/${encodeURIComponent(address)}${suffix}`
       );
+      if (!Array.isArray(result.entries)) {
+        throw unreadableAnswer("Bolt's ledger answer carries no entries list");
+      }
       printJson({
         address,
         network: NETWORK,
@@ -860,12 +1232,7 @@ program
           ],
           postConditionMode: PostConditionMode.Deny,
         },
-        (serializedTx) =>
-          boltWrite<{ txid: string }>(
-            `/v1/transaction/${CREDIT_TOKEN}`,
-            { serializedTx },
-            broadcastFromNonceRefusal
-          )
+        (serializedTx, ctx) => boltWrite<{ txid: string }>(`/v1/transaction/${CREDIT_TOKEN}`, { serializedTx }, ctx)
       );
 
       printJson({
@@ -889,6 +1256,15 @@ program
 // credit-withdraw
 // ---------------------------------------------------------------------------
 
+/** The repeat of a request Bolt already paid names its payout, not the split. */
+function paidWithdrawalFromRefusal(refusal: AibtcError, amount: bigint): { txid: string; amount: string } | undefined {
+  const { withdrawal, txid } = (refusal.details ?? {}) as { withdrawal?: unknown; txid?: unknown };
+  const paid = withdrawal === "sent" || withdrawal === "confirmed";
+  return refusal.code === "BOLT_WITHDRAWAL_REPEATED" && paid && typeof txid === "string"
+    ? { txid, amount: amount.toString() }
+    : undefined;
+}
+
 program
   .command("credit-withdraw")
   .description(
@@ -910,14 +1286,8 @@ program
       const result = await boltWrite<{ txid: string; amount: string; fee?: number; received?: string }>(
         `/v1/sponsor/${CREDIT_TOKEN}/withdraw`,
         { address: account.address, amount: amount.toString(), signedAt, signature },
-        // The repeat of a request Bolt already paid names its payout, not the split.
-        (refusal) => {
-          const { withdrawal, txid } = (refusal.details ?? {}) as { withdrawal?: unknown; txid?: unknown };
-          const paid = withdrawal === "sent" || withdrawal === "confirmed";
-          return refusal.code === "BOLT_WITHDRAWAL_REPEATED" && paid && typeof txid === "string"
-            ? { txid, amount: amount.toString() }
-            : undefined;
-        }
+        { sender: account.address, credit: true },
+        (refusal) => paidWithdrawalFromRefusal(refusal, amount)
       );
       printJson({
         success: true,
@@ -945,6 +1315,19 @@ interface CreditCallAnswer {
   minimumFee?: number;
 }
 
+/** A call on credit is either sent (with its txid) or only checked. */
+type CreditCallOutcome = { sent: CreditCallAnswer & { txid: string } } | { checked: CreditCallAnswer };
+
+/** The origin nonce of a signed transaction, or undefined when the hex does not decode. */
+export function originNonce(serializedTx: string): bigint | undefined {
+  try {
+    const nonce = (deserializeTransaction(serializedTx).auth.spendingCondition as { nonce?: unknown }).nonce;
+    return typeof nonce === "bigint" ? nonce : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 program
   .command("sponsor-call")
   .description(
@@ -957,6 +1340,7 @@ program
   .option("--post-conditions <json>", "Post conditions as JSON array (stx and ft). See SKILL.md for format.")
   .option("--serialized-tx <hex>", "Hex of a contract call already signed with sponsored: true and fee 0")
   .option("--fee <sats>", "Credit to spend on this call, in sats (default: the minimum for its size, from 10)")
+  .option("--max-fee <sats>", "The most this command may spend: a higher first fee is refused, and so is a higher minimum from Bolt (default ceiling for the latter: 10 times the first fee)")
   .option("--check", "Ask Bolt whether it would accept this call, without sending it: nothing is debited or broadcast")
   .action(
     async (opts: {
@@ -967,16 +1351,19 @@ program
       postConditions?: string;
       serializedTx?: string;
       fee?: string;
+      maxFee?: string;
       check?: boolean;
     }) => {
       try {
         requireMainnet();
         const chosenFee = opts.fee ? parseAmount(opts.fee, "--fee") : undefined;
+        const maxFee = parseMaxFee(opts.maxFee);
         let fee = chosenFee;
+        let firstFee: bigint | undefined;
 
         // The fee is not inside the signed transaction, so the wallet that signed
         // it also signs the fee for it: nobody else can choose what the call costs.
-        const post = async (serializedTx: string) => {
+        const post = async (serializedTx: string, ctx: WriteContext): Promise<CreditCallOutcome> => {
           const account = await getAccount();
           const sha256 = createHash("sha256").update(Buffer.from(serializedTx, "hex")).digest("hex");
           const feeSignature = signMessageHashRsv({
@@ -986,29 +1373,35 @@ program
           const body = { serializedTx, fee: fee!.toString(), feeSignature };
           if (opts.check) {
             // Same checks as the call, up to the point where it would be charged.
-            return boltPost<CreditCallAnswer>(`/v1/sponsor/${CREDIT_TOKEN}/transaction/check`, body);
+            return { checked: await boltCheck<CreditCallAnswer>(`/v1/sponsor/${CREDIT_TOKEN}/transaction/check`, body) };
           }
-          return boltWrite<CreditCallAnswer>(
-            `/v1/sponsor/${CREDIT_TOKEN}/transaction`,
-            body,
-            broadcastFromNonceRefusal
-          );
+          return {
+            sent: await boltWrite<CreditCallAnswer & { txid: string }>(
+              `/v1/sponsor/${CREDIT_TOKEN}/transaction`,
+              body,
+              ctx,
+              creditCallFromNonceRefusal
+            ),
+          };
         };
         // Without --fee the command pays the minimum, so when Bolt names a
-        // higher one it pays that instead, once. A fee the caller chose stands.
-        const send = async (serializedTx: string) => {
+        // higher one it pays that instead, once, up to the ceiling. A fee the
+        // caller chose stands.
+        const send = async (serializedTx: string, ctx: WriteContext) => {
           fee ??= minCreditFee(serializedTx);
+          if (firstFee === undefined) assertFirstFeeWithinMax(fee, maxFee);
+          firstFee ??= fee;
           try {
-            return await post(serializedTx);
+            return await post(serializedTx, ctx);
           } catch (error) {
-            const minimum = chosenFee === undefined ? minimumFeeFromRefusal(error) : undefined;
-            if (minimum === undefined || minimum <= fee) throw error;
+            const minimum = feeToResend(error, { userFee: chosenFee !== undefined, sentFee: fee, firstFee, maxFee });
+            if (minimum === undefined) throw error;
             fee = minimum;
-            return post(serializedTx);
+            return post(serializedTx, ctx);
           }
         };
 
-        let result: CreditCallAnswer;
+        let result: CreditCallOutcome;
         let nonce: string | undefined;
         if (opts.serializedTx) {
           if (opts.contract || opts.function) {
@@ -1017,7 +1410,11 @@ program
               "BOLT_INVALID_ARGUMENT"
             );
           }
-          result = await send(opts.serializedTx.replace(/^0x/, ""));
+          const sender = await getWalletAddress();
+          const serializedTx = opts.serializedTx.replace(/^0x/, "");
+          // The nonce names the call in credit-ledger --nonce and in the tracker when the answer is lost.
+          const signedNonce = originNonce(serializedTx);
+          result = await send(serializedTx, { sender, credit: true, ...(signedNonce !== undefined && { nonce: signedNonce }) });
         } else {
           const [contractAddress, contractName] = (opts.contract ?? "").split(".");
           if (!contractAddress || !contractName || !opts.function) {
@@ -1035,25 +1432,23 @@ program
               postConditions: opts.postConditions
                 ? parseJsonArray(opts.postConditions, "--post-conditions").map(parsePostCondition)
                 : [],
-              postConditionMode:
-                opts.postConditionMode === "allow" ? PostConditionMode.Allow : PostConditionMode.Deny,
+              postConditionMode: parsePostConditionMode(opts.postConditionMode),
             },
-            send
+            send,
+            { autoResign: true, credit: true }
           );
           result = sent.result;
           nonce = sent.nonce.toString();
         }
 
-        // On the flag, not on the shape of the answer: a check is never reported as sent.
-        const txid = result.txid;
-        if (opts.check || txid === undefined) {
+        if ("checked" in result) {
           printJson({
             success: true,
             checked: true,
             sent: false,
             ...(opts.contract && { contract: opts.contract, function: opts.function }),
             fee: fee!.toString(),
-            ...(result.minimumFee !== undefined && { minimumFee: String(result.minimumFee) }),
+            ...(result.checked.minimumFee !== undefined && { minimumFee: String(result.checked.minimumFee) }),
             unit: "sats",
             ...(nonce !== undefined && { nonce }),
             network: NETWORK,
@@ -1061,15 +1456,16 @@ program
           return;
         }
 
+        const { sent: answer } = result;
         printJson({
           success: true,
-          txid: result.txid,
+          txid: answer.txid,
           ...(opts.contract && { contract: opts.contract, function: opts.function }),
           creditSpent: fee!.toString(),
           unit: "sats",
           ...(nonce !== undefined && { nonce }),
           network: NETWORK,
-          explorerUrl: getExplorerTxUrl(result.txid, NETWORK),
+          explorerUrl: getExplorerTxUrl(answer.txid, NETWORK),
         });
       } catch (error) {
         handleError(error);
@@ -1077,4 +1473,4 @@ program
     }
   );
 
-program.parse(process.argv);
+if (import.meta.main) program.parse(process.argv);

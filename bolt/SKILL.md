@@ -54,7 +54,7 @@ NETWORK=mainnet bun run bolt/bolt.ts transfer --token usdcx --recipient SP... --
 | Option | Required | Description |
 |---|---|---|
 | `--token` | yes | `sbtc` or `usdcx` |
-| `--recipient` | yes | Stacks address; it receives exactly `--amount` |
+| `--recipient` | yes | mainnet Stacks address (`SP…`/`SM…`, or a contract principal); it receives exactly `--amount` |
 | `--amount` | yes | smallest unit of the token |
 | `--fee` | no | paid to Bolt in the same token; default is the minimum (10 sats / 10,000 micro-USDCx) |
 | `--memo` | no | up to 34 bytes |
@@ -86,9 +86,10 @@ NETWORK=mainnet bun run bolt/bolt.ts call \
 | `--contract` | yes | `ADDRESS.contract-name` |
 | `--function` | yes | public function name |
 | `--args` | no | JSON array, same typed format as `sponsor-call` below |
-| `--post-condition-mode` | no | `deny` (default) or `allow` |
+| `--post-condition-mode` | no | `deny` (default) or `allow`, any case; anything else is refused |
 | `--post-conditions` | no | JSON array, same format as `sponsor-call` below |
 | `--fee` | no | total sats to pay; default is the minimum: 20, or 2 per 50 bytes when the call is above 500 bytes |
+| `--max-fee` | no | the most the command may pay: a first fee (computed or `--fee`) above it fails with `BOLT_INVALID_ARGUMENT` before anything is signed or sent; it also caps a higher minimum Bolt names (without it: 10 times the first fee) |
 | `--check` | no | ask Bolt whether it would accept the call, without sending it |
 
 Any contract call, paid in sBTC in the same request. The wallet signs two
@@ -132,7 +133,7 @@ NETWORK=mainnet bun run bolt/bolt.ts credit-balance
 NETWORK=mainnet bun run bolt/bolt.ts credit-balance --address SP...
 ```
 
-Prepaid credit of an address, in sats. No wallet needed with `--address`.
+Prepaid credit of an address, in sats. `--address` must be a mainnet address (`SP…`/`SM…`); no wallet needed with it.
 Run it after a `credit-deposit` confirms; the credit is available after that.
 
 Output: `{ address, network, credit: { sats, callsAtMinimumFee } }`
@@ -242,10 +243,11 @@ NETWORK=mainnet bun run bolt/bolt.ts sponsor-call --serialized-tx 0x8080...
 | `--contract` | with `--function` | `ADDRESS.contract-name` |
 | `--function` | with `--contract` | public function name |
 | `--args` | no | JSON array, same typed format as the `contract` skill |
-| `--post-condition-mode` | no | `deny` (default) or `allow` |
+| `--post-condition-mode` | no | `deny` (default) or `allow`, any case; anything else is refused |
 | `--post-conditions` | no | JSON array, see below |
 | `--serialized-tx` | instead of the above | hex of a contract call this wallet signed with `sponsored: true`, fee 0 |
 | `--fee` | no | sats of credit to spend; default is the minimum: 10, or 1 per 50 bytes when the transaction is above 500 bytes |
+| `--max-fee` | no | the most the command may spend: a first fee (computed or `--fee`) above it fails with `BOLT_INVALID_ARGUMENT` before anything is signed or sent; it also caps a higher minimum Bolt names (without it: 10 times the first fee) |
 | `--check` | no | ask Bolt whether it would accept the call, without sending it |
 
 Every typed argument needs both `type` and `value`, including an empty optional:
@@ -270,8 +272,10 @@ How the fee works:
 
 - Without `--fee`, the command spends the minimum: 10 sats for a transaction of
   up to 500 bytes, or 1 sat per 50 bytes above that (3,000 bytes cost 60). If
-  Bolt answers with a higher minimum, the command pays that one instead, once.
-  A `--fee` you pass is never raised.
+  Bolt answers with a higher minimum, the command pays that one instead, never
+  above `--max-fee` (without it, 10 times the first fee); a minimum above that fails
+  with `BOLT_FEE_TOO_LOW` and names the `--fee` to use. A `--fee` you pass is
+  never raised. `call` follows the same rule for its total.
 - A higher `--fee` buys priority: Bolt pays the network 50 micro-STX per sat of
   fee (this rate can change), so the minimum of 10 pays 500 micro-STX. The
   minimum is enough when the network is not congested.
@@ -291,21 +295,42 @@ that passes can still fail on-chain.
 
 Output with `--check`: `{ success, checked, sent: false, contract?, function?, fee, minimumFee, unit, nonce?, network }`
 
+## Timeouts and lost answers
+
+Every request to Bolt times out after 30 s. A write with no answer (timeout,
+dropped connection, or a reply that is not Bolt's, such as a gateway error
+page) is sent once more, unchanged; if there is still no answer, or Bolt
+answers success without naming the transaction, or refuses the repeat for any
+reason (a rate limit, a balance the first attempt already spent), the command fails with
+`BOLT_SENT_UNCONFIRMED` (`details.refusal` keeps the refusal's code and message). Never sign again then: look the address's recent
+transactions up (and `credit-ledger --nonce <n>` for `call` and
+`sponsor-call`) before running the command again. A read with no answer
+is `BOLT_TEMPORARILY_UNAVAILABLE`, and so is a 4xx that is not Bolt's own answer
+(a proxy or firewall: nothing reached Bolt, nothing is resent) or a success reply
+that is not a JSON object.
+
+Nonces: a nonce refusal that names a `txid` is never signed over
+(`BOLT_SENT_UNCONFIRMED`). Without a `txid`, `sponsor-call` and `call` sign
+again once at the nonce Bolt names; `transfer` and `credit-deposit` never do
+and fail with `BOLT_INVALID_NONCE`, because the pending transaction may be an
+earlier attempt of the same payment.
+
 ## Errors
 
 Errors are `{ error, code, suggestion, docsRef, details }` with a non-zero exit code.
 `details` has the HTTP `status` and, when Bolt sends them, `boltCode` (Bolt's own
-refusal code), `txid`, `withdrawal` and `minimumFee`.
+refusal code), `txid`, `feeTxid`, `credit`, `withdrawal` and `minimumFee`.
+`BOLT_SENT_UNCONFIRMED` has `sender` and `nonce` instead of a status.
 
 | `code` | Meaning | Charged? |
 |---|---|---|
 | `BOLT_MAINNET_ONLY` | `NETWORK` is not `mainnet` | no |
 | `BOLT_INVALID_ARGUMENT` | a flag is missing or malformed, or `--serialized-tx` was signed by another wallet | no |
 | `BOLT_INVALID_TRANSACTION` | the transaction as built was refused | no |
-| `BOLT_INVALID_NONCE` | the address has pending transactions; wait for them to confirm. `details.txid`, when present, is a call Bolt already broadcast with this nonce (and `details.feeTxid` its payment, for `call`) | no |
+| `BOLT_INVALID_NONCE` | a transaction with this nonce from this address is pending or already used; check the address's recent transactions and run again only if the operation is not there. `transfer` and `credit-deposit` never sign again on their own | no |
 | `BOLT_INSUFFICIENT_CREDIT` | credit below `--fee` | no |
 | `BOLT_INSUFFICIENT_BALANCE` | wallet below `amount + fee`, or below the `--fee` of a `call` | no |
-| `BOLT_FEE_TOO_LOW` | fee under the minimum | no |
+| `BOLT_FEE_TOO_LOW` | fee under the minimum; `details.minimumFee` names it. With `call`/`sponsor-call` and no `--fee`, also when the minimum is above `--max-fee` (`details.maxFee`): run again with `--fee <minimum>` or a higher `--max-fee` | no |
 | `BOLT_CONTRACT_NOT_ON_CREDIT` | `sponsor-call` aimed at a Bolt contract | no |
 | `BOLT_TEMPORARILY_UNAVAILABLE` | try again later | no |
 | `BOLT_RATE_LIMITED` | too many requests; wait before sending again | no |
@@ -314,9 +339,10 @@ refusal code), `txid`, `withdrawal` and `minimumFee`.
 | `BOLT_REFUND_FAILED` | the network refused the transaction and the amount was not returned; do not send again | yes |
 | `BOLT_WITHDRAWAL_REPEATED` | the same withdrawal request was sent twice; `details.withdrawal` is the outcome of the first (`sent`, `confirmed`, `not_paid`, `pending`, `unknown`) and `details.txid` its payout | no |
 | `BOLT_WITHDRAWAL_UNKNOWN` | the outcome of a withdrawal could not be confirmed; do not send again | credit held until resolved |
-| `BOLT_SENT_UNCONFIRMED` | a write got no answer, was sent again unchanged, and its nonce was already taken: the first attempt was most likely broadcast | probably |
+| `BOLT_SENT_UNCONFIRMED` | a write got no answer twice, or Bolt answered success without naming the transaction, or a nonce refusal names a transaction Bolt already broadcast (`details.txid`, `details.feeTxid`), or the resend found the nonce taken. Bolt may have the operation: never sign again; check recent transactions (`credit-ledger --nonce <n>` for credit and `call` operations) first | possibly |
 | `BOLT_CALL_UNKNOWN` | the outcome of a `sponsor-call` or `call` could not be confirmed; `details.txid` is the transaction to look up, or `details.feeTxid` when it is the payment of a `call` that has no answer; do not send again | fee held until resolved |
 | `BOLT_REJECTED` | the network refused the transaction; `error` names its reason (`BadNonce`, `TooMuchChaining`, `FeeTooLow`, `NoSuchContract`, `NoSuchPublicFunction`, `BadFunctionArgument`, …) | no |
+| `BOLT_UNRECOGNIZED` | Bolt answered in a way this skill does not recognise: the outcome, and whether anything was charged, is unknown. Check recent transactions and `credit-balance` / `credit-ledger` before running again | unknown |
 
 ## Reference
 
