@@ -127,6 +127,11 @@ const PAYMENT_ASSETS: ReadonlySet<string> = new Set(["sBTC", "STX"]);
 export interface CreateApiClientOptions {
   /** Pay with this asset when the challenge offers it; unset = first Stacks option. */
   preferredAsset?: X402PaymentAsset;
+  /**
+   * Runs on the 402 option that is about to be signed. Throw to refuse.
+   * Nothing is signed before this returns.
+   */
+  beforePay?: (accept: PaymentRequirementsV2) => Promise<void>;
 }
 
 export function resolvePreferredAsset(raw: string | undefined): X402PaymentAsset | undefined {
@@ -1262,6 +1267,10 @@ export async function createApiClient(
               `Switch to a ${paymentNetwork} wallet or use a ${account.network} endpoint.`
             )
           );
+        }
+
+        if (options.beforePay) {
+          await options.beforePay(selectedOption);
         }
 
         let transaction: StacksTransactionWire;

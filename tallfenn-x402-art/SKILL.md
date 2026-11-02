@@ -80,9 +80,9 @@ Returns three fixed seed packs from the Tall Fenn series (`cuerpos que caen junt
 NETWORK=mainnet bun run tallfenn-x402-art/tallfenn-x402-art.ts seed-pack --prompt "bodies that dance alone" --piece-version 1
 ```
 
-Generates a deterministic seed pack from `--prompt` (1–500 chars) and optional
-`--piece-version` (positive integer, default `1`). Validated locally before any
-wallet access.
+Generates a deterministic seed pack from `--prompt` (1–500 characters, no
+leading or trailing whitespace) and optional `--piece-version` (an integer from
+1 to 1000000, default `1`). Validated locally before any wallet access.
 
 ### `svg-preview` (paid — 100 sats sBTC)
 
@@ -91,11 +91,12 @@ NETWORK=mainnet bun run tallfenn-x402-art/tallfenn-x402-art.ts svg-preview --has
 ```
 
 Renders a deterministic 512x512 SVG preview (`image/svg+xml` string inside JSON)
-from a seed hash (`--hash`, exactly 64 hex characters — the SHA-256 that
-`seed-pack` and `teaser` return) and optional pipe-separated HSL/hex
-`--palette` (e.g. 'hsl(120, 72%, 58%)|hsl(240, 72%, 58%)'). The worker answers
-402 before it inspects the hash and will render any string of 16 or more
-characters, so a shorter hash is refused here and costs 0 sats.
+from a seed hash (`--hash`, exactly 64 lowercase hex characters, no surrounding
+whitespace — the SHA-256 that `seed-pack` and `teaser` return) and an optional
+pipe-separated `--palette`. Each entry must be `#RGB`, `#RRGGBB`, or
+`hsl(h, s%, l%)` (for example `hsl(120, 72%, 58%)|hsl(240, 72%, 58%)`). The
+worker answers 402 before it inspects the body, so a short hash or a
+non-color is refused here and costs 0 sats.
 
 ### `motion-timeline` (paid — 100 sats sBTC)
 
@@ -131,17 +132,21 @@ Every paid subcommand returns:
 ## Payment & Network
 
 Set `NETWORK=mainnet` when running paid subcommands so the wallet matches the
-live worker (`stacks:1`). Payments settle in sBTC via the AIBTC x402 v2
-facilitator (`https://x402-relay.aibtc.com`) to recipient
-`SP3F9T1HAHTMK5AV29Q9DK1VNHCQFH3F5T5FXKQAC` (Tall Fenn).
+live worker (`stacks:1`). The CLI signs a self-paid sBTC transfer: the sender
+pays the STX fee. The relay at `https://x402-relay.aibtc.com` settles that
+transfer and does not co-sign a fee-0 transaction. The recipient is
+`SP3F9T1HAHTMK5AV29Q9DK1VNHCQFH3F5T5FXKQAC` (Tall Fenn). The 402 names the
+asset as the canonical sBTC contract id
+`SM3VDXK3WZZSA84XXFKAFAF15NNZX32CTSG82JFQ4.sbtc-token`.
 
-Before signing, the CLI checks the worker's 402 quote against the route's known
-price (100 or 150 sats), `payTo`, asset, and `stacks:1`, and refuses a quote
-that differs. That check and the payment are two requests, so a host can still
-change its answer between them. No mode currently caps this skill. Direct mode
-cannot pay it: the worker names the asset as the bare string `sBTC`, and direct
-mode accepts only native STX or the canonical sBTC contract id. The route-price
-check in this CLI is the only guard.
+The price check runs on the same 402 that is signed. It refuses a quote whose
+amount is not the route's price (100 or 150 sats), whose `payTo` is not the
+address above, whose asset is not mainnet sBTC, or whose network is not
+`stacks:1`. Nothing is signed when that check throws. If the paid request
+fails after the transfer was sent, the error includes the txid: check that
+transaction before running the command again. `X402_PAYMENT_MODE` is ignored;
+this skill always signs in direct mode. The shared per-payment cap still
+applies on top of the exact route price.
 
 ## Reference
 
