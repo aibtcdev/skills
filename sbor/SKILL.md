@@ -21,6 +21,10 @@ Stacks and on Arc; `rate` returns both contracts.
 **No wallet. No keys. No funds. No rate limit.** This skill only reads a public
 endpoint, so it can be run freely and cannot lose anything.
 
+**Mainnet only.** Run every command with `NETWORK=mainnet`, as with the other
+mainnet-only skills. On the repo's default network (testnet) it exits with an
+error rather than returning mainnet numbers.
+
 The data is licensed **CC BY 4.0**: free to use, including commercially, with no
 permission required and no licence to negotiate. Agents are explicitly welcome.
 
@@ -38,16 +42,16 @@ Supplying below it means earning less.
 ## Commands
 
 ```bash
-bun run sbor/sbor.ts rate
-bun run sbor/sbor.ts rate --index SBOR-USD
-bun run sbor/sbor.ts rate --date 2026-09-03
-bun run sbor/sbor.ts compare --rate 4.2 --side borrow --index SBOR-USD
-bun run sbor/sbor.ts markets --index SBOR-USD
-bun run sbor/sbor.ts history --index SBOR-USD --days 30
-bun run sbor/sbor.ts chains --index SBOR-USD
-bun run sbor/sbor.ts inversions
-bun run sbor/sbor.ts context
-bun run sbor/sbor.ts method
+NETWORK=mainnet bun run sbor/sbor.ts rate
+NETWORK=mainnet bun run sbor/sbor.ts rate --index SBOR-USD
+NETWORK=mainnet bun run sbor/sbor.ts rate --date 2026-09-03
+NETWORK=mainnet bun run sbor/sbor.ts compare --rate 4.2 --side borrow --index SBOR-USD
+NETWORK=mainnet bun run sbor/sbor.ts markets --index SBOR-USD
+NETWORK=mainnet bun run sbor/sbor.ts history --index SBOR-USD --days 30
+NETWORK=mainnet bun run sbor/sbor.ts chains --index SBOR-USD
+NETWORK=mainnet bun run sbor/sbor.ts inversions
+NETWORK=mainnet bun run sbor/sbor.ts context
+NETWORK=mainnet bun run sbor/sbor.ts method
 ```
 
 ### rate
@@ -55,8 +59,8 @@ bun run sbor/sbor.ts method
 Current fixing, or any past one. Every currency index unless one is named.
 
 ```bash
-bun run sbor/sbor.ts rate --index SBOR-BTC
-bun run sbor/sbor.ts rate --date 2026-09-03
+NETWORK=mainnet bun run sbor/sbor.ts rate --index SBOR-BTC
+NETWORK=mainnet bun run sbor/sbor.ts rate --date 2026-09-03
 ```
 
 Returns borrow, supply, the all-in supply figure where protocol yield applies,
@@ -74,7 +78,7 @@ All three options are required, so pass them together in one call:
 `--rate` (a percentage, 5 means 5%), `--side` (`borrow` or `supply`) and `--index`.
 
 ```bash
-bun run sbor/sbor.ts compare --rate 4.2 --side borrow --index SBOR-USD
+NETWORK=mainnet bun run sbor/sbor.ts compare --rate 4.2 --side borrow --index SBOR-USD
 ```
 
 ```json
@@ -107,7 +111,7 @@ US repo market, secured by US government debt, which is the benchmark SBOR is
 modelled on.
 
 ```bash
-bun run sbor/sbor.ts chains --index SBOR-USD
+NETWORK=mainnet bun run sbor/sbor.ts chains --index SBOR-USD
 ```
 
 Pass `--index` to see only what is comparable. SOFR appears for the dollar index
@@ -142,7 +146,7 @@ The full methodology and integration policy.
 | `SBOR-USD` | dollar markets, USDCx and USDh |
 | `SBOR-BTC` | sBTC markets |
 | `SBOR-STX` | STX and stSTX markets |
-| `BTC-COLLATERAL-USDC` | a reference, not an index: USDC borrowed against cbBTC, WBTC or cirBTC on Morpho, on Base, Ethereum and Arc. Accepted by `rate`, `compare` and `markets`; not by `history` |
+| `BTC-COLLATERAL-USDC` | a reference, not an index: USDC borrowed against plain 1:1 bitcoin, from every eligible market SBOR reads (Morpho on several chains, Granite on Stacks). Accepted by `rate`, `compare`, `markets` and `chains`; not by `history` |
 
 Published beside them, never inside them: `poxReference`, the native bitcoin
 yield paid to STX stackers.

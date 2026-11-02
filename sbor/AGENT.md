@@ -8,6 +8,8 @@ description: Rules for using the sbor skill. When to call it before a lending ac
 
 Read-only. No wallet, no funds, no keys, nothing to lose. Call it freely.
 
+Mainnet only: run it with `NETWORK=mainnet`. With the repo's default network (testnet) it exits with an error rather than returning mainnet numbers.
+
 ## When to call it
 
 **Before any lending action.** Borrowing, supplying, looping or routing on
@@ -91,8 +93,10 @@ Every failure returns `{"error": "..."}` on stdout with a non-zero exit.
 invented is worse than no benchmark. Say the rate is unavailable and fall back to
 your own logic, or stop. Requests time out after 10 seconds.
 
+**`rate --date` reads the archive.** Its output carries `historical: true` and the archive file as `source`, and is never marked stale: it is the record of that day. An invalid or future date is an input error, not a missing rate.
+
 **`compare` is designed to refuse.** It exits non-zero on stale or unparseable
-data, an unpublished index, a missing rate, or input outside 0 to 100 percent. A
+data, a fixing dated in the future, an unpublished index, a missing rate, or input outside 0 to 100 percent. A
 non-zero exit from `compare` means there is no trustworthy answer, not that the
 rate is bad. Do not proceed as though the check passed.
 
