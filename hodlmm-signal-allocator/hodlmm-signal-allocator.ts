@@ -19,6 +19,24 @@ import * as crypto from "crypto";
 
 // ─── Constants ─────────────────────────────────────────────────────────────────
 
+// Swap fee in micro-STX (F-14 pattern, same as aibtcdev/skills#410): a
+// hardcoded 5000 uSTX was 10-50x below peer skills and an underpriced fee is
+// a stuck-head-nonce seed. Strictly validated: an empty or malformed env var
+// errors loudly instead of silently broadcasting a zero-fee tx (BigInt("")
+// is 0n).
+const DEFAULT_ALLOCATOR_FEE_USTX = 50_000n;
+const MAX_ALLOCATOR_FEE_USTX = 1_000_000n; // 1 STX sanity cap
+
+function resolveAllocatorFeeUstx(): bigint {
+  const raw = process.env.ALLOCATOR_FEE_USTX;
+  if (raw === undefined || raw === "") return DEFAULT_ALLOCATOR_FEE_USTX;
+  if (!/^\d+$/.test(raw)) throw new Error(`ALLOCATOR_FEE_USTX must be a whole number of micro-STX, got "${raw}"`);
+  const fee = BigInt(raw);
+  if (fee === 0n) throw new Error("ALLOCATOR_FEE_USTX must be > 0 (a zero-fee tx strands the head nonce)");
+  if (fee > MAX_ALLOCATOR_FEE_USTX) throw new Error(`ALLOCATOR_FEE_USTX ${raw} exceeds the ${MAX_ALLOCATOR_FEE_USTX} uSTX sanity cap`);
+  return fee;
+}
+
 const STATE_FILE = path.join(os.homedir(), ".hodlmm-signal-allocator-state.json");
 const WALLETS_FILE = path.join(os.homedir(), ".aibtc", "wallets.json");
 const WALLETS_DIR = path.join(os.homedir(), ".aibtc", "wallets");
@@ -439,7 +457,7 @@ async function executeSwap(opts: {
     network: STACKS_MAINNET,
     senderKey: opts.stxPrivateKey,
     anchorMode: AnchorMode.Any,
-    fee: 5000n,
+    fee: resolveAllocatorFeeUstx(),
   });
 
   const broadcastRes = await broadcastTransaction({ transaction: tx, network: STACKS_MAINNET });
