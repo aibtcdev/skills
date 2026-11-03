@@ -8,30 +8,72 @@
 
 import { Command } from "commander";
 import { printJson, handleError } from "../src/lib/utils/cli.js";
+import { AibtcError } from "../src/lib/utils/errors.js";
 
-const BASE_URL = "https://blip-yield.blipyield.workers.dev/api/agents";
+// Override with GENESIS_RUN_API_URL to point at a staging or self-hosted engine.
+const BASE_URL = (process.env.GENESIS_RUN_API_URL || "https://playgenesis.run/api/agents").replace(/\/+$/, "");
+const TIMEOUT_MS = 20_000;
+const ID = /^[0-9a-f]{24}$/;
 
 // ── API helpers ───────────────────────────────────────────────────────────────
 
+// Server errors keep their code (e.g. slow-down, daily-limit) so handleError prints {error, code}.
 async function call(path: string, body?: Record<string, unknown>): Promise<Record<string, unknown>> {
-  const res = await fetch(`${BASE_URL}${path}`, body === undefined ? {} : {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
-  if (!res.ok) {
-    const code = typeof data.code === "string" ? data.code : `http-${res.status}`;
-    throw new Error(`${code}: ${typeof data.error === "string" ? data.error : `API error ${res.status}`}`);
+  let res: Response;
+  try {
+    res = await fetch(`${BASE_URL}${path}`, {
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+      ...(body === undefined ? {} : { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }),
+    });
+  } catch (e) {
+    const timedOut = e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError");
+    throw new AibtcError(timedOut ? `No answer from Genesis Run in ${TIMEOUT_MS / 1000}s` : "Could not reach Genesis Run", timedOut ? "timeout" : "network", undefined, "Wait 30s, then retry once");
   }
-  return data;
+  let data: unknown;
+  try {
+    data = await res.json();
+  } catch {
+    throw new AibtcError(`Genesis Run sent a reply that isn't JSON (HTTP ${res.status})`, "bad-response", undefined, "Wait 30s, then retry once");
+  }
+  if (!data || typeof data !== "object" || Array.isArray(data)) {
+    throw new AibtcError(`Genesis Run sent an unexpected reply (HTTP ${res.status})`, "bad-response", undefined, "Wait 30s, then retry once");
+  }
+  const d = data as Record<string, unknown>;
+  if (!res.ok || typeof d.error === "string") {
+    const code = typeof d.code === "string" ? d.code : `http-${res.status}`;
+    throw new AibtcError(typeof d.error === "string" ? d.error : `API error ${res.status}`, code, undefined, "See the Error Handling table in genesis-run/AGENT.md");
+  }
+  return d;
 }
 
 function keyOf(opts: { key?: string }): string {
-  const key = opts.key ?? process.env.GENESIS_RUN_KEY ?? "";
-  if (!/^[0-9a-f]{64}$/.test(key)) throw new Error("Set GENESIS_RUN_KEY (or --key) to the key from `join`");
+  const key = (opts.key || process.env.GENESIS_RUN_KEY || "").trim().toLowerCase();
+  if (!/^[0-9a-f]{64}$/.test(key)) throw new AibtcError("Set GENESIS_RUN_KEY to the key from `join`", "bad-key", undefined, "Check GENESIS_RUN_KEY; run `join` only if this agent never joined");
   return key;
 }
+
+function idOf(id: string): string {
+  const v = id.trim().toLowerCase();
+  if (!ID.test(v)) throw new AibtcError("--id must be a 24-character id", "bad-id", undefined, "Copy the id exactly from the earlier output");
+  return v;
+}
+
+function parseLoad(s: string): string[] {
+  return s.split(",").map((x) => x.trim().toUpperCase()).filter(Boolean);
+}
+
+// One wrapper for every subcommand: the CLI's own success flag wins over any server field.
+function run<T>(fn: (opts: T) => Promise<Record<string, unknown>>) {
+  return async (opts: T) => {
+    try {
+      printJson({ ...(await fn(opts)), success: true });
+    } catch (e) {
+      handleError(e);
+    }
+  };
+}
+
+const KEY_HELP = "Bot Cup key; prefer the GENESIS_RUN_KEY env var so the key stays out of shell history";
 
 // ── Program ───────────────────────────────────────────────────────────────────
 
@@ -45,13 +87,7 @@ program
 program
   .command("rules")
   .description("Moves, skills, HP, Hash and the engine's rules hash")
-  .action(async () => {
-    try {
-      printJson({ success: true, ...(await call("/rules")) });
-    } catch (e) {
-      handleError(e);
-    }
-  });
+  .action(run(() => call("/rules")));
 
 program
   .command("join")
@@ -59,79 +95,44 @@ program
   .requiredOption("--name <name>", "2-20 chars: letters, numbers, . - _")
   .option("--about <text>", "One line about your agent (max 140 chars)")
   .option("--url <url>", "https link to your agent")
-  .action(async (opts: { name: string; about?: string; url?: string }) => {
-    try {
-      const out = await call("/join", { name: opts.name, agent: true, about: opts.about ?? "", url: opts.url ?? "" });
-      printJson({ success: true, ...out });
-    } catch (e) {
-      handleError(e);
-    }
-  });
+  .action(run((opts: { name: string; about?: string; url?: string }) =>
+    call("/join", { name: opts.name, agent: true, about: opts.about ?? "", url: opts.url ?? "" })));
 
 program
   .command("duel")
   .description("Start a duel against Training Blip")
   .requiredOption("--load <skills>", "3 different skills, comma separated")
-  .option("--key <key>", "Bot Cup key (default: GENESIS_RUN_KEY)")
-  .action(async (opts: { load: string; key?: string }) => {
-    try {
-      const load = opts.load.split(",").map((s) => s.trim().toUpperCase()).filter(Boolean);
-      printJson({ success: true, ...(await call("/duel", { key: keyOf(opts), load })) });
-    } catch (e) {
-      handleError(e);
-    }
-  });
+  .option("--key <key>", KEY_HELP)
+  .action(run((opts: { load: string; key?: string }) => call("/duel", { key: keyOf(opts), load: parseLoad(opts.load) })));
 
 program
   .command("move")
   .description("Play one round of a duel")
   .requiredOption("--id <id>", "Duel id")
   .requiredOption("--move <move>", "One of the duel's legal moves")
-  .option("--key <key>", "Bot Cup key (default: GENESIS_RUN_KEY)")
-  .action(async (opts: { id: string; move: string; key?: string }) => {
-    try {
-      printJson({ success: true, ...(await call("/move", { key: keyOf(opts), id: opts.id, move: opts.move.toUpperCase() })) });
-    } catch (e) {
-      handleError(e);
-    }
-  });
+  .option("--key <key>", KEY_HELP)
+  .action(run((opts: { id: string; move: string; key?: string }) =>
+    call("/move", { key: keyOf(opts), id: idOf(opts.id), move: opts.move.trim().toUpperCase() })));
 
 program
   .command("watch")
   .description("Read any duel")
   .requiredOption("--id <id>", "Duel id")
-  .action(async (opts: { id: string }) => {
-    try {
-      if (!/^[0-9a-f]{24}$/.test(opts.id)) throw new Error("--id must be a 24-character duel id");
-      printJson({ success: true, ...(await call(`/duel/${opts.id}`)) });
-    } catch (e) {
-      handleError(e);
-    }
-  });
+  .action(run(async (opts: { id: string }) => call(`/duel/${idOf(opts.id)}`)));
 
 program
   .command("board")
   .description("Weekly Bot Cup board")
   .option("--week <date>", "Monday of the week, YYYY-MM-DD (default: this week)")
-  .action(async (opts: { week?: string }) => {
-    try {
-      if (opts.week && !/^\d{4}-\d{2}-\d{2}$/.test(opts.week)) throw new Error("--week must be YYYY-MM-DD");
-      printJson({ success: true, ...(await call(opts.week ? `/board?week=${opts.week}` : "/board")) });
-    } catch (e) {
-      handleError(e);
-    }
-  });
+  .action(run(async (opts: { week?: string }) => {
+    if (opts.week && !/^\d{4}-\d{2}-\d{2}$/.test(opts.week)) throw new AibtcError("--week must be YYYY-MM-DD", "bad-week");
+    return call(opts.week ? `/board?week=${opts.week}` : "/board");
+  }));
 
 program
   .command("stats")
   .description("Agent and duel counts (agents only)")
-  .action(async () => {
-    try {
-      printJson({ success: true, ...(await call("/stats")) });
-    } catch (e) {
-      handleError(e);
-    }
-  });
+  .action(run(() => call("/stats")));
 
 // ── Bot vs bot ────────────────────────────────────────────────────────────────
 
@@ -140,67 +141,38 @@ program
   .description("Post a challenge for another bot (or one bot by name)")
   .requiredOption("--load <skills>", "3 different skills, comma separated")
   .option("--to <name>", "Only this bot may accept")
-  .option("--key <key>", "Bot Cup key (default: GENESIS_RUN_KEY)")
-  .action(async (opts: { load: string; to?: string; key?: string }) => {
-    try {
-      const load = opts.load.split(",").map((s) => s.trim().toUpperCase()).filter(Boolean);
-      printJson({ success: true, ...(await call("/challenge", { key: keyOf(opts), load, ...(opts.to ? { to: opts.to } : {}) })) });
-    } catch (e) {
-      handleError(e);
-    }
-  });
+  .option("--key <key>", KEY_HELP)
+  .action(run((opts: { load: string; to?: string; key?: string }) =>
+    call("/challenge", { key: keyOf(opts), load: parseLoad(opts.load), ...(opts.to ? { to: opts.to } : {}) })));
 
 program
   .command("open")
   .description("Challenges waiting for a rival")
-  .action(async () => {
-    try {
-      printJson({ success: true, ...(await call("/open")) });
-    } catch (e) {
-      handleError(e);
-    }
-  });
+  .action(run(() => call("/open")));
 
 program
   .command("accept")
   .description("Accept a challenge; the match starts")
   .requiredOption("--id <id>", "Challenge id")
   .requiredOption("--load <skills>", "3 different skills, comma separated")
-  .option("--key <key>", "Bot Cup key (default: GENESIS_RUN_KEY)")
-  .action(async (opts: { id: string; load: string; key?: string }) => {
-    try {
-      const load = opts.load.split(",").map((s) => s.trim().toUpperCase()).filter(Boolean);
-      printJson({ success: true, ...(await call("/accept", { key: keyOf(opts), id: opts.id, load })) });
-    } catch (e) {
-      handleError(e);
-    }
-  });
+  .option("--key <key>", KEY_HELP)
+  .action(run((opts: { id: string; load: string; key?: string }) =>
+    call("/accept", { key: keyOf(opts), id: idOf(opts.id), load: parseLoad(opts.load) })));
 
 program
   .command("play")
   .description("Send your move for this round of a bot match (hidden until your rival moves)")
   .requiredOption("--id <id>", "Match id")
   .requiredOption("--move <move>", "One of your legal moves")
-  .option("--key <key>", "Bot Cup key (default: GENESIS_RUN_KEY)")
-  .action(async (opts: { id: string; move: string; key?: string }) => {
-    try {
-      printJson({ success: true, ...(await call("/play", { key: keyOf(opts), id: opts.id, move: opts.move.toUpperCase() })) });
-    } catch (e) {
-      handleError(e);
-    }
-  });
+  .option("--key <key>", KEY_HELP)
+  .action(run((opts: { id: string; move: string; key?: string }) =>
+    call("/play", { key: keyOf(opts), id: idOf(opts.id), move: opts.move.trim().toUpperCase() })));
 
 program
   .command("match")
   .description("Your view of a bot match: whose turn, legal moves, log")
   .requiredOption("--id <id>", "Match id")
-  .option("--key <key>", "Bot Cup key (default: GENESIS_RUN_KEY)")
-  .action(async (opts: { id: string; key?: string }) => {
-    try {
-      printJson({ success: true, ...(await call("/match", { key: keyOf(opts), id: opts.id })) });
-    } catch (e) {
-      handleError(e);
-    }
-  });
+  .option("--key <key>", KEY_HELP)
+  .action(run((opts: { id: string; key?: string }) => call("/match", { key: keyOf(opts), id: idOf(opts.id) })));
 
 program.parse(process.argv);

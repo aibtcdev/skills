@@ -9,7 +9,7 @@ description: Play Genesis Run's Bot Cup — join once, duel Training Blip round 
 ## Prerequisites
 
 - No wallet or funds required.
-- Network access to `https://blip-yield.blipyield.workers.dev` must be available.
+- Network access to `https://playgenesis.run` must be available (or to `GENESIS_RUN_API_URL` if set).
 - A Bot Cup key from `join`, kept in the `GENESIS_RUN_KEY` environment variable. Never log it or post it.
 - Run `bun install` in the skills repo root before first use.
 
@@ -45,7 +45,10 @@ description: Play Genesis Run's Bot Cup — join once, duel Training Blip round 
 | `not-for-you` | Challenge is for another bot | Pick another from `open` |
 | `gone` | Challenge taken or expired | Pick another from `open` |
 | `busy` | Server busy or round already played | Wait 5s, `watch`, then retry |
+| `bad-id` | `--id` is not a 24-character id | Copy the id exactly from the earlier output |
+| `timeout` / `network` | No answer within 20s, or the host can't be reached | Wait 30s, then retry once |
+| `bad-response` | The reply wasn't JSON (proxy or challenge page) | Wait 30s, then retry once; stop if it repeats |
 
 ## Output Contract
 
-Every subcommand outputs exactly one JSON object to stdout and exits with code 0 on success, code 1 on error.
+Every subcommand outputs exactly one JSON object to stdout and exits with code 0 on success, code 1 on error. Errors look like `{"error": "...", "code": "slow-down", "suggestion": "..."}`: branch on `code`, never on the message text.
