@@ -431,6 +431,17 @@ export async function writeStateFile(file: string, value: unknown): Promise<void
 export interface DedupEntry {
   txid: string;
   timestamp: number;
+  /**
+   * What is known about the payment behind `txid`.
+   *
+   * `"pending"` is written when the transfer is signed but the outcome is not
+   * yet observed; `"settled"` once the paid request is known to have been
+   * delivered (or was cleared outright, in which case the record is deleted).
+   * A pending entry survives TTL expiry: the point of the record is to answer
+   * "did this already go through?", and forgetting a still-unresolved payment
+   * after 15 minutes lets a retry pay a second time (#460).
+   */
+  status?: "pending" | "settled";
 }
 
 /** Deterministic JSON: object keys sorted at every depth, so `{a,b}` and `{b,a}` hash alike. */
@@ -446,7 +457,14 @@ export function canonicalJson(value: unknown): string {
   return JSON.stringify(value);
 }
 
-/** Headers that vary per attempt or are transport plumbing, never request identity. */
+/**
+ * Headers that vary per attempt or are transport plumbing, never request identity.
+ *
+ * The first six are obvious. The rest are the per-attempt values a retry
+ * regenerates: request ids, idempotency keys invented client-side, tracing
+ * headers, cache directives. Hashing them made every retry a "new" request,
+ * so the guard never fired on the one case it exists for (#460).
+ */
 const NON_IDENTITY_HEADERS = new Set([
   "payment-signature",
   "content-length",
@@ -454,6 +472,23 @@ const NON_IDENTITY_HEADERS = new Set([
   "accept-encoding",
   "connection",
   "user-agent",
+  // Per-attempt identifiers: regenerated on retry by most HTTP wrappers.
+  "x-request-id",
+  "x-correlation-id",
+  "x-trace-id",
+  "x-amzn-trace-id",
+  "traceparent",
+  "tracestate",
+  "idempotency-key",
+  "x-idempotency-key",
+  // Caching / negotiation plumbing.
+  "cache-control",
+  "pragma",
+  "if-none-match",
+  "if-modified-since",
+  "accept",
+  "accept-language",
+  "date",
 ]);
 
 /**
@@ -513,7 +548,18 @@ function parseDedupEntry(file: string, key: string, value: unknown): DedupEntry 
   ) {
     throw new Error(`Refusing to trust malformed dedup entry ${key.slice(0, 8)}… at ${file}; move the file aside to continue.`);
   }
-  return { txid: value.txid, timestamp: value.timestamp };
+  const status = (value as { status?: unknown }).status;
+  if (status !== undefined && status !== "pending" && status !== "settled") {
+    throw new Error(`Refusing to trust malformed dedup entry ${key.slice(0, 8)}… at ${file}; unknown status.`);
+  }
+  // Entries written before this field existed carry no status. Their outcome is
+  // unknown, so they are treated as pending: refusing a possible double-pay is
+  // cheaper than a second transfer.
+  return {
+    txid: value.txid,
+    timestamp: value.timestamp,
+    status: (status as DedupEntry["status"]) ?? "pending",
+  };
 }
 
 /** Return the fresh prior entry for `key`, or null. */
@@ -521,19 +567,33 @@ export async function checkDedup(key: string, policy: DirectPaymentPolicy): Prom
   const state = await readStateFile(policy.dedupStateFile);
   if (!(key in state)) return null;
   const entry = parseDedupEntry(policy.dedupStateFile, key, state[key]);
-  if (Date.now() - entry.timestamp > policy.dedupTtlMs) return null;
+  // A SETTLED payment is remembered for the TTL: after that, the same request is
+  // a deliberate new purchase. A PENDING payment is never forgotten by age — its
+  // outcome is still unknown, and that is exactly when a retry would pay twice.
+  if (entry.status !== "pending" && Date.now() - entry.timestamp > policy.dedupTtlMs) {
+    return null;
+  }
   return entry;
 }
 
 /** Record a signed payment for `key`; prunes expired entries while writing. */
-export async function recordDedup(key: string, txid: string, policy: DirectPaymentPolicy): Promise<void> {
+export async function recordDedup(
+  key: string,
+  txid: string,
+  policy: DirectPaymentPolicy,
+  status: DedupEntry["status"] = "pending"
+): Promise<void> {
   const state = await readStateFile(policy.dedupStateFile);
   const now = Date.now();
   for (const [k, v] of Object.entries(state)) {
     const entry = parseDedupEntry(policy.dedupStateFile, k, v);
-    if (now - entry.timestamp > policy.dedupTtlMs) delete state[k];
+    // Pruning is what forgot a still-pending payment at minute 16 (#460).
+    // Only a settled entry ages out.
+    if (entry.status !== "pending" && now - entry.timestamp > policy.dedupTtlMs) {
+      delete state[k];
+    }
   }
-  state[key] = { txid, timestamp: now } satisfies DedupEntry;
+  state[key] = { txid, timestamp: now, status } satisfies DedupEntry;
   await writeStateFile(policy.dedupStateFile, state);
 }
 

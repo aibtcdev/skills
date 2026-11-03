@@ -881,10 +881,14 @@ describe("createApiClient payment modes", () => {
     expect(f.paidRequests).toHaveLength(1);
   });
 
-  test("a different request is not a duplicate; the guard clears after the TTL", async () => {
+  test("a different request is not a duplicate, and an unresolved payment outlives the TTL", async () => {
     process.env.X402_PAYMENT_MODE = "direct";
     process.env.X402_DEDUP_TTL_SECONDS = "1";
-    // Failed replays leave the outcome ambiguous, so the records stay armed until the TTL.
+    // A 500 leaves the outcome ambiguous: the transfer was signed and may have
+    // been broadcast, so the record must stay armed. It USED to age out with the
+    // TTL, which meant a retry after 15 minutes paid a second time for a payment
+    // whose fate was still unknown (skills #460). A different request is still
+    // allowed through, which is the first half of this test.
     const f = await up({ paid: { kind: "http", status: 500, body: { error: "boom" } } });
     const a = await createApiClient(f.origin, "test.dedup-a");
     await rejection(a.request({ method: "GET", url: "/paid", params: { slug: "stacks" } }));
@@ -894,8 +898,10 @@ describe("createApiClient payment modes", () => {
 
     await new Promise((r) => setTimeout(r, 1100));
     const c = await createApiClient(f.origin, "test.dedup-c");
-    await rejection(c.request({ method: "GET", url: "/paid", params: { slug: "stacks" } }));
-    expect(f.paidRequests).toHaveLength(3);
+    // Same request, TTL elapsed, outcome still unknown -> refused, not re-paid.
+    const blocked = await rejection(c.request({ method: "GET", url: "/paid", params: { slug: "stacks" } }));
+    expect(blocked).toBeInstanceOf(DuplicatePaymentError);
+    expect(f.paidRequests).toHaveLength(2);
   });
 
   test("the daily spend ledger refuses once today's cap is reached, across client instances", async () => {
