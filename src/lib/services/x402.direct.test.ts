@@ -21,6 +21,7 @@ import {
   mnemonicToAccount,
   parseDirectPaymentAmount,
   resolveDirectPaymentAsset,
+  resolveSponsoredPaymentTokenType,
   resolveDirectPaymentPolicy,
   resolvePaymentMode,
   resolvePreferredAsset,
@@ -286,6 +287,31 @@ describe("resolvePaymentMode", () => {
   });
 });
 
+describe("resolveSponsoredPaymentTokenType (#419)", () => {
+  test("pays STX, the canonical sBTC id, or the bare sbtc symbol", () => {
+    expect(resolveSponsoredPaymentTokenType("STX", network)).toBe("STX");
+    expect(resolveSponsoredPaymentTokenType("stx", network)).toBe("STX");
+    expect(resolveSponsoredPaymentTokenType(SBTC, network)).toBe("sBTC");
+    expect(resolveSponsoredPaymentTokenType(`${SBTC}::sbtc-token`, network)).toBe("sBTC");
+    expect(resolveSponsoredPaymentTokenType("sbtc", network)).toBe("sBTC");
+    expect(resolveSponsoredPaymentTokenType("sBTC", network)).toBe("sBTC");
+  });
+
+  test("refuses other sBTC deployments and other tokens instead of paying the pin or STX", () => {
+    const other = network === "mainnet" ? getContracts("testnet").SBTC_TOKEN : getContracts("mainnet").SBTC_TOKEN;
+    for (const bad of [
+      "SP2XYZ.sbtc-token", // a different sBTC deployment: was paid in our pinned token
+      other,
+      "SP2XYZ.usdcx::usdcx", // a different SIP-010: was offered as STX for the same raw amount
+      "USDC",
+      " STX",
+      "",
+    ]) {
+      expect(() => resolveSponsoredPaymentTokenType(bad, network)).toThrow(/x402 payment refused/);
+    }
+  });
+});
+
 describe("resolveDirectPaymentAsset / parseDirectPaymentAmount", () => {
   test("accepts native STX and the canonical sBTC token only", () => {
     expect(resolveDirectPaymentAsset("STX", network)).toEqual({ kind: "STX" });
@@ -422,7 +448,7 @@ describe("createApiClient payment modes", () => {
     return fake;
   }
 
-  test("default (sponsored) mode is unchanged: sponsored auth, fee 0, no direct metadata", async () => {
+  test("default (sponsored) mode: sponsored auth, fee 0, pinned sBTC post-condition, no direct metadata", async () => {
     const f = await up();
     const api = await createApiClient(f.origin, "test.sponsored");
     const response = await api.request({ method: "GET", url: "/paid" });
@@ -432,7 +458,10 @@ describe("createApiClient payment modes", () => {
     const { auth, tx } = decodeTx(f.paidRequests[0]);
     expect(auth.authType).toBe(AuthType.Sponsored);
     expect(auth.spendingCondition.fee).toBe(0n);
-    expect(tx.postConditionMode).toBe(PostConditionMode.Allow);
+    // sBTC is pinned with deny mode + one exact-amount FT post-condition.
+    expect(tx.postConditionMode).toBe(PostConditionMode.Deny);
+    const pcs = tx.postConditions as unknown as { values?: unknown[] } | unknown[];
+    expect(Array.isArray(pcs) ? pcs.length : pcs.values?.length).toBe(1);
     expect(getDirectPaymentMetadata(response)).toEqual({
       mode: undefined,
       txid: undefined,
