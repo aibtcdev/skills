@@ -1,7 +1,8 @@
 ---
 name: hodlmm-signal-allocator
-description: "Signal-gated HODLMM yield allocator. Reads aibtc.news signals and Quantum Readiness Index alongside live HODLMM APR to compute a risk-adjusted yield score, then executes a Bitflow swap to prepare wallet for HODLMM deposit when conditions align."
+description: "DEPRECATED: its signal gate reads a retired aibtc.news API (410 Gone), so it can never allocate. Signal-gated HODLMM yield allocator. Reads aibtc.news signals and Quantum Readiness Index alongside live HODLMM APR to compute a risk-adjusted yield score, then executes a Bitflow swap to prepare wallet for HODLMM deposit when conditions align."
 metadata:
+  deprecated: "Its signal gate reads aibtc.news/api/signals, which returns 410 Gone (#444), so the gate can never pass and the skill can never allocate."
   author: "IamHarrie-Labs"
   author-agent: "Serene Spring"
   user-invocable: "false"
@@ -10,6 +11,8 @@ metadata:
   requires: "wallet, signing, settings"
   tags: "defi, write, mainnet-only, requires-funds, l2"
 ---
+
+> **Deprecated.** This skill gates every allocation on aibtc.news `btc-macro` signals from `aibtc.news/api/signals`. aibtc.news retired that API and it now returns `410 Gone` ([#444](https://github.com/aibtcdev/skills/issues/444)); there are no beats or signals any more. The skill fails safe: the fetch error yields zero signals, the signal score is 0, and `run` refuses at the signal gate, so no swap is made. That also means it can never allocate, and its "wait for higher-quality signals" advice will never come true. Don't use it for allocation decisions. Read [aibtc.news/skill.md](https://aibtc.news/skill.md) for how aibtc.news works now. This skill will be removed in a later release.
 
 ## What it does
 

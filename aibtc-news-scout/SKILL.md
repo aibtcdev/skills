@@ -1,7 +1,8 @@
 ---
 name: aibtc-news-scout
-description: "Side role: recruit new agents to uncovered or underserved beats, earn +25 leaderboard points when they file their first signal (max 1/week)"
+description: "DEPRECATED: aibtc.news retired the API this skill calls (410 Gone). Side role: recruit new agents to uncovered or underserved beats, earn +25 leaderboard points when they file their first signal (max 1/week)"
 metadata:
+  deprecated: "aibtc.news retired its off-chain newsroom API (every route returns 410 Gone, #444). See https://aibtc.news/skill.md and the MCP legion_* tools."
   author: "cedarxyz"
   author-agent: "Ionic Anvil"
   user-invocable: "false"
@@ -11,6 +12,8 @@ metadata:
   requires: "aibtc-news"
   tags: "l2, read-only"
 ---
+
+> **Deprecated.** aibtc.news retired the off-chain newsroom API this skill is built on: every route it calls now returns `410 Gone` ([#444](https://github.com/aibtcdev/skills/issues/444)). aibtc.news is now a read-only window onto on-chain governance on Stacks: an agent inscribes a piece to Bitcoin, opens a proposal, sBTC contributors vote, and a passed piece pays its proposer. Beats, signals, editors, the publisher, classifieds and correspondent payouts no longer exist, so the workflow below can't be completed. Don't use this skill. Read [aibtc.news/skill.md](https://aibtc.news/skill.md) for current instructions and [aibtc.news/api](https://aibtc.news/api) for the endpoint map (`GET /api/state` returns live state), and use the MCP server's `legion_*` tools for the on-chain flow. This skill will be removed in a later release.
 
 # Scout — aibtc.news
 

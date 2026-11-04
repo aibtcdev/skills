@@ -202,6 +202,28 @@ export function resolveDirectPaymentAsset(asset: string, network: Network): Dire
   );
 }
 
+/**
+ * Token for a SPONSORED payment, fail-closed (#419). Same rule as
+ * resolveDirectPaymentAsset (native STX, or exactly the canonical sBTC id),
+ * plus the bare `sbtc` symbol for compatibility, since it can only mean the
+ * canonical token. Anything else is refused instead of being paid in our
+ * pinned sBTC, or silently as STX for the same raw amount.
+ */
+export function resolveSponsoredPaymentTokenType(asset: string, network: Network): "STX" | "sBTC" {
+  if (typeof asset === "string" && /^sbtc$/i.test(asset)) {
+    return "sBTC";
+  }
+  try {
+    return resolveDirectPaymentAsset(asset, network).kind;
+  } catch {
+    const canonical = getContracts(network).SBTC_TOKEN;
+    throw new Error(
+      `x402 payment refused: endpoint asks for asset "${asset || "(empty)"}" but this client ` +
+        `only pays in native STX or the canonical sBTC token ${canonical} on ${network}.`
+    );
+  }
+}
+
 export function parseDirectPaymentAmount(
   amount: string,
   asset: DirectPaymentAsset,
@@ -350,6 +372,36 @@ export async function checkSponsoredPaymentBalance(
     amount.toString(),
     shortfall.toString()
   );
+}
+
+/**
+ * Sign (do not broadcast) a sponsored sBTC transfer for an x402 payment: fee 0,
+ * the relay or the endpoint's fee payer pays gas. The amount is known at build
+ * time, so it is pinned: deny mode plus an exact-amount FT post-condition means
+ * a misbehaving token contract can't move more than the quoted payment (same
+ * as the direct builder and aibtc-mcp-server's sponsored path).
+ */
+export async function buildSponsoredSbtcTransfer(
+  account: Account,
+  payTo: string,
+  amount: bigint
+): Promise<StacksTransactionWire> {
+  const contracts = getContracts(account.network);
+  const { address: contractAddress, name: contractName } = parseContractId(contracts.SBTC_TOKEN);
+  return makeContractCall({
+    contractAddress,
+    contractName,
+    functionName: "transfer",
+    functionArgs: [uintCV(amount), principalCV(account.address), principalCV(payTo), noneCV()],
+    senderKey: account.privateKey,
+    network: getStacksNetwork(account.network),
+    postConditionMode: PostConditionMode.Deny,
+    postConditions: [
+      createFungiblePostCondition(account.address, contracts.SBTC_TOKEN, "sbtc-token", "eq", amount),
+    ],
+    sponsored: true,
+    fee: 0n,
+  });
 }
 
 /**
@@ -1254,34 +1306,15 @@ export async function createApiClient(
           directRequestKey = requestKey;
           transaction = directBuild.transaction;
         } else {
-        // Build a sponsored signed transaction (relay pays gas; fee: 0n)
-        const tokenType = detectTokenType(selectedOption.asset);
+        // Build a sponsored signed transaction (relay pays gas; fee: 0n).
+        // Refuse any asset we would not pay exactly as asked (#419).
+        const tokenType = resolveSponsoredPaymentTokenType(selectedOption.asset, account.network);
         const amount = BigInt(selectedOption.amount);
         const networkName = getStacksNetwork(account.network);
         await checkSponsoredPaymentBalance(account, tokenType, amount);
 
         if (tokenType === "sBTC") {
-          const contracts = getContracts(account.network);
-          const { address: contractAddress, name: contractName } = parseContractId(
-            contracts.SBTC_TOKEN
-          );
-
-          transaction = await makeContractCall({
-            contractAddress,
-            contractName,
-            functionName: "transfer",
-            functionArgs: [
-              uintCV(amount),
-              principalCV(account.address),
-              principalCV(selectedOption.payTo),
-              noneCV(),
-            ],
-            senderKey: account.privateKey,
-            network: networkName,
-            postConditionMode: PostConditionMode.Allow,
-            sponsored: true,
-            fee: 0n,
-          });
+          transaction = await buildSponsoredSbtcTransfer(account, selectedOption.payTo, amount);
         } else {
           transaction = await makeSTXTokenTransfer({
             recipient: selectedOption.payTo,
@@ -1557,7 +1590,9 @@ export async function getAccount(): Promise<Account> {
     throw new Error(
       "No wallet available. Either unlock a managed wallet " +
         "(bun run wallet/wallet.ts unlock --password <password>) " +
-        "or set CLIENT_MNEMONIC environment variable."
+        "or set CLIENT_MNEMONIC environment variable. " +
+        "If you unlocked earlier, the session may have auto-locked " +
+        "(autoLockTimeout in ~/.aibtc/config.json, default 15 minutes)."
     );
   }
   return mnemonicToAccount(mnemonic, NETWORK);

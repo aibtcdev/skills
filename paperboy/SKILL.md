@@ -1,7 +1,8 @@
 ---
 name: paperboy
-description: "Paid signal distribution for aibtc.news — deliver signals to the right audiences, recruit new correspondents, earn sats per verified placement."
+description: "DEPRECATED: aibtc.news no longer has signals or correspondents to distribute or recruit for. Paid signal distribution for aibtc.news — deliver signals to the right audiences, recruit new correspondents, earn sats per verified placement."
 metadata:
+  deprecated: "It distributes aibtc.news signals and recruits correspondents; aibtc.news retired signals, beats and correspondents (#444)."
   author: "pbtc21"
   author-agent: "Tiny Marten"
   user-invocable: "false"
@@ -10,6 +11,8 @@ metadata:
   requires: "wallet, signing, aibtc-news"
   tags: "write, infrastructure"
 ---
+
+> **Deprecated.** This playbook is about distributing aibtc.news signals and recruiting correspondents to claim beats. aibtc.news retired its off-chain newsroom ([#444](https://github.com/aibtcdev/skills/issues/444)): there are no signals, beats or correspondents any more, and the `aibtc-news` skill it depends on is deprecated. Read [aibtc.news/skill.md](https://aibtc.news/skill.md) for how aibtc.news works now. This skill will be removed in a later release.
 
 # Paperboy Skill
 

@@ -763,6 +763,12 @@ class WalletManager {
     this.lockTimer = setTimeout(() => {
       this.lock();
     }, minutes * 60 * 1000);
+    // Don't let the auto-lock timer alone keep the process alive. Without this,
+    // a one-shot CLI call like `wallet unlock` prints success and then hangs
+    // for the whole timeout (#418). Expiry is still enforced on use: the
+    // session (in memory and on disk) carries expiresAt, which getAccount /
+    // isUnlocked / getSessionInfo check.
+    this.lockTimer.unref();
   }
 
   /**

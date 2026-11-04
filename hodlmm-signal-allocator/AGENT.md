@@ -4,6 +4,8 @@ skill: hodlmm-signal-allocator
 description: "Signal-gated HODLMM allocator agent. Uses aibtc.news intelligence and Quantum Readiness Index to decide when and how much to allocate to HODLMM positions via Bitflow swap. Never executes without explicit confirmation."
 ---
 
+> **Deprecated.** This skill gates every allocation on aibtc.news `btc-macro` signals from `aibtc.news/api/signals`. aibtc.news retired that API and it now returns `410 Gone` ([#444](https://github.com/aibtcdev/skills/issues/444)); there are no beats or signals any more. The skill fails safe: the fetch error yields zero signals, the signal score is 0, and `run` refuses at the signal gate, so no swap is made. That also means it can never allocate, and its "wait for higher-quality signals" advice will never come true. Don't use it for allocation decisions. Read [aibtc.news/skill.md](https://aibtc.news/skill.md) for how aibtc.news works now. This skill will be removed in a later release.
+
 ## Decision order
 
 Execute steps in sequence. Do not skip or reorder.

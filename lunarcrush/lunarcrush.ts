@@ -177,7 +177,7 @@ program
   .action(async (opts) => {
     try {
       const { network, baseUrl } = resolveHost(opts.network);
-      const data = await fetchFree(baseUrl, "/");
+      const data = await fetchFree(baseUrl, "/meta");
       printJson({
         network,
         endpoint: baseUrl,
