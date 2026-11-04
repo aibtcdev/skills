@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 /**
  * sbor: benchmark lending rates for Bitcoin DeFi, read from contract state on
- * Stacks, Base, Ethereum and Arc.
+ * every chain SBOR reads (the venues in each answer say which).
  *
  * Read-only. No wallet, no keys, no funds. Reads the public SBOR endpoints and
  * prints a single JSON object to stdout, as every skill here does.
@@ -9,21 +9,18 @@
  * https://sbor.xyz
  */
 import { Command } from "commander";
-import { NETWORK } from "../src/lib/config/networks.js";
 import { printJson, handleError } from "../src/lib/utils/cli.js";
 
 const BASE = process.env.SBOR_BASE || "https://sbor.xyz";
 const UA = "aibtc-skills-sbor/1.1";
 const TIMEOUT_MS = 10_000;
+const LATEST = "/api/v1/latest.json";
 
-/* Tagged mainnet-only: SBOR reads mainnet contracts and has no testnet
-   equivalent. NETWORK comes from the shared config, where an unset NETWORK
-   means testnet, so this skill refuses to run unless NETWORK=mainnet, as the
-   other mainnet-only skills do. */
-if (NETWORK !== "mainnet") {
-  printJson({ error: `SBOR is mainnet only. NETWORK is "${NETWORK}". Run with NETWORK=mainnet. There is no testnet fixing, and returning mainnet rates on a testnet run would be misleading.`, network: NETWORK });
-  process.exit(1);
-}
+/* Mainnet only, hard-coded, as in the other read-only mainnet skills
+   (hodlmm-pulse, sbtc-yield-maximizer). SBOR has no wallet and no testnet
+   fixing, so there is nothing for the shared NETWORK setting to switch. Every
+   answer says which network its numbers come from. */
+const NETWORK = "mainnet" as const;
 
 type Market = {
   venue: string; asset: string; borrow: number; supply: number;
@@ -65,28 +62,39 @@ const out = (o: unknown) => printJson(o);
 const die = (msg: string): never => handleError(new Error(msg));
 
 /* One fetch path for every command, JSON or text, so every request gets the
-   same 10 second timeout and the same error handling. */
-async function fetchSbor(path: string, accept: string): Promise<Response> {
+   same 10 second timeout and the same error handling.
+   The 10 second limit covers the whole request, body included, and a body
+   that stalls or does not parse is reported with its URL like any other
+   failure. */
+async function fetchSbor(path: string, accept: string, as: "json" | "text"): Promise<unknown> {
+  const url = `${BASE}${path}`;
   let r: Response;
   try {
-    r = await fetch(`${BASE}${path}`, {
+    r = await fetch(url, {
       headers: { accept, "user-agent": UA },
       signal: AbortSignal.timeout(TIMEOUT_MS)
     });
   } catch (e) {
-    const msg = (e as Error).name === "TimeoutError"
-      ? `SBOR did not respond within ${TIMEOUT_MS / 1000}s at ${BASE}${path}`
-      : `SBOR is unreachable at ${BASE}${path}: ${(e as Error).message}`;
-    return die(`${msg}. Do not substitute an estimate.`);
+    return die(`${timeoutOr(e, url, "did not respond")}. Do not substitute an estimate.`);
   }
-  if (!r.ok) die(`SBOR responded ${r.status} for ${path}. Do not substitute an estimate.`);
-  return r;
+  if (!r.ok) return die(`SBOR responded ${r.status} for ${url}. Do not substitute an estimate.`);
+  try {
+    return as === "json" ? await r.json() : await r.text();
+  } catch (e) {
+    return die(`${timeoutOr(e, url, "did not finish sending")}. Do not substitute an estimate.`);
+  }
 }
+const timeoutOr = (e: unknown, url: string, what: string) =>
+  (e as Error).name === "TimeoutError"
+    ? `SBOR ${what} within ${TIMEOUT_MS / 1000}s at ${url}`
+    : (e as Error).name === "SyntaxError"
+      ? `SBOR returned a body that is not valid JSON at ${url}`
+      : `SBOR could not be read at ${url}: ${(e as Error).message}`;
 async function get<T>(path: string): Promise<T> {
-  return (await fetchSbor(path, "application/json")).json() as Promise<T>;
+  return (await fetchSbor(path, "application/json", "json")) as T;
 }
 async function getText(path: string): Promise<string> {
-  return (await fetchSbor(path, "text/plain")).text();
+  return (await fetchSbor(path, "text/plain", "text")) as string;
 }
 
 const INDICES = ["SBOR-USD", "SBOR-BTC", "SBOR-STX"];
@@ -106,7 +114,10 @@ function refIndex(d: Latest): Index | null {
   return {
     label: BTC_REF, currency: "USDC", headline: "USDC against bitcoin collateral",
     borrow: r.borrow, supply: r.supply,
-    venues: [...new Set(r.markets.map(m => `${m.venue ?? "Morpho"} on ${m.chain}`))],
+    /* Venues are the markets that carry weight. A market read at zero weight
+       (borrower incentives, for example) is listed by markets but is not part
+       of the rate, so it neither counts as a venue nor hides concentration. */
+    venues: [...new Set(r.markets.filter(m => (m.weight ?? 0) > 0).map(m => `${m.venue ?? "Morpho"} on ${m.chain}`))],
     largestConstituentWeight: Math.max(0, ...r.markets.map(m => m.weight ?? 0)),
     markets: r.markets.map(m => ({
       venue: `${m.venue ?? "Morpho"} on ${m.chain}`, asset: `${m.collateral}/${m.loan ?? "USDC"}`,
@@ -142,7 +153,6 @@ const staleHours = (iso: string): number | null => {
   return age < -FUTURE_TOLERANCE_HOURS ? null : Math.max(0, age);
 };
 
-const LATEST = "/api/v1/latest.json";
 const METHODOLOGY_NOTE = "SBOR is young: the series began 2026-09-01 and the methodology has been revised as gaps were found. Every fixing records the version that produced it, and changes are published as documented steps rather than smoothed over. Read methodologyVersion before comparing fixings across dates.";
 
 /* path is the file the data was read from. An archive file is a past fixing
@@ -154,6 +164,7 @@ const meta = (d: Latest, path: string = LATEST) => {
       fixing: d.fixing,
       methodologyVersion: d.methodologyVersion,
       basis: d.basis,
+      network: NETWORK,
       historical: true,
       historicalNote: "A past fixing, read from the archive by date. It is the record of that day, not a current rate.",
       methodologyNote: METHODOLOGY_NOTE,
@@ -165,6 +176,7 @@ const meta = (d: Latest, path: string = LATEST) => {
     fixing: d.fixing,
     methodologyVersion: d.methodologyVersion,
     basis: d.basis,
+    network: NETWORK,
     staleHours: age === null ? null : Number(age.toFixed(1)),
     stale: age === null ? true : age > STALE_AFTER_HOURS,
     staleNote: age === null
@@ -215,8 +227,12 @@ const absent = (label: string, d: Latest, path: string = LATEST, reason: string 
 
 /* BTC-COLLATERAL-USDC was first published with the fixing of this date. */
 const REF_FIRST_FIXING = "2026-09-25";
-const ARCHIVE_FIRST_DAY = "2026-09-03";
-const todayUtc = () => new Date().toISOString().slice(0, 10);
+/* The archive publishes the dates it holds. --date is checked against that
+   list, not against a hard-coded first day or this host's clock, so today's
+   date before the day's fixing, a gap, or a date after the last fixing all get
+   a clear answer instead of a 404. */
+const ARCHIVE_INDEX = "/api/v1/archive-index.json";
+type ArchiveIndex = { first: string; last: string; dates: string[] };
 /* A real calendar date, not just the right shape: 2026-13-45 and 2026-02-30
    are rejected here as input errors instead of reaching the archive. */
 const isCalendarDate = (s: string): boolean => {
@@ -241,14 +257,17 @@ program.command("rate")
     if (o.date) {
       if (!isCalendarDate(o.date))
         die(`--date must be a real date in YYYY-MM-DD form, got "${o.date}".`);
-      /* The archive does not go back to the first fixing. Point the caller at
-         the index rather than letting them guess and get a 404. */
-      if (o.date < ARCHIVE_FIRST_DAY)
-        die(`The daily archive starts ${ARCHIVE_FIRST_DAY}. For what is available, read ${BASE}/api/v1/archive-index.json.`);
-      if (o.date > todayUtc())
-        die(`--date ${o.date} is in the future. The latest fixing is today's: omit --date to read it.`);
       if (o.index === BTC_REF && o.date < REF_FIRST_FIXING)
         die(`${BTC_REF} did not exist on ${o.date}. It was first published with the fixing of ${REF_FIRST_FIXING}.`);
+      const ai = await get<ArchiveIndex>(ARCHIVE_INDEX);
+      if (!Array.isArray(ai?.dates) || !ai.dates.length)
+        die(`The archive index at ${BASE}${ARCHIVE_INDEX} lists no dates. Do not substitute an estimate.`);
+      if (!ai.dates.includes(o.date))
+        die(o.date < ai.first
+          ? `The daily archive starts ${ai.first}. ${o.date} is before it.`
+          : o.date > ai.last
+            ? `There is no fixing for ${o.date} yet. The latest is ${ai.last}: omit --date to read it.`
+            : `No fixing is archived for ${o.date}. Every available date is listed at ${BASE}${ARCHIVE_INDEX}.`);
     }
     const path = o.date ? `/api/v1/archive/${o.date}.json` : LATEST;
     const d = await get<Latest>(path);
@@ -301,7 +320,7 @@ program.command("compare")
        reading either the verdict or the plain sentence cannot miss it. */
     const looksLikeFraction = rate < 0.5;
 
-    const d = await get<Latest>("/api/v1/latest.json");
+    const d = await get<Latest>(LATEST);
     requireFresh(d);
 
     const ix = lookup(d, o.index);
@@ -320,12 +339,14 @@ program.command("compare")
       die(`Could not compute a difference from offered ${rate} against benchmark ${bench}. Refusing to return a verdict.`);
 
     const worse = side === "borrow" ? diff > 0 : diff < 0;
-    /* Only a full member can be named best: a market still phasing in is
-       listed by markets, never recommended. A new market's rate can be
-       mechanically low for weeks while its rate model adjusts. */
+    /* Only a full member that carries weight can be named best. A market still
+       phasing in is listed by markets, never recommended: a new market's rate
+       can be mechanically low for weeks while its rate model adjusts. A market
+       at zero weight is not part of the rate at all. */
     const best = [...ix.markets]
       .filter(m => typeof m[side] === "number" && Number.isFinite(m[side]))
       .filter(m => typeof m.phaseIn !== "number" || m.phaseIn >= 1)
+      .filter(m => typeof m.weight === "number" && m.weight > 0)
       .sort((a, b) => side === "borrow" ? a.borrow - b.borrow : b.supply - a.supply)[0];
 
     out({
@@ -347,7 +368,7 @@ program.command("compare")
         venue: best.venue, asset: best.asset, rate: best[side],
         utilization: best.utilization ?? null,
         capacityNote: best.utilization == null ? null
-          : best.utilization >= 90 ? "Above 90% utilised. The rate may not be drawable and withdrawals may be constrained."
+          : best.utilization >= 90 ? "Above 90% utilised, so little of the supply is left to borrow at this rate."
           : best.utilization <= 25 ? "Low utilisation, so there is unused capacity behind this rate."
           : null
       } : null,
@@ -359,7 +380,7 @@ program.command("compare")
         : undefined,
       ...(o.index === BTC_REF
         ? { note: REF_NOTE }
-        : { hint: `If this is a USDC loan against bitcoin on Base, Ethereum or Arc, compare with ${BTC_REF} instead: a Stacks index prices lending on Stacks.` }),
+        : { hint: `If this is a USDC loan against bitcoin, on any chain, compare with ${BTC_REF} instead: a Stacks index prices lending on Stacks against any collateral.` }),
       notAdvice: NOT_ADVICE,
       ...meta(d)
     });
@@ -370,7 +391,7 @@ program.command("markets")
   .option("--index <index>", "SBOR-USD | SBOR-BTC | SBOR-STX | BTC-COLLATERAL-USDC")
   .action(async o => {
     checkIndex(o.index);
-    const d = await get<Latest>("/api/v1/latest.json");
+    const d = await get<Latest>(LATEST);
     const one = o.index ? lookup(d, o.index) : null;
     const entries = o.index ? (one ? [one] : []) : Object.values(d.indices);
     if (!entries.length) return out(absent(o.index, d));
@@ -446,7 +467,7 @@ program.command("chains")
   .option("--index <index>", "only markets comparable to this index")
   .action(async o => {
     checkIndex(o.index);
-    const d = await get<Latest>("/api/v1/latest.json");
+    const d = await get<Latest>(LATEST);
     const all = d.externalReference?.markets ?? [];
     /* The on-chain comparison has no BTC-COLLATERAL-USDC rows of its own. As a
        dollar rate it is compared with the same dollar markets as SBOR-USD. */
@@ -458,9 +479,15 @@ program.command("chains")
        either dollar benchmark: on its own, or beside SBOR-USD. */
     const dollar = !o.index || o.index === "SBOR-USD" || o.index === BTC_REF;
 
+    /* An index asked for by name that is not in today's fixing is reported as
+       not published, as rate and markets do, rather than as an empty list. */
+    if (o.index && !lookup(d, o.index)) return out(absent(o.index, d));
+
     out({
+      /* The Stacks index to read beside the one asked for: itself, or for
+         BTC-COLLATERAL-USDC, SBOR-USD, the dollar on Stacks. */
       stacks: Object.values(d.indices)
-        .filter(ix => !o.index || ix.label === o.index)
+        .filter(ix => !o.index || ix.label === comparable)
         .map(ix => ({ index: ix.label, borrow: ix.borrow, supply: ix.supply })),
       bitcoinCollateralUsdc: ref && dollar
         ? { borrow: ref.borrow, supply: ref.supply, venues: ref.venues, note: REF_NOTE + " A dollar on Stacks is borrowed against any crypto collateral, not only bitcoin." }
@@ -510,7 +537,7 @@ program.command("inversions")
 program.command("context")
   .description("What the world looked like when this fixing was taken")
   .action(async () => {
-    const d = await get<Latest>("/api/v1/latest.json");
+    const d = await get<Latest>(LATEST);
     if (!d.context) return out({ context: null, note: "No context in the current fixing.", ...meta(d) });
     out({
       ...d.context,

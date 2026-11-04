@@ -1,6 +1,6 @@
 ---
 name: sbor
-description: SBOR, benchmark lending rates for Bitcoin DeFi, read from contract state. Get the current borrow and supply rate per currency on Stacks, or the cost of borrowing USDC against bitcoin on Base, Ethereum and Arc; judge whether a rate you have been offered is above or below the market; list the venues behind a rate with their utilisation; read the history; compare with lending markets elsewhere; and check for cross-venue inversions.
+description: SBOR, benchmark lending rates for Bitcoin DeFi, read from contract state. Get the current borrow and supply rate per currency on Stacks, or the cost of borrowing USDC against plain bitcoin across every eligible market SBOR reads (Morpho on Ethereum, Base, Arbitrum and Arc, Granite on Stacks); judge whether a rate you have been offered is above or below the market; list the venues behind a rate with their utilisation; read the history; compare with lending markets elsewhere; and check for cross-venue inversions.
 metadata:
   user-invocable: "false"
   arguments: "rate | compare | markets | history | chains | inversions | context | method"
@@ -14,16 +14,16 @@ metadata:
 # sbor
 
 Benchmark lending rates for Bitcoin DeFi, read from lending contract state on
-Stacks, Base, Ethereum and Arc, and published daily as a public good at
+every chain SBOR reads (today Stacks, Ethereum, Base, Arbitrum and Arc), and published daily as a public good at
 [sbor.xyz](https://sbor.xyz). Each day's rates are also posted on-chain, on
 Stacks and on Arc; `rate` returns both contracts.
 
 **No wallet. No keys. No funds. No rate limit.** This skill only reads a public
 endpoint, so it can be run freely and cannot lose anything.
 
-**Mainnet only.** Run every command with `NETWORK=mainnet`, as with the other
-mainnet-only skills. On the repo's default network (testnet) it exits with an
-error rather than returning mainnet numbers.
+**Mainnet only, built in.** SBOR has no testnet fixing, so the skill always
+reads mainnet, whatever `NETWORK` is set to, and every answer carries
+`"network": "mainnet"`.
 
 The data is licensed **CC BY 4.0**: free to use, including commercially, with no
 permission required and no licence to negotiate. Agents are explicitly welcome.
@@ -31,7 +31,7 @@ permission required and no licence to negotiate. Agents are explicitly welcome.
 ## Why an agent wants this
 
 Any agent that lends, borrows, loops or routes on Stacks, or borrows USDC
-against bitcoin on Base, Ethereum or Arc, is making a decision about whether a
+against bitcoin on any chain, is making a decision about whether a
 rate is good. Without a benchmark there is nothing to judge it
 against, so the agent either takes the first offer or compares venues by hand in
 software.
@@ -42,16 +42,16 @@ Supplying below it means earning less.
 ## Commands
 
 ```bash
-NETWORK=mainnet bun run sbor/sbor.ts rate
-NETWORK=mainnet bun run sbor/sbor.ts rate --index SBOR-USD
-NETWORK=mainnet bun run sbor/sbor.ts rate --date 2026-09-03
-NETWORK=mainnet bun run sbor/sbor.ts compare --rate 4.2 --side borrow --index SBOR-USD
-NETWORK=mainnet bun run sbor/sbor.ts markets --index SBOR-USD
-NETWORK=mainnet bun run sbor/sbor.ts history --index SBOR-USD --days 30
-NETWORK=mainnet bun run sbor/sbor.ts chains --index SBOR-USD
-NETWORK=mainnet bun run sbor/sbor.ts inversions
-NETWORK=mainnet bun run sbor/sbor.ts context
-NETWORK=mainnet bun run sbor/sbor.ts method
+bun run sbor/sbor.ts rate
+bun run sbor/sbor.ts rate --index SBOR-USD
+bun run sbor/sbor.ts rate --date 2026-09-03
+bun run sbor/sbor.ts compare --rate 4.2 --side borrow --index SBOR-USD
+bun run sbor/sbor.ts markets --index SBOR-USD
+bun run sbor/sbor.ts history --index SBOR-USD --days 30
+bun run sbor/sbor.ts chains --index SBOR-USD
+bun run sbor/sbor.ts inversions
+bun run sbor/sbor.ts context
+bun run sbor/sbor.ts method
 ```
 
 ### rate
@@ -59,14 +59,16 @@ NETWORK=mainnet bun run sbor/sbor.ts method
 Current fixing, or any past one. Every currency index unless one is named.
 
 ```bash
-NETWORK=mainnet bun run sbor/sbor.ts rate --index SBOR-BTC
-NETWORK=mainnet bun run sbor/sbor.ts rate --date 2026-09-03
+bun run sbor/sbor.ts rate --index SBOR-BTC
+bun run sbor/sbor.ts rate --date 2026-09-03
 ```
 
 Returns borrow, supply, the all-in supply figure where protocol yield applies,
 the venues covered and the weight of the largest one. With `--date` it reads the
 immutable archive for that day, which is never rewritten. **The archive starts
-2026-09-03**; `/api/v1/archive-index.json` lists every date available.
+2026-09-03**; `--date` is checked against `/api/v1/archive-index.json`, which
+lists every date available, so a date with no fixing yet (today, before the
+day's fixing) gets a clear error rather than a 404.
 
 ### compare
 
@@ -78,7 +80,7 @@ All three options are required, so pass them together in one call:
 `--rate` (a percentage, 5 means 5%), `--side` (`borrow` or `supply`) and `--index`.
 
 ```bash
-NETWORK=mainnet bun run sbor/sbor.ts compare --rate 4.2 --side borrow --index SBOR-USD
+bun run sbor/sbor.ts compare --rate 4.2 --side borrow --index SBOR-USD
 ```
 
 ```json
@@ -111,7 +113,7 @@ US repo market, secured by US government debt, which is the benchmark SBOR is
 modelled on.
 
 ```bash
-NETWORK=mainnet bun run sbor/sbor.ts chains --index SBOR-USD
+bun run sbor/sbor.ts chains --index SBOR-USD
 ```
 
 Pass `--index` to see only what is comparable. SOFR appears for the dollar index

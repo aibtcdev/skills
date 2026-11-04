@@ -1,6 +1,6 @@
 {
   "version": "0.44.0",
-  "generated": "2026-11-02T17:37:29.577Z",
+  "generated": "2026-11-04T20:12:38.629Z",
   "skills": [
     {
       "name": "agent-lookup",
@@ -2206,7 +2206,7 @@
     },
     {
       "name": "sbor",
-      "description": "SBOR, benchmark lending rates for Bitcoin DeFi, read from contract state. Get the current borrow and supply rate per currency on Stacks, or the cost of borrowing USDC against bitcoin on Base, Ethereum and Arc; judge whether a rate you have been offered is above or below the market; list the venues behind a rate with their utilisation; read the history; compare with lending markets elsewhere; and check for cross-venue inversions.",
+      "description": "SBOR, benchmark lending rates for Bitcoin DeFi, read from contract state. Get the current borrow and supply rate per currency on Stacks, or the cost of borrowing USDC against plain bitcoin across every eligible market SBOR reads (Morpho on Ethereum, Base, Arbitrum and Arc, Granite on Stacks); judge whether a rate you have been offered is above or below the market; list the venues behind a rate with their utilisation; read the history; compare with lending markets elsewhere; and check for cross-venue inversions.",
       "entry": "sbor/sbor.ts",
       "arguments": [
         "rate",

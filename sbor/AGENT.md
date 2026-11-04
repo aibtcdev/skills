@@ -8,7 +8,7 @@ description: Rules for using the sbor skill. When to call it before a lending ac
 
 Read-only. No wallet, no funds, no keys, nothing to lose. Call it freely.
 
-Mainnet only: run it with `NETWORK=mainnet`. With the repo's default network (testnet) it exits with an error rather than returning mainnet numbers.
+Mainnet only, built in: it always reads mainnet, whatever `NETWORK` is set to, and says so in every answer (`"network": "mainnet"`).
 
 ## When to call it
 
@@ -62,14 +62,16 @@ utilisation, not lower risk, and reporting it without that caveat is misleading.
 2026, but rates are compared before fees and gas, and an inversion can close
 before you act.
 
-**Use the right benchmark.** For a USDC loan against bitcoin on Base, Ethereum
-or Arc, compare with `BTC-COLLATERAL-USDC`, never a Stacks index; `compare`
+**Use the right benchmark.** For a USDC loan against bitcoin, on any chain,
+compare with `BTC-COLLATERAL-USDC`, never a Stacks index; `compare`
 adds a hint when a Stacks index may be the wrong one.
 
 **A market still phasing in is not a recommendation.** In
 `BTC-COLLATERAL-USDC`, a market with `phaseIn` below 1 is listed but carries
 less weight, and its rate can be mechanically low for weeks while its rate
-model adjusts. `compare` never names it as the best constituent.
+model adjusts. `compare` never names it as the best constituent. Nor a market
+at zero weight (borrower incentives, for example): it is listed by `markets`
+but is not part of the rate, and it does not count in `venues`.
 
 **Every verdict is market data, not financial advice.** `compare` says so in
 `notAdvice`; pass it on.
@@ -93,7 +95,7 @@ Every failure returns `{"error": "..."}` on stdout with a non-zero exit.
 invented is worse than no benchmark. Say the rate is unavailable and fall back to
 your own logic, or stop. Requests time out after 10 seconds.
 
-**`rate --date` reads the archive.** Its output carries `historical: true` and the archive file as `source`, and is never marked stale: it is the record of that day. An invalid or future date is an input error, not a missing rate.
+**`rate --date` reads the archive.** Its output carries `historical: true` and the archive file as `source`, and is never marked stale: it is the record of that day. An invalid date, or one the archive does not hold (before 2026-09-03, today before the day's fixing, or after the latest), is an input error, not a missing rate.
 
 **`compare` is designed to refuse.** It exits non-zero on stale or unparseable
 data, a fixing dated in the future, an unpublished index, a missing rate, or input outside 0 to 100 percent. A
