@@ -1,0 +1,106 @@
+---
+name: bolt-agent
+skill: bolt
+description: Gasless Stacks transactions via Bolt Protocol — sBTC/USDCx transfers with the fee paid in the token, and any contract call sponsored for sBTC, paid in the same request or from prepaid credit. Mainnet only.
+---
+
+# bolt agent guide
+
+## Prerequisites
+
+- `NETWORK=mainnet`. The repo default is testnet and every subcommand refuses it.
+- `status`, `credit-balance --address` and `credit-ledger --address`: nothing else. No wallet, no funds.
+- `transfer`, `call`, `credit-deposit`, `credit-withdraw`, `sponsor-call`: an unlocked wallet (the `wallet`
+  skill) holding the token being moved. No STX is needed for any of them.
+- Contract calls are paid in sBTC only. A wallet holding only USDCx can
+  `transfer` USDCx and nothing else.
+
+## When to invoke
+
+- The wallet holds sBTC or USDCx but no STX, and needs to send it → `transfer`.
+- The wallet needs to call a contract and has no STX for the fee → `call`
+  (from 20 sats, no deposit). When it will make several calls →
+  `credit-deposit` once, then `sponsor-call` (from 10 sats each, half the price).
+- The wallet has STX and a self-paid transaction would do → use the `sbtc`,
+  `tokens` or `contract` skill instead.
+
+## Decision logic
+
+1. Run `status` once per session. If it fails, do not sign anything.
+2. Plain sBTC/USDCx payment → `transfer`. No credit needed.
+   aibtc bounty payouts and inbox payments recovered by txid accept it (sBTC;
+   for a bounty, `--memo BNTY:{bountyId}`). Exception: another service that
+   verifies a payment by txid and accepts only a direct `sbtc-token.transfer`
+   call. `transfer` here calls the Bolt contract, so pay those with `call` (or
+   `sponsor-call`) on `sbtc-token` `transfer`.
+3. One contract call, or one now and then → `call`. Nothing to deposit and
+   nothing to wait for before it.
+4. Several contract calls → check `credit-balance`. If it is below the fee for
+   the calls you plan, run `credit-deposit`, wait for the transaction to
+   confirm, then run `credit-balance` again before `sponsor-call`.
+5. Send calls one after another, not in parallel. After `call`, send nothing
+   else from the wallet until both of its transactions confirm.
+
+## Safety checks
+
+- Keep `--post-condition-mode deny` and pass `--post-conditions` for every
+  asset the call moves.
+- Verify `--recipient` and `--contract` before signing. A broadcast transfer
+  cannot be undone.
+- Treat the `txid` in the output as broadcast, not confirmed. Check it with the
+  `query` skill before acting on the result.
+- `--serialized-tx` sends bytes signed earlier by this same wallet: only pass
+  a transaction you built or decoded yourself. One signed by another wallet is
+  refused.
+- Requests time out after 30 s. A write that gets no answer (timeout, dropped
+  connection, a gateway error page) is sent once more, unchanged, by the
+  command itself; that is safe because Bolt runs a signed request once. If it
+  still ends without an answer, or the repeat is refused for any reason, the error is `BOLT_SENT_UNCONFIRMED`: never sign
+  again, check the address's recent transactions with the `query` skill (and
+  `credit-ledger --nonce <n>` for `call` and `sponsor-call`)
+  before running the command again.
+- `--recipient` and `--address` must be mainnet (`SP…`/`SM…`).
+
+## Cost guardrails
+
+- Unused credit comes back with `credit-withdraw`, less a 10-sat fee, and only
+  to the wallet that deposited it. Bolt holds the credit until then.
+- `sponsor-call --fee` defaults to the minimum (10 sats; more only for a
+  transaction above 500 bytes). Without `--fee`, `call` and `sponsor-call` pay a
+  higher minimum Bolt names, once, up to `--max-fee` (without it, 10 times the first
+  fee); above that they stop with `BOLT_FEE_TOO_LOW`. `--max-fee` is also the most
+  the command may spend: a first fee above it is refused before anything is signed. A higher fee buys priority on the network
+  (Bolt pays it 50 micro-STX per sat of fee); pass one only when the call is
+  urgent and the network is congested.
+- One call alone costs 20 sats with `call`. On credit it is also 20 (10 for
+  the deposit, 10 for the call) plus 10 to withdraw a remainder, so credit
+  pays off only over several calls: deposit for them at once.
+- A `sponsor-call` the network refuses (`BOLT_REJECTED`) gets its fee back;
+  only `BOLT_REFUND_FAILED` and `BOLT_CALL_UNKNOWN` leave it spent. A call that is broadcast and then fails on-chain is still
+  paid, so validate it first: the contract and function exist, the arguments
+  match the ABI, the post conditions cover what it moves. `--check` on
+  `sponsor-call` or `call` asks Bolt whether it would accept the call and what
+  the minimum fee is, without sending it; it does not run the contract.
+
+## Error handling
+
+| `code` | What to do |
+|---|---|
+| `BOLT_INVALID_NONCE` | A transaction with this nonce from this address is pending or already used. `transfer` and `credit-deposit` never sign again on their own: it may be an earlier attempt of the same payment, so check the address's recent transactions and run again only if it is not there. Do not retry in a loop. |
+| `BOLT_INSUFFICIENT_CREDIT` | For `sponsor-call`: `credit-deposit`, wait for confirmation, `credit-balance`, then retry. For `credit-withdraw`: lower `--amount`. |
+| `BOLT_INSUFFICIENT_BALANCE` | Fund the wallet or lower `--amount`; the wallet needs `amount + fee`. For `call`: it needs the `--fee` in sBTC. |
+| `BOLT_CONTRACT_NOT_ON_CREDIT` | The target is one of Bolt's own contracts. Use `transfer`. |
+| `BOLT_INVALID_TRANSACTION` | Nothing charged. Fix the call (contract, function, arguments, post conditions) before sending again. |
+| `BOLT_TEMPORARILY_UNAVAILABLE` | Nothing charged. Try again later. |
+| `BOLT_UNRECOGNIZED` | Bolt answered in a way the skill does not recognise: the outcome and any charge are unknown. Check recent transactions and `credit-balance` / `credit-ledger` before running again. |
+| `BOLT_FEE_TOO_LOW` | Run again with `--fee <details.minimumFee>`; when it came from `--max-fee`, also acceptable: a higher `--max-fee`. |
+| `BOLT_RATE_LIMITED` | Stop sending writes for a while. |
+| `BOLT_CREDIT_ONLY` | Bolt takes only prepaid credit from this address. Use `credit-deposit`, wait for confirmation, then `sponsor-call`. Do not retry `call`. |
+| `BOLT_CALL_NOT_SENT` | The payment went out and the call did not. Do not run `call` again unchanged: fix what `error` names. `details.credit` sats become prepaid credit once `details.feeTxid` confirms: check `credit-balance`, then send the fixed call with `sponsor-call`, or take the credit back with `credit-withdraw`. |
+| `BOLT_REFUND_FAILED` | The fee was debited and not returned. Stop; do not send again. Bolt was notified. |
+| `BOLT_WITHDRAWAL_REPEATED` | That withdrawal request was already used. `details.withdrawal` says how it ended: `sent` or `confirmed` → paid, `details.txid` is the payout, do not withdraw again for it; `not_paid` → the credit is in the balance, run the command again; `pending` or `unknown` → wait and check `credit-balance`, do not sign a new one. |
+| `BOLT_WITHDRAWAL_UNKNOWN` | Stop. Do not send again; check `credit-balance` later. Bolt was notified. |
+| `BOLT_SENT_UNCONFIRMED` | Bolt may have the operation: no answer twice, a success reply that names no transaction, the resend found the nonce taken, or a nonce refusal names a transaction Bolt already broadcast (`details.txid`, `details.feeTxid`). Never sign again. If `details.txid` is present and it is this operation, it is done; otherwise check the address's recent transactions with the `query` skill (`credit-ledger --nonce <details.nonce>` for credit and `call` operations) and run the command again only if the operation is not there. |
+| `BOLT_CALL_UNKNOWN` | Stop. The fee was debited and Bolt could not confirm the broadcast. Look `details.txid` up with the `query` skill (`details.feeTxid` when a `call` returns only that), or run `credit-ledger --nonce <nonce>` to read what Bolt recorded for that call; do not run the command again. Bolt was notified. |
+| `BOLT_REJECTED` | Only the network refused the transaction. Nothing charged. `error` names the reason: `BadNonce` or `TooMuchChaining` → wait for pending transactions, check recent transactions, then run the command again; `FeeTooLow` → raise `--fee`; `NoSuchContract`, `NoSuchPublicFunction`, `BadFunctionArgument` → fix the call (a common cause of the last one: an empty optional written without `"value":null`). Do not resend unchanged. |
+| `BOLT_MAINNET_ONLY` | Set `NETWORK=mainnet`. |
