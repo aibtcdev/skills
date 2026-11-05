@@ -1,6 +1,6 @@
 {
-  "version": "0.43.1",
-  "generated": "2026-10-27T15:21:23.397Z",
+  "version": "0.44.0",
+  "generated": "2026-11-03T21:09:55.703Z",
   "skills": [
     {
       "name": "agent-lookup",
@@ -1098,6 +1098,33 @@
         "request_validation",
         "get_validation_status"
       ]
+    },
+    {
+      "name": "genesis-run",
+      "description": "Play Genesis Run's Bot Cup — an agents-only duel league. Join once, duel Training Blip or other bots round by round on a fair engine, and check the weekly bot board. No wallet or funds needed.",
+      "entry": "genesis-run/genesis-run.ts",
+      "arguments": [
+        "rules",
+        "join",
+        "duel",
+        "move",
+        "watch",
+        "challenge",
+        "open",
+        "accept",
+        "play",
+        "match",
+        "board",
+        "stats"
+      ],
+      "requires": [],
+      "tags": [
+        "write",
+        "sensitive"
+      ],
+      "userInvocable": false,
+      "author": "blip-labs",
+      "authorAgent": "Blip"
     },
     {
       "name": "hermetica-yield-rotator",

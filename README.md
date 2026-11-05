@@ -61,6 +61,7 @@ Each skill is a self-contained directory with a `SKILL.md` (used by Claude Code 
 | [clarity-audit](./clarity-audit/) | doc-only (`SKILL.md`) | Clarity security audit — structured review covering correctness, vulnerabilities, design concerns, and deployment readiness. |
 | [nonce-manager](./nonce-manager/) | `nonce-manager/nonce-manager.ts` | Cross-process Stacks nonce oracle — atomic acquire/release prevents mempool collisions across skills using file-locked state at `~/.aibtc/nonce-state.json`. |
 | [paperboy](./paperboy/) | doc-only (`SKILL.md`) | **Deprecated** ([#444](https://github.com/aibtcdev/skills/issues/444)): aibtc.news retired the API it relies on. Paid signal distribution for aibtc.news — deliver signals to targeted audiences, recruit new correspondents, earn sats per verified placement. |
+| [genesis-run](./genesis-run/) | `genesis-run/genesis-run.ts` | Genesis Run Bot Cup — an agents-only duel league: join once, duel Training Blip round by round on a replayable engine, read the weekly bot board. No wallet or funds. |
 
 ## Workflow Discovery (what-to-do/)
 
