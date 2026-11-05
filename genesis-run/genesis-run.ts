@@ -10,44 +10,63 @@ import { Command } from "commander";
 import { printJson, handleError } from "../src/lib/utils/cli.js";
 import { AibtcError } from "../src/lib/utils/errors.js";
 
-// Override with GENESIS_RUN_API_URL to point at a staging or self-hosted engine.
-const BASE_URL = (process.env.GENESIS_RUN_API_URL || "https://playgenesis.run/api/agents").replace(/\/+$/, "");
+// Override with GENESIS_RUN_API_URL (a host like https://staging.example, with or without /api/agents)
+// to point at a staging or self-hosted engine.
+const BASE_URL = (() => {
+  const u = (process.env.GENESIS_RUN_API_URL || "https://playgenesis.run").trim().replace(/\/+$/, "");
+  return u.endsWith("/api/agents") ? u : `${u}/api/agents`;
+})();
 const TIMEOUT_MS = 20_000;
 const ID = /^[0-9a-f]{24}$/;
 
 // ── API helpers ───────────────────────────────────────────────────────────────
 
+const isTimeout = (e: unknown) => e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError");
+
+// What to do after a failed or unanswered request. A POST may have landed even without an answer,
+// so writes are never blindly resent: read state first, and never repeat `join`.
+function retryAdvice(path: string, write: boolean): string {
+  if (!write) return "Wait 30s, then retry once";
+  if (path === "/join") return "Do not run join again: it may have worked. Ask your operator before joining under any name";
+  return "Do not resend: it may have landed. Read state first (watch, match or open), then act only if it didn't";
+}
+
 // Server errors keep their code (e.g. slow-down, daily-limit) so handleError prints {error, code}.
 async function call(path: string, body?: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const write = body !== undefined, advice = retryAdvice(path, write);
   let res: Response;
   try {
     res = await fetch(`${BASE_URL}${path}`, {
       signal: AbortSignal.timeout(TIMEOUT_MS),
-      ...(body === undefined ? {} : { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }),
+      ...(write ? { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) } : {}),
     });
   } catch (e) {
-    const timedOut = e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError");
-    throw new AibtcError(timedOut ? `No answer from Genesis Run in ${TIMEOUT_MS / 1000}s` : "Could not reach Genesis Run", timedOut ? "timeout" : "network", undefined, "Wait 30s, then retry once");
+    throw new AibtcError(isTimeout(e) ? `No answer from Genesis Run in ${TIMEOUT_MS / 1000}s` : "Could not reach Genesis Run", isTimeout(e) ? "timeout" : "network", undefined, advice);
   }
   let data: unknown;
   try {
     data = await res.json();
-  } catch {
-    throw new AibtcError(`Genesis Run sent a reply that isn't JSON (HTTP ${res.status})`, "bad-response", undefined, "Wait 30s, then retry once");
+  } catch (e) {
+    if (isTimeout(e)) throw new AibtcError(`Genesis Run stopped answering after ${TIMEOUT_MS / 1000}s`, "timeout", undefined, advice);
+    if (!res.ok) throw new AibtcError(`API error ${res.status}`, `http-${res.status}`, undefined, advice);
+    throw new AibtcError(`Genesis Run sent a reply that isn't JSON (HTTP ${res.status})`, "bad-response", undefined, advice);
   }
   if (!data || typeof data !== "object" || Array.isArray(data)) {
-    throw new AibtcError(`Genesis Run sent an unexpected reply (HTTP ${res.status})`, "bad-response", undefined, "Wait 30s, then retry once");
+    if (!res.ok) throw new AibtcError(`API error ${res.status}`, `http-${res.status}`, undefined, advice);
+    throw new AibtcError(`Genesis Run sent an unexpected reply (HTTP ${res.status})`, "bad-response", undefined, advice);
   }
   const d = data as Record<string, unknown>;
-  if (!res.ok || typeof d.error === "string") {
+  // A 2xx that says it failed (success:false or any error field) is still a failure.
+  if (!res.ok || d.success === false || (d.error !== undefined && d.error !== null)) {
     const code = typeof d.code === "string" ? d.code : `http-${res.status}`;
-    throw new AibtcError(typeof d.error === "string" ? d.error : `API error ${res.status}`, code, undefined, "See the Error Handling table in genesis-run/AGENT.md");
+    const msg = typeof d.error === "string" ? d.error : d.error !== undefined && d.error !== null ? JSON.stringify(d.error) : `API error ${res.status}`;
+    throw new AibtcError(msg, code, undefined, "See the Error Handling table in genesis-run/AGENT.md");
   }
   return d;
 }
 
 function keyOf(opts: { key?: string }): string {
-  const key = (opts.key || process.env.GENESIS_RUN_KEY || "").trim().toLowerCase();
+  const key = (opts.key?.trim() || process.env.GENESIS_RUN_KEY?.trim() || "").toLowerCase();
   if (!/^[0-9a-f]{64}$/.test(key)) throw new AibtcError("Set GENESIS_RUN_KEY to the key from `join`", "bad-key", undefined, "Check GENESIS_RUN_KEY; run `join` only if this agent never joined");
   return key;
 }
@@ -125,7 +144,11 @@ program
   .description("Weekly Bot Cup board")
   .option("--week <date>", "Monday of the week, YYYY-MM-DD (default: this week)")
   .action(run(async (opts: { week?: string }) => {
-    if (opts.week && !/^\d{4}-\d{2}-\d{2}$/.test(opts.week)) throw new AibtcError("--week must be YYYY-MM-DD", "bad-week");
+    if (opts.week !== undefined) {
+      const d = new Date(`${opts.week}T00:00:00Z`);
+      const real = /^\d{4}-\d{2}-\d{2}$/.test(opts.week) && !isNaN(d.getTime()) && d.toISOString().slice(0, 10) === opts.week;
+      if (!real || d.getUTCDay() !== 1) throw new AibtcError("--week must be a Monday, YYYY-MM-DD", "bad-week", undefined, "Leave --week out for this week");
+    }
     return call(opts.week ? `/board?week=${opts.week}` : "/board");
   }));
 
