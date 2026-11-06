@@ -173,6 +173,36 @@ const DEFAULT_PAID_REQUEST_TIMEOUT_MS = 120_000;
 /** How long to poll Hiro for the txid after a paid 2xx with no canonical status. */
 const DIRECT_CONFIRMATION_POLL_MS = 10_000;
 
+/**
+ * Remove the X-Payment-Obligation-Id header from an outgoing axios request's
+ * headers. The header is dedup identity only (it shaped the dedup key); it
+ * must not be forwarded to the third-party x402 endpoint, where it could leak
+ * internal context (message ids, attempt counters, user ids).
+ *
+ * Axios header objects can be AxiosHeaders (with `.delete()` and `.set()`),
+ * plain Record<string, string>, or a callable `toJSON()` shape — handle all
+ * three.
+ */
+function stripPaymentObligationIdHeader(headers: unknown): void {
+  if (!headers) return;
+  // AxiosHeaders instance — has a `delete` method.
+  const anyHeaders = headers as { delete?: (name: string) => unknown; toJSON?: () => Record<string, unknown> };
+  if (typeof anyHeaders.delete === "function") {
+    anyHeaders.delete("X-Payment-Obligation-Id");
+    anyHeaders.delete("x-payment-obligation-id");
+    return;
+  }
+  // Plain Record<string, string> — case-insensitive scan.
+  if (typeof headers === "object") {
+    const rec = headers as Record<string, unknown>;
+    for (const key of Object.keys(rec)) {
+      if (key.toLowerCase() === "x-payment-obligation-id") {
+        delete rec[key];
+      }
+    }
+  }
+}
+
 export type DirectPaymentAsset =
   | { kind: "STX" }
   | { kind: "sBTC"; contractId: string; assetName: "sbtc-token" };
@@ -444,34 +474,56 @@ export async function buildDirectPaymentTransaction(
   // If the dedup entry has expired its TTL, reconcile via Hiro before
   // accepting a fresh payment: a payment that landed on-chain but whose
   // response was lost should not be silently retried (issue #460).
+  //
+  // Reconcile status logic (per the table on #460):
+  //   success / pending                       → money moved or may still move, refuse retry
+  //   abort_by_response / abort_by_post_condition → money did not move, clear and allow retry
+  //   dropped_* / unknown                     → fail-closed: signed tx still exists, may land
+  //   404 from Hiro                           → tx was never broadcast, clear and allow retry
+  //   other Hiro error                        → fail-closed until next attempt reconciles
   if (requestKey) {
     const hiroApi = getHiroApi(account.network);
-    const prior = await checkDedup(requestKey, policy, async (entry) => {
+    const prior = await checkDedup(requestKey, policy, async (entry, clearEntry) => {
+      let tx;
       try {
-        const tx = await hiroApi.getTransaction(entry.txid);
-        // success / pending / abort_by_response / abort_by_post_condition
-        // Anything that isn't a definitive failure means money moved (or
-        // may still move) and we must not pay again for this obligation.
-        if (tx.tx_status === "success" || tx.tx_status === "pending") {
-          return entry; // still valid — refuse fresh payment
+        tx = await hiroApi.getTransaction(entry.txid);
+      } catch (err: unknown) {
+        // 404 from Hiro: tx was never broadcast (server 5xx'd before submit,
+        // or our sign step crashed). Safe to clear and let the caller retry.
+        const errAny = err as { status?: number; statusCode?: number; message?: string };
+        const status = errAny?.status ?? errAny?.statusCode;
+        const msg = String(errAny?.message ?? err ?? "");
+        if (status === 404 || /404|not found/i.test(msg)) {
+          await clearEntry();
+          return null;
         }
-        // abort_by_response / abort_by_post_condition: money did not move.
-        // Drop the stale record and let the caller pay again.
-        await clearDedup(requestKey, entry.txid, policy);
-        return null;
-      } catch {
-        // Hiro lookup failed (network, 404, etc.). Fail-closed: treat the
-        // expired entry as still pending until the caller can prove
-        // otherwise via clearDedup.
+        // Transient Hiro failure (network, 5xx, rate limit): fail-closed.
+        // Keep the entry until the next attempt reconciles it.
         return entry;
       }
+      // Money moved or may still move — refuse fresh payment
+      if (tx.tx_status === "success" || tx.tx_status === "pending") {
+        return entry;
+      }
+      // Definitive abort: money did not move — clear and let caller retry
+      if (tx.tx_status === "abort_by_response" || tx.tx_status === "abort_by_post_condition") {
+        await clearEntry();
+        return null;
+      }
+      // dropped_* (dropped_stale_garbage_collect, dropped_replace_by_fee, …)
+      // and any unknown future status: fail-closed. A dropped tx is still a
+      // valid signed tx and may land later; an unknown status means we don't
+      // know what Hiro did, so safer to refuse than to double-pay.
+      return entry;
     });
     if (prior) {
       const ageSeconds = Math.round((Date.now() - prior.timestamp) / 1000);
       throw new DuplicatePaymentError(
         `Direct x402 payment refused: an identical request was already paid ${ageSeconds}s ago ` +
-          `(txid ${prior.txid}). Check that transaction before paying again; the guard clears after ` +
-          `${Math.round(policy.dedupTtlMs / 1000)}s (X402_DEDUP_TTL_SECONDS).`,
+          `(txid ${prior.txid}). Check that transaction before paying again. The guard clears when ` +
+          `Hiro reconciliation confirms the payment did not move (abort_by_response / abort_by_post_condition / 404). ` +
+          `The TTL window is ${Math.round(policy.dedupTtlMs / 1000)}s (X402_DEDUP_TTL_SECONDS) — after that, ` +
+          `a fresh attempt reconciles the prior txid via Hiro before allowing a new payment.`,
         prior.txid,
         Date.now() - prior.timestamp
       );
@@ -1375,6 +1427,12 @@ export async function createApiClient(
         const originalRequest = error.config;
         originalRequest.headers = originalRequest.headers || {};
         originalRequest.headers[X402_HEADERS.PAYMENT_SIGNATURE] = encodedPayload;
+        // Strip the caller-supplied obligation id from the outgoing request:
+        // it is dedup identity only, not request identity, and must not be
+        // forwarded to the third-party x402 endpoint (it may contain message
+        // ids or other internal context). The dedup key already used it; the
+        // server does not need it.
+        stripPaymentObligationIdHeader(originalRequest.headers);
         if (directBuild) {
           // Honour the 402's maxTimeoutSeconds: a paid replay that outlives it
           // is ambiguous (the server may still broadcast), never "safe to retry".

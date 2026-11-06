@@ -12,7 +12,7 @@ import { NETWORK, type Network } from "../config/networks.js";
 import { _testing as storageTesting } from "../utils/storage.js";
 import { InsufficientBalanceError } from "../utils/errors.js";
 import { X402_HEADERS, decodePaymentPayload, derivePaymentIdentifier, type NetworkV2, type PaymentRequirementsV2 } from "../utils/x402-protocol.js";
-import { _lockTesting, generateDedupKey } from "./x402-guards.js";
+import { _lockTesting, generateDedupKey, checkDedup, recordDedup, clearDedup } from "./x402-guards.js";
 import { existsSync, mkdirSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import {
   createApiClient,
@@ -425,6 +425,120 @@ describe("resolveDirectPaymentPolicy", () => {
     const kWhitespace = generateDedupKey({ ...base, headers: { accept: "json" }, obligationId: "   " });
     expect(kEmpty).toBe(kReal);
     expect(kWhitespace).toBe(kReal);
+  });
+});
+
+describe("checkDedup reconcile-on-expiry (#460 review fixes)", () => {
+  let stateDir = "";
+  let policy: ReturnType<typeof resolveDirectPaymentPolicy>;
+
+  beforeEach(async () => {
+    stateDir = await mkdtemp(path.join(tmpdir(), "x402-reconcile-"));
+    process.env.X402_DEDUP_STATE_FILE = path.join(stateDir, "dedup.json");
+    process.env.X402_DEDUP_TTL_SECONDS = "1"; // 1s TTL so tests can wait it out
+    policy = resolveDirectPaymentPolicy(process.env as unknown as Record<string, string>);
+  });
+
+  afterEach(async () => {
+    delete process.env.X402_DEDUP_STATE_FILE;
+    delete process.env.X402_DEDUP_TTL_SECONDS;
+    if (stateDir) await rm(stateDir, { recursive: true, force: true });
+    stateDir = "";
+  });
+
+  test("reconcile callback uses clearEntry (no deadlock) — abort_by_response clears and allows retry", async () => {
+    // Seed an expired entry
+    const key = "test-key-1";
+    const txid = "a".repeat(64);
+    await recordDedup(key, txid, policy);
+    // Wait for TTL to expire
+    await new Promise((r) => setTimeout(r, 1100));
+
+    // Reconcile callback receives clearEntry and uses it (NOT clearDedup,
+    // which would deadlock because the caller already holds the lock).
+    const result = await _lockTesting.withDirectPaymentLockForTest(policy, async () => {
+      return checkDedup(key, policy, async (entry, clearEntry) => {
+        expect(entry.txid).toBe(txid);
+        // Simulate Hiro returning abort_by_post_condition
+        await clearEntry();
+        return null;
+      });
+    });
+    expect(result).toBeNull();
+
+    // State file no longer contains the entry
+    const state = JSON.parse(await readFile(policy.dedupStateFile, "utf-8"));
+    expect(key in state).toBe(false);
+  });
+
+  test("reconcile keeps entry for success (fail-closed: refuses retry)", async () => {
+    const key = "test-key-2";
+    const txid = "b".repeat(64);
+    await recordDedup(key, txid, policy);
+    await new Promise((r) => setTimeout(r, 1100));
+
+    const result = await _lockTesting.withDirectPaymentLockForTest(policy, async () => {
+      return checkDedup(key, policy, async (entry) => {
+        // Simulate Hiro returning success — money moved
+        return entry;
+      });
+    });
+    expect(result).not.toBeNull();
+    expect(result?.txid).toBe(txid);
+
+    // Entry still in state
+    const state = JSON.parse(await readFile(policy.dedupStateFile, "utf-8"));
+    expect(key in state).toBe(true);
+  });
+
+  test("reconcile keeps entry for unknown/dropped status (fail-closed)", async () => {
+    const key = "test-key-3";
+    const txid = "c".repeat(64);
+    await recordDedup(key, txid, policy);
+    await new Promise((r) => setTimeout(r, 1100));
+
+    // Simulate Hiro returning a status we don't recognize (e.g. dropped_stale_garbage_collect)
+    const result = await _lockTesting.withDirectPaymentLockForTest(policy, async () => {
+      return checkDedup(key, policy, async (entry) => entry);
+    });
+    expect(result).not.toBeNull();
+    expect(result?.txid).toBe(txid);
+  });
+
+  test("recordDedup does NOT prune expired entries (issue #460 #2: TTL gap)", async () => {
+    // Payment A: expired entry
+    const keyA = "test-key-A";
+    const txidA = "d".repeat(64);
+    await recordDedup(keyA, txidA, policy);
+    await new Promise((r) => setTimeout(r, 1100));
+
+    // Payment B: a different obligation, recorded after A's TTL expires.
+    // In the old code this would prune A — re-opening the #460 gap.
+    const keyB = "test-key-B";
+    const txidB = "e".repeat(64);
+    await recordDedup(keyB, txidB, policy);
+
+    const state = JSON.parse(await readFile(policy.dedupStateFile, "utf-8"));
+    expect(keyA in state).toBe(true);
+    expect(keyB in state).toBe(true);
+  });
+
+  test("clearEntry from reconcile is idempotent if entry was already cleared", async () => {
+    const key = "test-key-5";
+    const txid = "f".repeat(64);
+    await recordDedup(key, txid, policy);
+    await new Promise((r) => setTimeout(r, 1100));
+
+    const result = await _lockTesting.withDirectPaymentLockForTest(policy, async () => {
+      return checkDedup(key, policy, async (entry, clearEntry) => {
+        // Clear once — should succeed
+        await clearEntry();
+        // Clear again — should not throw, entry is gone
+        await clearEntry();
+        return null;
+      });
+    });
+    expect(result).toBeNull();
   });
 });
 
@@ -916,11 +1030,17 @@ describe("createApiClient payment modes", () => {
     expect(f.paidRequests).toHaveLength(1);
   });
 
-  test("a different request is not a duplicate; the guard clears after the TTL", async () => {
+  test("after TTL expiry, a Hiro-confirmed abort reconciles and allows a retry (#460)", async () => {
     process.env.X402_PAYMENT_MODE = "direct";
     process.env.X402_DEDUP_TTL_SECONDS = "1";
-    // Failed replays leave the outcome ambiguous, so the records stay armed until the TTL.
-    const f = await up({ paid: { kind: "http", status: 500, body: { error: "boom" } } });
+    // Failed replays leave the outcome ambiguous, so the records stay armed
+    // until the TTL. After TTL, the reconcile callback asks Hiro for the
+    // txid's fate; here the fake Hiro reports abort_by_response, so the
+    // guard clears and a fresh payment is allowed.
+    const f = await up({
+      paid: { kind: "http", status: 500, body: { error: "boom" } },
+      txStatus: "abort_by_response",
+    });
     const a = await createApiClient(f.origin, "test.dedup-a");
     await rejection(a.request({ method: "GET", url: "/paid", params: { slug: "stacks" } }));
     const b = await createApiClient(f.origin, "test.dedup-b");
@@ -931,6 +1051,28 @@ describe("createApiClient payment modes", () => {
     const c = await createApiClient(f.origin, "test.dedup-c");
     await rejection(c.request({ method: "GET", url: "/paid", params: { slug: "stacks" } }));
     expect(f.paidRequests).toHaveLength(3);
+  });
+
+  test("after TTL expiry, a Hiro-confirmed success blocks the retry (#460 fail-closed)", async () => {
+    // Same scenario as above, but Hiro reports the prior tx as confirmed —
+    // the reconcile keeps the entry armed and the caller gets DuplicatePaymentError.
+    // This is the "money moved, response was lost" case the PR fixes.
+    process.env.X402_PAYMENT_MODE = "direct";
+    process.env.X402_DEDUP_TTL_SECONDS = "1";
+    const f = await up({
+      paid: { kind: "http", status: 500, body: { error: "boom" } },
+      txStatus: "success",
+    });
+    const a = await createApiClient(f.origin, "test.dedup-success-a");
+    await rejection(a.request({ method: "GET", url: "/paid", params: { slug: "stacks" } }));
+    expect(f.paidRequests).toHaveLength(1);
+
+    await new Promise((r) => setTimeout(r, 1100));
+    const c = await createApiClient(f.origin, "test.dedup-success-c");
+    const failure = await rejection(c.request({ method: "GET", url: "/paid", params: { slug: "stacks" } }));
+    expect(failure).toBeInstanceOf(DuplicatePaymentError);
+    // No new payment was made — Hiro said the prior one succeeded.
+    expect(f.paidRequests).toHaveLength(1);
   });
 
   test("the daily spend ledger refuses once today's cap is reached, across client instances", async () => {

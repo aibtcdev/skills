@@ -387,6 +387,13 @@ export const _lockTesting = {
     lockMaxWaitMs = ms;
   },
   lockDirsFor,
+  /** Test-only: take the cross-process lock and run `fn`. Used by tests that
+   *  exercise `checkDedup`'s `reconcileExpired` callback (the callback runs
+   *  inside the held lock in production, via `withDirectPaymentLock` in
+   *  `buildDirectPaymentTransaction`). */
+  withDirectPaymentLockForTest<T>(policy: DirectPaymentPolicy, fn: () => Promise<T>): Promise<T> {
+    return withDirectPaymentLock(policy, fn);
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -455,7 +462,10 @@ const NON_IDENTITY_HEADERS = new Set([
   "connection",
   "user-agent",
   // Caller-supplied stable id (RFC for issue #460): present in the dedup key
-  // via `obligationId` below; never part of the header hash, never forwarded.
+  // via `obligationId` below; never part of the header hash, never forwarded
+  // to the third-party x402 endpoint. `stripPaymentObligationIdHeader` in
+  // `x402.service.ts` removes it from the outgoing axios request before the
+  // paid replay is sent.
   "x-payment-obligation-id",
 ]);
 
@@ -483,23 +493,9 @@ export function generateDedupKey(input: {
   /** Caller-supplied stable id (e.g. "reply-to-message-M"). Bypasses content hash. */
   obligationId?: string;
 }): string {
-  // Caller says: "this is attempt N of obligation X". Key on what makes the
-  // obligation unique (the caller's id + the payment terms) — never on the
-  // per-attempt transport details.
-  if (input.obligationId && input.obligationId.trim()) {
-    const payload = canonicalJson({
-      obligationId: input.obligationId.trim(),
-      payer: input.payer,
-      payTo: input.payTo,
-      amount: input.amount,
-      asset: input.asset,
-    });
-    return createHash("sha256").update(payload).digest("hex");
-  }
-
   // Look for an `X-Payment-Obligation-Id` header the caller passed without
   // knowing about the parameter, then strip it from the forwarded headers
-  // (it is dedup identity, not request identity).
+  // (it is dedup identity, not request identity — see NON_IDENTITY_HEADERS).
   let headerObligation: string | undefined;
   const headers: Record<string, string> = {};
   for (const [name, value] of Object.entries(input.headers ?? {})) {
@@ -511,9 +507,17 @@ export function generateDedupKey(input: {
     if (NON_IDENTITY_HEADERS.has(lower) || value === undefined || value === null) continue;
     headers[lower] = String(value);
   }
-  if (headerObligation) {
+
+  // Resolve obligation once — parameter takes precedence, then header. Both
+  // branches produce the same payload shape so the parameter and header
+  // forms of the same obligation always hash to the same key.
+  const obligation = input.obligationId?.trim() || headerObligation;
+  if (obligation) {
+    // Caller says: "this is attempt N of obligation X". Key on what makes the
+    // obligation unique (the caller's id + the payment terms) — never on the
+    // per-attempt transport details.
     const payload = canonicalJson({
-      obligationId: headerObligation,
+      obligationId: obligation,
       payer: input.payer,
       payTo: input.payTo,
       amount: input.amount,
@@ -568,6 +572,12 @@ function parseDedupEntry(file: string, key: string, value: unknown): DedupEntry 
  * The reconciliation returns the still-valid entry (treat as duplicate), or
  * null (entry was a dead-end, fresh payment allowed).
  *
+ * The callback receives a `clearEntry` helper that performs the read-modify-
+ * write on the dedup state WITHOUT re-entering the cross-process lock. This
+ * is safe because `checkDedup` is invoked from inside `withDirectPaymentLock`,
+ * and the lock is documented as non-re-entrant (`x402-guards.ts:355-356`).
+ * Calling the public `clearDedup` from the callback would deadlock.
+ *
  * Without `reconcileExpired`, the TTL is silently forgotten — that is the
  * original behaviour, kept for backwards compatibility with callers that do
  * not have a Hiro client available.
@@ -575,23 +585,49 @@ function parseDedupEntry(file: string, key: string, value: unknown): DedupEntry 
 export async function checkDedup(
   key: string,
   policy: DirectPaymentPolicy,
-  reconcileExpired?: (entry: DedupEntry) => Promise<DedupEntry | null>
+  reconcileExpired?: (
+    entry: DedupEntry,
+    clearEntry: () => Promise<void>
+  ) => Promise<DedupEntry | null>
 ): Promise<DedupEntry | null> {
   const state = await readStateFile(policy.dedupStateFile);
   if (!(key in state)) return null;
   const entry = parseDedupEntry(policy.dedupStateFile, key, state[key]);
   if (Date.now() - entry.timestamp <= policy.dedupTtlMs) return entry;
-  if (reconcileExpired) return reconcileExpired(entry);
+  if (reconcileExpired) {
+    // `clearEntry` re-reads state (it may have changed since we read it),
+    // deletes the entry only if it still names the same txid, and writes
+    // the new state — all without taking the cross-process lock, since
+    // our caller already holds it.
+    const clearEntry = async (): Promise<void> => {
+      const fresh = await readStateFile(policy.dedupStateFile);
+      if (!(key in fresh)) return;
+      const current = parseDedupEntry(policy.dedupStateFile, key, fresh[key]);
+      if (current.txid !== entry.txid) return; // a later payment owns this key now
+      delete fresh[key];
+      await writeStateFile(policy.dedupStateFile, fresh);
+    };
+    return reconcileExpired(entry, clearEntry);
+  }
   return null;
 }
 
-/** Record a signed payment for `key`; prunes expired entries while writing. */
+/** Record a signed payment for `key`.
+ *
+ * Does NOT prune expired entries — those may still need to be reconciled
+ * via Hiro before being forgotten. Pruning here would re-open the #460 gap
+ * where an unrelated later payment deletes an ambiguous earlier record
+ * before reconcile runs. A 24h hard cap is enforced to prevent unbounded
+ * state growth; entries older than that are unrecoverable for reconcile
+ * anyway (Hiro's indexer lag window is much shorter).
+ */
 export async function recordDedup(key: string, txid: string, policy: DirectPaymentPolicy): Promise<void> {
   const state = await readStateFile(policy.dedupStateFile);
   const now = Date.now();
+  const HARD_CAP_MS = 24 * 60 * 60 * 1000; // 24h, well past any reconcile window
   for (const [k, v] of Object.entries(state)) {
     const entry = parseDedupEntry(policy.dedupStateFile, k, v);
-    if (now - entry.timestamp > policy.dedupTtlMs) delete state[k];
+    if (now - entry.timestamp > HARD_CAP_MS) delete state[k];
   }
   state[key] = { txid, timestamp: now } satisfies DedupEntry;
   await writeStateFile(policy.dedupStateFile, state);
@@ -603,6 +639,11 @@ export async function recordDedup(key: string, txid: string, policy: DirectPayme
  * never to have been sent: in both cases the outcome is no longer ambiguous,
  * so an identical request after that is a new purchase, not a retry. Holds
  * the guard lock for the read-modify-write.
+ *
+ * Must NOT be called from inside a `reconcileExpired` callback passed to
+ * `checkDedup` — that callback already runs inside the lock, and the lock is
+ * not re-entrant. Use the `clearEntry` argument passed to the callback
+ * instead.
  */
 export async function clearDedup(key: string, txid: string, policy: DirectPaymentPolicy): Promise<void> {
   await withDirectPaymentLock(policy, async () => {
