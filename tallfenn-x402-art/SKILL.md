@@ -31,9 +31,11 @@ Two tiers:
 - **Paid** (`seed-pack`, `svg-preview`, `motion-timeline`, `full-bundle`) —
   100 sats sBTC per single artifact (`seed-pack`, `svg-preview`,
   `motion-timeline`) or 150 sats sBTC for `full-bundle` (all three artifacts in
-  one call, saving 150 sats compared to three separate calls). Re-running a
-  command after a timeout signs a new payment; check the payment first (the
-  CLI does not reuse a signed transaction across runs).
+  one call, saving 150 sats compared to three separate calls). A successful paid
+  call leaves no duplicate record, so running it again is a new payment. After a
+  failure or timeout where the transfer may have been sent, a re-run inside the
+  TTL is refused with the earlier txid — check that txid on Hiro first (the CLI
+  does not reuse a signed transaction across runs).
 
 ## Subcommands
 
@@ -94,9 +96,10 @@ Renders a deterministic 512x512 SVG preview (`image/svg+xml` string inside JSON)
 from a seed hash (`--hash`, exactly 64 lowercase hex characters, no surrounding
 whitespace — the SHA-256 that `seed-pack` and `teaser` return) and an optional
 pipe-separated `--palette`. Each entry must be `#RGB`, `#RRGGBB`, or
-`hsl(h, s%, l%)` (for example `hsl(120, 72%, 58%)|hsl(240, 72%, 58%)`). The
-worker answers 402 before it inspects the body, so a short hash or a
-non-color is refused here and costs 0 sats.
+`hsl(h, s%, l%)` (for example `hsl(120, 72%, 58%)|hsl(240, 72%, 58%)`; the
+worker's discovery text shows HSL, and those strings are used as SVG fill
+colors). The worker answers 402 before it inspects the body, so a short hash or
+a non-color is refused here and costs 0 sats.
 
 ### `motion-timeline` (paid — 100 sats sBTC)
 
@@ -142,24 +145,25 @@ transfer and does not co-sign a fee-0 transaction. The recipient is
 asset as the canonical sBTC contract id
 `SM3VDXK3WZZSA84XXFKAFAF15NNZX32CTSG82JFQ4.sbtc-token`.
 
-The price check runs on the same 402 that is signed. It refuses a quote whose
-amount is not the route's price (100 or 150 sats), whose `payTo` is not the
-address above, whose asset is not the canonical sBTC contract id, or whose
-network is not `stacks:1`. Nothing is signed when that check throws. The client
-is constructed with `paymentMode: "direct"`, so `X402_PAYMENT_MODE` does not
-choose the mode. The shared per-payment cap still applies on top of the exact
-route price.
+The price check runs on the same 402 that is signed. It refuses a quote above
+the route's price (100 or 150 sats), whose `payTo` is not the address above,
+whose asset is not the canonical sBTC contract id, or whose network is not
+`stacks:1`. Nothing is signed when that check throws. The client is constructed
+with `paymentMode: "direct"`, so `X402_PAYMENT_MODE` does not choose the mode.
+The shared per-payment cap (`X402_MAX_SATS_PER_PAYMENT`) still applies on top
+of the route price table.
 
 `TALLFENN_ART_URL`, when set, replaces the worker host for every request,
 including the POST that carries the signed transfer. `payTo` is still pinned
 to the address above: a host that names a different recipient is refused
 before anything is signed. Leave the variable unset to use the production worker.
 
-An identical paid command inside `X402_DEDUP_TTL_SECONDS` (default 900 seconds)
-is refused with `DuplicatePaymentError` and the earlier txid. That refusal is
-not a new payment. After the window, a new run signs a new transfer. If a paid
-request fails after the transfer was sent, the error includes the txid: check
-that transaction before paying again.
+A successful paid call leaves no duplicate record, so running the same command
+again is a new payment. After a failure or timeout where the transfer may have
+been sent, a re-run inside `X402_DEDUP_TTL_SECONDS` (default 900 seconds) is
+refused with `DuplicatePaymentError` and the earlier txid — check that txid on
+Hiro before paying again. After the window, or when no ambiguous record exists,
+a new run signs a new transfer.
 
 ## Reference
 
