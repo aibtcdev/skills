@@ -561,6 +561,20 @@ describe("createApiClient payment modes", () => {
     expect(existsSync(process.env.X402_SPEND_STATE_FILE!)).toBe(false);
   });
 
+  test("options.paymentMode direct overrides X402_PAYMENT_MODE sponsored", async () => {
+    process.env.X402_PAYMENT_MODE = "sponsored";
+    const f = await up({ nonce: 7 });
+    const api = await createApiClient(f.origin, "test.option-direct-over-env", {
+      paymentMode: "direct",
+    });
+    await api.request({ method: "GET", url: "/paid" });
+
+    expect(f.paidRequests).toHaveLength(1);
+    const { auth } = decodeTx(f.paidRequests[0]);
+    expect(auth.authType).toBe(AuthType.Standard);
+    expect(auth.spendingCondition.fee).toBeGreaterThan(0n);
+  });
+
   test("direct mode signs a standard fee-paying sBTC transfer with a deny-mode post-condition", async () => {
     process.env.X402_PAYMENT_MODE = "direct";
     const f = await up({ nonce: 42 });

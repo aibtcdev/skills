@@ -2681,7 +2681,7 @@
       ],
       "tags": [
         "l2",
-        "read-only",
+        "write",
         "mainnet-only",
         "requires-funds"
       ],

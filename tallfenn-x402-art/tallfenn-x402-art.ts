@@ -76,9 +76,9 @@ function assertAcceptedQuote(path: string, selected: PaymentRequirementsV2): voi
   } catch {
     throw new Error("Refusing payment: invalid quoted amount. Nothing was signed or paid.");
   }
-  if (quotedAmount !== knownPrice) {
+  if (quotedAmount > knownPrice) {
     throw new Error(
-      `Refusing payment: quoted amount ${selected.amount} sats does not match the expected ${expectedPrice} sats for ${path}. ` +
+      `Refusing payment: quoted amount ${selected.amount} sats exceeds the expected ${expectedPrice} sats for ${path}. ` +
         `Nothing was signed or paid.`
     );
   }

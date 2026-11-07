@@ -8,7 +8,7 @@ metadata:
   arguments: "meta | health | teaser | samples | seed-pack | svg-preview | motion-timeline | full-bundle"
   entry: "tallfenn-x402-art/tallfenn-x402-art.ts"
   requires: "wallet"
-  tags: "l2, read-only, mainnet-only, requires-funds"
+  tags: "l2, write, mainnet-only, requires-funds"
 ---
 
 # tallfenn-x402-art
