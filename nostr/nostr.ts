@@ -172,7 +172,7 @@ async function queryRelays(
 }
 
 // ---------------------------------------------------------------------------
-// aibtc.news amplification helpers
+// Signal amplification helpers
 // ---------------------------------------------------------------------------
 
 interface AibtcSignal {
@@ -181,17 +181,23 @@ interface AibtcSignal {
   beat_topic?: string;
 }
 
+/** Where amplify-signal reads takes from (the Signal service, not aibtc.news). */
+const SIGNAL_TAKES_URL = "https://1btc-news-api.p-d07.workers.dev/takes";
+
 /**
- * Format an aibtc.news signal as a Nostr note with standard tags.
+ * Format a signal as a Nostr note with standard tags. The `r` (URL reference)
+ * tag is added only when `sourceUrl` names where the content was actually
+ * read; aibtc.news/signals/<id> links return 410 since the v5 migration (#444).
  */
 function formatSignalNote(signal: {
   beat?: string;
   content: string;
   signalId?: string;
+  sourceUrl?: string;
 }): { content: string; tags: string[][] } {
   const parts: string[] = [];
 
-  if (signal.beat) parts.push(`📡 aibtc.news — ${signal.beat}`);
+  if (signal.beat) parts.push(`📡 ${signal.beat}`);
   parts.push(signal.content);
   if (signal.signalId) parts.push(`\nSignal: ${signal.signalId}`);
   parts.push("\n#bitcoin #aibtcnews #nostr");
@@ -201,8 +207,8 @@ function formatSignalNote(signal: {
     ["t", "aibtcnews"],
     ["t", "nostr"],
   ];
-  if (signal.signalId) {
-    tags.push(["r", `https://aibtc.news/signals/${signal.signalId}`]);
+  if (signal.sourceUrl) {
+    tags.push(["r", signal.sourceUrl]);
   }
 
   return { content: parts.join("\n"), tags };
@@ -519,9 +525,9 @@ program
 program
   .command("amplify-signal")
   .description(
-    "Fetch an aibtc.news signal by ID and broadcast it as a formatted Nostr note. Requires unlocked wallet."
+    "Fetch a take by ID from the Signal service (1btc-news-api) and broadcast it as a formatted Nostr note. Requires unlocked wallet."
   )
-  .requiredOption("--signal-id <id>", "Signal ID from aibtc.news")
+  .requiredOption("--signal-id <id>", "Take ID from the Signal service (GET https://1btc-news-api.p-d07.workers.dev/takes)")
   .option("--beat <name>", "Beat name for context (e.g. 'BTC Macro')")
   .option("--relays <urls>", "Comma-separated relay URLs (overrides defaults)")
   .action(async (opts: { signalId: string; beat?: string; relays?: string }) => {
@@ -532,10 +538,9 @@ program
         ? opts.relays.split(",").map((r: string) => r.trim())
         : DEFAULT_RELAYS;
 
-      // Fetch signal from aibtc.news API
-      const res = await fetch(
-        `https://1btc-news-api.p-d07.workers.dev/takes/${opts.signalId}`
-      );
+      // Fetch the take from the Signal service
+      const sourceUrl = `${SIGNAL_TAKES_URL}/${encodeURIComponent(opts.signalId)}`;
+      const res = await fetch(sourceUrl);
       if (!res.ok) throw new Error(`Failed to fetch signal: ${res.status} ${res.statusText}`);
       const signal = (await res.json()) as AibtcSignal;
 
@@ -543,9 +548,10 @@ program
       if (!content) throw new Error("Signal has no content to amplify");
 
       const { content: noteContent, tags } = formatSignalNote({
-        beat: opts.beat || signal.beat_topic || "aibtc.news",
+        beat: opts.beat || signal.beat_topic,
         content,
         signalId: opts.signalId,
+        sourceUrl,
       });
 
       const template: EventTemplate = {
@@ -579,11 +585,11 @@ program
 program
   .command("amplify-text")
   .description(
-    "Publish formatted aibtc.news signal content directly as a Nostr note (no API fetch needed). Requires unlocked wallet."
+    "Publish signal content directly as a formatted Nostr note (no API fetch needed). Requires unlocked wallet."
   )
   .requiredOption("--content <text>", "Signal content/thesis to broadcast")
   .option("--beat <name>", "Beat name", "BTC Macro")
-  .option("--signal-id <id>", "Signal ID for reference link")
+  .option("--signal-id <id>", "Signal ID, shown in the note body")
   .option("--relays <urls>", "Comma-separated relay URLs (overrides defaults)")
   .action(
     async (opts: {
