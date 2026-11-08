@@ -17,10 +17,9 @@ import {
 import { printJson, handleError } from "../src/lib/utils/cli.js";
 import { readAppConfig, writeAppConfig, type InboxAutoReplyConfig } from "../src/lib/utils/storage.js";
 import {
+  AUTO_REPLY_LIMITS,
   DEFAULT_AUTO_REPLY_MODEL,
-  DEFAULT_DAILY_CAP_SATS,
   DEFAULT_MAX_REPLIES_PER_RUN,
-  DEFAULT_MAX_SATS_PER_REPLY,
   MAX_REPLIES_PER_RUN,
   listLiveModels,
   marketplaceReplyGenerator,
@@ -370,16 +369,6 @@ function parseNonNegativeInt(name: string, value: string): number {
   return Number(value);
 }
 
-/**
- * Fixed inference spend limits for auto-reply. Not settable by flag or config
- * key, so nothing the agent can run raises its own spending ceiling; matches
- * the aibtc MCP server (aibtcdev/aibtc-mcp-server#752).
- */
-const AUTO_REPLY_LIMITS = Object.freeze({
-  dailyCapSats: DEFAULT_DAILY_CAP_SATS,
-  maxSatsPerReply: DEFAULT_MAX_SATS_PER_REPLY,
-});
-
 /** The user-settable auto-reply fields; stored limit keys are never echoed. */
 function autoReplySettings(config: InboxAutoReplyConfig): Pick<InboxAutoReplyConfig, "enabled" | "model" | "systemPrompt"> {
   return { enabled: config.enabled, model: config.model, systemPrompt: config.systemPrompt };
@@ -504,7 +493,6 @@ program
       const summary = await runAutoReply({
         account,
         systemPrompt: config.systemPrompt,
-        ...AUTO_REPLY_LIMITS,
         maxRepliesPerRun: maxReplies,
         dryRun,
         generator: marketplaceReplyGenerator(account, config.model),
