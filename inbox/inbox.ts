@@ -375,7 +375,15 @@ function parseNonNegativeInt(name: string, value: string): number {
  * key, so nothing the agent can run raises its own spending ceiling; matches
  * the aibtc MCP server (aibtcdev/aibtc-mcp-server#752).
  */
-const AUTO_REPLY_LIMITS = { dailyCapSats: DEFAULT_DAILY_CAP_SATS, maxSatsPerReply: DEFAULT_MAX_SATS_PER_REPLY };
+const AUTO_REPLY_LIMITS = Object.freeze({
+  dailyCapSats: DEFAULT_DAILY_CAP_SATS,
+  maxSatsPerReply: DEFAULT_MAX_SATS_PER_REPLY,
+});
+
+/** The user-settable auto-reply fields; stored limit keys are never echoed. */
+function autoReplySettings(config: InboxAutoReplyConfig): Pick<InboxAutoReplyConfig, "enabled" | "model" | "systemPrompt"> {
+  return { enabled: config.enabled, model: config.model, systemPrompt: config.systemPrompt };
+}
 
 function requireMainnet(): void {
   if (NETWORK !== "mainnet") {
@@ -409,7 +417,7 @@ program
         if (opts.enabled === undefined && opts.model === undefined && opts.systemPrompt === undefined) {
           printJson({
             configured: Boolean(current),
-            settings: current ?? null,
+            settings: current ? autoReplySettings(current) : null,
             limits: AUTO_REPLY_LIMITS,
             ...(!current && { note: "Not configured. Set --system-prompt, then --enabled true." }),
           });
@@ -437,7 +445,9 @@ program
         if (next.enabled && !next.systemPrompt) {
           throw new Error("Set --system-prompt before enabling auto-reply.");
         }
-        await writeAppConfig({ ...config, inboxAutoReply: next });
+        // Write the fixed limits too: aibtc-mcp-server 1.78.0 reads dailyCapSats
+        // from this file with no default, and a missing key there means no cap.
+        await writeAppConfig({ ...config, inboxAutoReply: { ...next, ...AUTO_REPLY_LIMITS } });
         printJson({ success: true, settings: next, limits: AUTO_REPLY_LIMITS });
       } catch (error) {
         handleError(error);
@@ -490,12 +500,11 @@ program
         );
       }
 
-      const limits = AUTO_REPLY_LIMITS;
       const account = await getAccount();
       const summary = await runAutoReply({
         account,
         systemPrompt: config.systemPrompt,
-        ...limits,
+        ...AUTO_REPLY_LIMITS,
         maxRepliesPerRun: maxReplies,
         dryRun,
         generator: marketplaceReplyGenerator(account, config.model),
@@ -509,7 +518,7 @@ program
         repliedCount: summary.replied.length,
         skippedCount: summary.skipped.length,
         failedCount: summary.failed.length,
-        ...limits,
+        ...AUTO_REPLY_LIMITS,
       });
     } catch (error) {
       handleError(error);

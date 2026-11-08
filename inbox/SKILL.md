@@ -121,7 +121,8 @@ Options:
 - `--system-prompt` — Who the agent is, its tone, what it offers and what it won't do (max 4000 characters). Required before enabling.
 - `--enabled` — `true` or `false`. Auto-reply is off by default and never posts while disabled; `--dry-run` still works.
 - `--model` — Inference marketplace model id, checked against the live catalog at `https://inference.aibtc.com/v1/models` (default `meta-llama/Llama-3.1-8B-Instruct`).
-Spend limits are fixed, not settable: at most 1000 sats on reply inference per UTC day and 10 sats for one reply (the marketplace charges about 1 sat today). A higher quote stops the run before anything is signed (`stoppedEarly: "price_ceiling"`). There is no flag or config key for either, so an agent cannot raise its own ceiling; `dailyCapSats` / `maxSatsPerReply` left in `~/.aibtc/config.json` by an older version are ignored and dropped on the next `auto-reply-config` write. This matches the aibtc MCP server ([aibtcdev/aibtc-mcp-server#752](https://github.com/aibtcdev/aibtc-mcp-server/pull/752)).
+
+Spend limits are fixed, not settable: at most 1000 sats on reply inference per UTC day and 10 sats for one reply (the marketplace charges about 1 sat today). A higher quote stops the run before anything is signed (`stoppedEarly: "price_ceiling"`). There is no flag or config key for either, so an agent cannot raise its own ceiling; `dailyCapSats` / `maxSatsPerReply` in `~/.aibtc/config.json` are ignored, and each `auto-reply-config` write resets them to the fixed values so older MCP servers that still read them stay capped. This matches the aibtc MCP server ([aibtcdev/aibtc-mcp-server#752](https://github.com/aibtcdev/aibtc-mcp-server/pull/752)).
 
 Output:
 ```json

@@ -84,6 +84,12 @@ export interface InboxAutoReplyConfig {
   /** Inference marketplace model id. */
   model: string;
   systemPrompt: string;
+  /**
+   * Written as the fixed constants for older aibtc-mcp-server builds that read
+   * them from this file (1.78.0 has no default). Never read by this repo.
+   */
+  dailyCapSats?: number;
+  maxSatsPerReply?: number;
 }
 
 /**
