@@ -140,26 +140,39 @@ export function resolvePreferredAsset(raw: string | undefined): X402PaymentAsset
 }
 
 /**
- * Pick the challenge option to pay. Without a preference: the first
- * `stacks:` option (the rule every earlier release used). With one: the first
- * `stacks:` option whose asset is that token — native `STX` literally, sBTC
- * by the same contract-id test the transaction builders use. Returns null
- * when no Stacks option exists, or none carries the preferred asset; the
- * caller reports what was offered.
+ * Pick the challenge option to pay: the first `stacks:` option this client
+ * would actually sign for in `payable.mode` on `payable.network`, using the
+ * same allowlist as the builder for that mode (resolveDirectPaymentAsset or
+ * resolveSponsoredPaymentTokenType). With a preference, the asset must also
+ * be that token. Options the builder would refuse (a lookalike
+ * `*.sbtc-token`, padding, any other contract) are skipped, so a payable
+ * option later in `accepts` is not lost behind one that would be refused
+ * (#464). Wire order is kept among payable options. Returns null when none
+ * qualifies; the caller reports what was offered. The builders still check
+ * the chosen asset again before signing.
  */
 export function selectStacksPaymentOption(
   accepts: readonly PaymentRequirementsV2[],
-  preferredAsset?: X402PaymentAsset
+  preferredAsset: X402PaymentAsset | undefined,
+  payable: { network: Network; mode: X402PaymentMode }
 ): PaymentRequirementsV2 | null {
-  const stacksOptions = accepts.filter((opt) => typeof opt.network === "string" && opt.network.startsWith("stacks:"));
-  if (!preferredAsset) return stacksOptions[0] ?? null;
-  const matches = (opt: PaymentRequirementsV2) => {
-    if (typeof opt.asset !== "string") return false;
-    return preferredAsset === "STX"
-      ? /^stx$/i.test(opt.asset)
-      : detectTokenType(opt.asset) === "sBTC";
+  const payableAs = (opt: PaymentRequirementsV2): X402PaymentAsset | null => {
+    if (typeof opt.network !== "string" || !opt.network.startsWith("stacks:")) return null;
+    if (typeof opt.asset !== "string") return null;
+    try {
+      return payable.mode === "direct"
+        ? resolveDirectPaymentAsset(opt.asset, payable.network).kind
+        : resolveSponsoredPaymentTokenType(opt.asset, payable.network);
+    } catch {
+      return null;
+    }
   };
-  return stacksOptions.find(matches) ?? null;
+  return (
+    accepts.find((opt) => {
+      const kind = payableAs(opt);
+      return kind !== null && (!preferredAsset || kind === preferredAsset);
+    }) ?? null
+  );
 }
 
 /** Fee clamps by transaction type (micro-STX), mirrored from utils/fee.ts. */
@@ -1230,20 +1243,27 @@ export async function createApiClient(
           );
         }
 
-        // Select the Stacks payment option: the first one by default, or the
-        // first carrying the caller's preferred asset.
-        const selectedOption = selectStacksPaymentOption(paymentRequired.accepts, preferredAsset);
+        // Select the first Stacks option this mode's builder would pay (and,
+        // with a preference, in the caller's preferred asset).
+        const selectedOption = selectStacksPaymentOption(paymentRequired.accepts, preferredAsset, {
+          network: account.network,
+          mode: paymentMode,
+        });
 
         if (!selectedOption) {
-          if (preferredAsset && paymentRequired.accepts.some((opt) => opt.network?.startsWith("stacks:"))) {
-            const assets = paymentRequired.accepts
-              .filter((opt) => opt.network?.startsWith("stacks:"))
-              .map((opt) => opt.asset)
-              .join(", ");
+          const stacksAssets = paymentRequired.accepts
+            .filter((opt) => typeof opt.network === "string" && opt.network.startsWith("stacks:"))
+            .map((opt) => opt.asset);
+          if (stacksAssets.length > 0) {
+            const canonical = getContracts(account.network).SBTC_TOKEN;
             return Promise.reject(
               new Error(
-                `The endpoint does not accept ${preferredAsset} on Stacks. Offered assets: ${assets}. ` +
-                  `Pay with one of those or drop the asset preference.`
+                (preferredAsset
+                  ? `The endpoint does not accept ${preferredAsset} on Stacks in a form this client pays. `
+                  : "The endpoint offers no Stacks option this client pays. ") +
+                  `Offered assets: ${stacksAssets.join(", ")}. This client pays only native STX or the canonical ` +
+                  `sBTC token ${canonical} on ${account.network}` +
+                  (preferredAsset ? "; pay with another offered asset or drop the asset preference." : ".")
               )
             );
           }

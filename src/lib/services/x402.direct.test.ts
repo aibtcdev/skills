@@ -232,29 +232,51 @@ describe("selectStacksPaymentOption", () => {
   const stx: PaymentRequirementsV2 = { scheme: "exact", network: chain, amount: "300000", asset: "STX", payTo: "SPX", maxTimeoutSeconds: 60 };
   // A non-Stacks option: the type forbids it, the wire does not.
   const evm: PaymentRequirementsV2 = { ...stx, network: "eip155:8453" as unknown as NetworkV2, asset: "0xusdc" };
+  const bareSbtc: PaymentRequirementsV2 = { ...sbtc, asset: "sBTC" };
+  const foreignSbtc: PaymentRequirementsV2 = { ...sbtc, asset: "SP000000000000000000002Q6VF78.sbtc-token" };
+  const pick = (
+    accepts: PaymentRequirementsV2[],
+    preferred?: "STX" | "sBTC",
+    mode: "direct" | "sponsored" = "direct"
+  ) => selectStacksPaymentOption(accepts, preferred, { network, mode });
 
-  test("without a preference it is the first Stacks option, whatever its asset", () => {
-    expect(selectStacksPaymentOption([sbtc, stx])).toBe(sbtc);
-    expect(selectStacksPaymentOption([stx, sbtc])).toBe(stx);
-    expect(selectStacksPaymentOption([evm, stx])).toBe(stx);
-    expect(selectStacksPaymentOption([evm])).toBeNull();
+  test("without a preference it is the first payable Stacks option", () => {
+    expect(pick([sbtc, stx])).toBe(sbtc);
+    expect(pick([stx, sbtc])).toBe(stx);
+    expect(pick([evm, stx])).toBe(stx);
+    expect(pick([evm])).toBeNull();
   });
 
   test("a preference picks by asset regardless of order", () => {
-    expect(selectStacksPaymentOption([sbtc, stx], "STX")).toBe(stx);
-    expect(selectStacksPaymentOption([sbtc, stx], "sBTC")).toBe(sbtc);
-    expect(selectStacksPaymentOption([stx, sbtc], "sBTC")).toBe(sbtc);
+    expect(pick([sbtc, stx], "STX")).toBe(stx);
+    expect(pick([sbtc, stx], "sBTC")).toBe(sbtc);
+    expect(pick([stx, sbtc], "sBTC")).toBe(sbtc);
     // sBTC matches by contract id, STX only literally: an unrelated token is neither.
-    expect(selectStacksPaymentOption([{ ...stx, asset: "SP1.other-token" }], "STX")).toBeNull();
-    expect(selectStacksPaymentOption([{ ...stx, asset: "stx" }], "STX")?.asset).toBe("stx");
+    expect(pick([{ ...stx, asset: "SP1.other-token" }], "STX")).toBeNull();
+    expect(pick([{ ...stx, asset: "stx" }], "STX")?.asset).toBe("stx");
     // Padding is refused, as the direct builder refuses it: no select-then-reject.
-    expect(selectStacksPaymentOption([{ ...stx, asset: " STX" }], "STX")).toBeNull();
+    expect(pick([{ ...stx, asset: " STX" }], "STX")).toBeNull();
   });
 
   test("a preference the challenge does not offer selects nothing", () => {
-    expect(selectStacksPaymentOption([sbtc], "STX")).toBeNull();
-    expect(selectStacksPaymentOption([stx], "sBTC")).toBeNull();
-    expect(selectStacksPaymentOption([evm], "STX")).toBeNull();
+    expect(pick([sbtc], "STX")).toBeNull();
+    expect(pick([stx], "sBTC")).toBeNull();
+    expect(pick([evm], "STX")).toBeNull();
+  });
+
+  test("skips options the builder would refuse, so a later canonical option is paid (#464)", () => {
+    for (const mode of ["direct", "sponsored"] as const) {
+      // A lookalike *.sbtc-token is refused by both builders.
+      expect(pick([foreignSbtc, sbtc], "sBTC", mode)).toBe(sbtc);
+      expect(pick([sbtc, foreignSbtc], "sBTC", mode)).toBe(sbtc);
+      expect(pick([foreignSbtc], "sBTC", mode)).toBeNull();
+      expect(pick([foreignSbtc, stx], undefined, mode)).toBe(stx);
+      expect(pick([{ ...stx, asset: "SP1.other-token" }, stx], undefined, mode)).toBe(stx);
+    }
+    // Bare "sBTC" is accepted only by the sponsored guard (compatibility).
+    expect(pick([bareSbtc, sbtc], "sBTC", "direct")).toBe(sbtc);
+    expect(pick([bareSbtc, sbtc], "sBTC", "sponsored")).toBe(bareSbtc);
+    expect(pick([bareSbtc], "sBTC", "direct")).toBeNull();
   });
 
   test("resolvePreferredAsset canonicalizes case and rejects anything else", () => {
@@ -725,7 +747,7 @@ describe("createApiClient payment modes", () => {
     process.env.X402_PAYMENT_MODE = "direct";
     const f = await up({ accept: { asset: "SP2XYZ.sbtc-token" } });
     const api = await createApiClient(f.origin, "test.direct-asset");
-    await expect(api.request({ method: "GET", url: "/paid" })).rejects.toThrow(/only signs native STX or the canonical sBTC/);
+    await expect(api.request({ method: "GET", url: "/paid" })).rejects.toThrow(/offers no Stacks option this client pays.*only native STX or the canonical sBTC/);
     expect(f.paidRequests).toHaveLength(0);
     expect(f.hiroHits).toEqual([]);
   });
