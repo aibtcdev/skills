@@ -9,7 +9,6 @@
  */
 
 import { Command } from "commander";
-import crypto from "crypto";
 import {
   tupleCV,
   stringAsciiCV,
@@ -28,6 +27,7 @@ import {
 import { getHiroApi } from "@aibtc/skills/src/lib/services/hiro-api.js";
 import { NETWORK, getExplorerTxUrl } from "@aibtc/skills/src/lib/config/networks.js";
 import { PILLAR_API_KEY } from "@aibtc/skills/src/lib/config/pillar.js";
+import { currentPillarKeyPassword, unlockPillarKey } from "@aibtc/skills/src/lib/services/pillar-key-password.js";
 import { formatStx } from "@aibtc/skills/src/lib/utils/formatting.js";
 import { printJson, handleError } from "@aibtc/skills/src/lib/utils/cli.js";
 
@@ -41,18 +41,6 @@ const MAINNET_SBTC_TOKEN =
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-/**
- * Derive a deterministic password from PILLAR_API_KEY.
- * Allows auto-unlock of signing keys after restarts without user input.
- */
-function getDerivedPassword(): string {
-  const secret = PILLAR_API_KEY || "pillar-direct-default";
-  return crypto
-    .createHash("sha256")
-    .update(`pillar-agent-signing-key:${secret}`)
-    .digest("hex");
-}
 
 /**
  * Get active signing session, auto-unlocking if needed.
@@ -76,11 +64,10 @@ async function requireActiveKey() {
       return aReady - bReady;
     });
 
-    const password = getDerivedPassword();
     let unlocked = false;
     for (const key of sortedKeys) {
       try {
-        await keyService.unlock(key.id, password);
+        await unlockPillarKey(key.id, PILLAR_API_KEY);
         unlocked = true;
         break;
       } catch {
@@ -212,7 +199,7 @@ program
   .action(async (opts: { smartWallet: string }) => {
     try {
       const keyService = getSigningKeyService();
-      const password = getDerivedPassword();
+      const password = await currentPillarKeyPassword(PILLAR_API_KEY);
       const { keyId, pubkey } = await keyService.generateKey(
         password,
         opts.smartWallet
@@ -247,7 +234,6 @@ program
   .action(async (opts: { keyId?: string }) => {
     try {
       const keyService = getSigningKeyService();
-      const password = getDerivedPassword();
 
       let targetKeyId = opts.keyId;
       if (!targetKeyId) {
@@ -258,7 +244,7 @@ program
         targetKeyId = keys[0].id;
       }
 
-      await keyService.unlock(targetKeyId, password);
+      await unlockPillarKey(targetKeyId, PILLAR_API_KEY);
       const session = keyService.getActiveKey();
 
       if (!session) {
@@ -932,7 +918,7 @@ program
       }
 
       const api = getPillarApi();
-      const password = getDerivedPassword();
+      const password = await currentPillarKeyPassword(PILLAR_API_KEY);
 
       // Check name availability
       const nameCheck = await api.get<{
