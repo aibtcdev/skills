@@ -59,6 +59,8 @@ Execute install:
 bun run onboarding/onboarding.ts install-packs --pack builder --run
 ```
 
+`npx skills add` copies only each skill's folder. That registers its SKILL.md for discovery, but every pack skill imports the shared runtime in `src/lib/`, so it runs only from this checkout. Each preview `runtimes[]` and install `installs[]` entry says `standalone`, and for checkout-only skills gives `runFrom` (this checkout) and `runCommand`.
+
 ### run
 
 Execute the first-hour onboarding flow with optional registration and heartbeat check-in.
