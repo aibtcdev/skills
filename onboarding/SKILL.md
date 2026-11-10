@@ -13,8 +13,6 @@ metadata:
 
 # Onboarding Skill
 
-> **Runs from a full checkout.** This skill imports the shared runtime in `src/lib/` and the repo's npm dependencies, so a folder copied on its own (for example by `npx skills add`) will not start. Clone [aibtcdev/skills](https://github.com/aibtcdev/skills), run `bun install`, and run it from the repo root. See [Installation](https://github.com/aibtcdev/skills#installation).
-
 Automates first-hour setup for AIBTC agents with practical, idempotent steps and explicit safety defaults.
 
 ## Usage
@@ -59,7 +57,7 @@ Execute install:
 bun run onboarding/onboarding.ts install-packs --pack builder --run
 ```
 
-`npx skills add` copies only each skill's folder. That registers its SKILL.md for discovery, but every pack skill imports the shared runtime in `src/lib/`, so it runs only from this checkout. Each preview `runtimes[]` and install `installs[]` entry says `standalone`, and for checkout-only skills gives `runFrom` (this checkout) and `runCommand`.
+`--run` installs each skill with `npx skills add aibtcdev/skills/<skill> -y -g` (into `~/.agents/skills/<skill>`), then runs `bun install` in that folder so the skill runs on its own. Each `installs[]` entry reports `installDir` and `depsInstalled`; `success` is false if either step failed.
 
 ### run
 

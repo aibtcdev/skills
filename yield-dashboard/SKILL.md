@@ -14,8 +14,6 @@ metadata:
 
 # Yield Dashboard Skill
 
-> **Runs from a full checkout.** This skill imports the shared runtime in `src/lib/` and the repo's npm dependencies, so a folder copied on its own (for example by `npx skills add`) will not start. Clone [aibtcdev/skills](https://github.com/aibtcdev/skills), run `bun install`, and run it from the repo root. See [Installation](https://github.com/aibtcdev/skills#installation).
-
 Aggregated read-only dashboard across Stacks DeFi protocols: **Zest Protocol** (lending), **ALEX DEX** (AMM LP), and **Bitflow** (DEX LP). Also checks native STX stacking status.
 
 All data is fetched live from Stacks mainnet via Hiro API read-only contract calls.

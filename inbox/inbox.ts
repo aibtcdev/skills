@@ -8,14 +8,14 @@
  */
 
 import { Command } from "commander";
-import { NETWORK, getInboxBase } from "../src/lib/config/networks.js";
+import { NETWORK, getInboxBase } from "@aibtc/skills/src/lib/config/networks.js";
 import {
   checkSponsoredPaymentBalance,
   getAccount,
   getWalletAddress,
-} from "../src/lib/services/x402.service.js";
-import { printJson, handleError } from "../src/lib/utils/cli.js";
-import { readAppConfig, writeAppConfig, type InboxAutoReplyConfig } from "../src/lib/utils/storage.js";
+} from "@aibtc/skills/src/lib/services/x402.service.js";
+import { printJson, handleError } from "@aibtc/skills/src/lib/utils/cli.js";
+import { readAppConfig, writeAppConfig, type InboxAutoReplyConfig } from "@aibtc/skills/src/lib/utils/storage.js";
 import {
   AUTO_REPLY_LIMITS,
   DEFAULT_AUTO_REPLY_MODEL,
@@ -24,7 +24,7 @@ import {
   listLiveModels,
   marketplaceReplyGenerator,
   runAutoReply,
-} from "../src/lib/services/inbox-auto-reply.service.js";
+} from "@aibtc/skills/src/lib/services/inbox-auto-reply.service.js";
 
 // ---------------------------------------------------------------------------
 // Program
@@ -111,7 +111,7 @@ program
           decodePaymentRequired,
           encodePaymentPayload,
           X402_HEADERS,
-        } = await import("../src/lib/utils/x402-protocol.js");
+        } = await import("@aibtc/skills/src/lib/utils/x402-protocol.js");
         const {
           makeContractCall,
           uintCV,
@@ -121,14 +121,14 @@ program
         const {
           getContracts,
           parseContractId,
-        } = await import("../src/lib/config/contracts.js");
+        } = await import("@aibtc/skills/src/lib/config/contracts.js");
         const { getStacksNetwork } = await import(
-          "../src/lib/config/networks.js"
+          "@aibtc/skills/src/lib/config/networks.js"
         );
         const { createFungiblePostCondition } = await import(
-          "../src/lib/transactions/post-conditions.js"
+          "@aibtc/skills/src/lib/transactions/post-conditions.js"
         );
-        const { getHiroApi } = await import("../src/lib/services/hiro-api.js");
+        const { getHiroApi } = await import("@aibtc/skills/src/lib/services/hiro-api.js");
 
         const paymentRequired = decodePaymentRequired(paymentHeader);
         if (
@@ -211,7 +211,7 @@ program
             X402_HEADERS.PAYMENT_RESPONSE
           );
           const { decodePaymentResponse } = await import(
-            "../src/lib/utils/x402-protocol.js"
+            "@aibtc/skills/src/lib/utils/x402-protocol.js"
           );
           const settlement = decodePaymentResponse(settlementHeader);
           const txid = settlement?.transaction;

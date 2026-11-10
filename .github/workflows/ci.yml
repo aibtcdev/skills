@@ -38,6 +38,12 @@ jobs:
         env:
           NETWORK: mainnet
 
+      # Install every skill the way `npx skills add` does (its folder alone, in a
+      # project with its own node_modules), `bun install`, and run each entry (#473).
+      # Shared code comes from this checkout, so a PR is tested with its own src/lib.
+      - name: Standalone skill installs
+        run: bun run check:standalone
+
       - name: Setup Python (tier-1 spec validator)
         uses: actions/setup-python@v5
         with:

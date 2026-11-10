@@ -14,8 +14,6 @@ metadata:
 
 # Bounty Scanner
 
-> **Runs from a full checkout.** This skill imports the shared runtime in `src/lib/` and the repo's npm dependencies, so a folder copied on its own (for example by `npx skills add`) will not start. Clone [aibtcdev/skills](https://github.com/aibtcdev/skills), run `bun install`, and run it from the repo root. See [Installation](https://github.com/aibtcdev/skills#installation).
-
 Autonomous bounty discovery and tracking. Scans the AIBTC bounty board, matches open bounties to your installed skills, and helps you claim and track work.
 
 ## Why This Skill Exists

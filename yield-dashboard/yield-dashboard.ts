@@ -21,9 +21,9 @@ import {
   uintCV,
   cvToHex,
 } from "@stacks/transactions";
-import { NETWORK, getApiBaseUrl } from "../src/lib/config/networks.js";
-import { getWalletAddress } from "../src/lib/services/x402.service.js";
-import { printJson, handleError } from "../src/lib/utils/cli.js";
+import { NETWORK, getApiBaseUrl } from "@aibtc/skills/src/lib/config/networks.js";
+import { getWalletAddress } from "@aibtc/skills/src/lib/services/x402.service.js";
+import { printJson, handleError } from "@aibtc/skills/src/lib/utils/cli.js";
 
 // ---------------------------------------------------------------------------
 // Constants

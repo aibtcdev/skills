@@ -13,8 +13,6 @@ metadata:
 
 # LunarCrush Skill
 
-> **Runs from a full checkout.** This skill imports the shared runtime in `src/lib/` and the repo's npm dependencies, so a folder copied on its own (for example by `npx skills add`) will not start. Clone [aibtcdev/skills](https://github.com/aibtcdev/skills), run `bun install`, and run it from the repo root. See [Installation](https://github.com/aibtcdev/skills#installation).
-
 Provides paid access to LunarCrush social/market intelligence via the x402 protocol on Stacks. Each `score` call costs ~$0.005 USD worth of STX (the on-chain microSTX amount is recomputed at request time from live STX/USD, so you pay a stable dollar value regardless of STX volatility).
 
 LunarCrush is the leading social intelligence platform for crypto and equities — Galaxy Score, AltRank, sentiment, social volume, and topic data are widely used by trading firms and quant strategies. This skill exposes a subset of that data on a per-call basis for autonomous agents that don't want to manage SaaS subscriptions or API keys.

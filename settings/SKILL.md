@@ -14,8 +14,6 @@ metadata:
 
 # Settings Skill
 
-> **Runs from a full checkout.** This skill imports the shared runtime in `src/lib/` and the repo's npm dependencies, so a folder copied on its own (for example by `npx skills add`) will not start. Clone [aibtcdev/skills](https://github.com/aibtcdev/skills), run `bun install`, and run it from the repo root. See [Installation](https://github.com/aibtcdev/skills#installation).
-
 Manages configuration stored at `~/.aibtc/config.json`. Controls the Hiro API key used for authenticated Stacks API requests, the custom Stacks API node URL, and provides version information.
 
 ## Usage

@@ -213,16 +213,27 @@ metadata:
 
 ## Installation
 
-Most skills here share a runtime in `src/lib/` (wallet, network config, API clients, transaction builders) and the repo's npm dependencies. They run from a full checkout:
+Every skill runs with [Bun](https://bun.sh), either installed on its own or from a full checkout.
+
+**One skill, on its own.** `npx skills add` copies the skill's folder, including a generated `package.json`. Run `bun install` in that folder once; it installs the skill's npm packages and, for skills that use the shared code in `src/lib/`, this repository straight from GitHub (no npm registry involved):
+
+```bash
+npx skills add aibtcdev/skills/x402      # or: npx skills add aibtcdev/skills --skill x402
+cd .agents/skills/x402                   # wherever your agent installed it (-g: ~/.agents/skills/x402)
+bun install
+bun run x402.ts list-endpoints           # read-only; no wallet needed
+```
+
+**Everything, from a checkout.** Clone the repo and install once; every skill runs from the repo root:
 
 ```bash
 git clone https://github.com/aibtcdev/skills.git
 cd skills
 bun install
-bun run x402/x402.ts list-endpoints   # read-only; no wallet needed
+bun run x402/x402.ts list-endpoints
 ```
 
-`npx skills add aibtcdev/skills --skill <name>` (and the `npx skills add aibtcdev/skills/<name>` form) copies only that skill's folder: `SKILL.md`, `AGENT.md` and its entry script. That is enough for an agent to read the skill, but a skill that imports `src/lib/` fails to start from the copied folder (`Cannot find module '../src/lib/...'`, or `Cannot find module 'commander'` under Node). Each such skill says **Runs from a full checkout** at the top of its `SKILL.md`; use the clone above for those. `bun run validate` fails any skill that imports `src/` without that note (or carries it without needing it), and `skills.json` marks each skill with `"standalone": true | false` from the same check, for tools that list install commands. Standalone skills run from the copied folder with Bun, which installs their npm imports on first run.
+Skills import shared code as `@aibtc/skills/...` (for example `@aibtc/skills/src/lib/utils/cli.js`). In a checkout, `tsconfig.json` maps that to the repo itself; in an installed skill folder it resolves to the copy `bun install` fetched. `skills.json` lists `"install": "bun install"` for every skill that needs that step. `bun run validate` fails a skill that imports anything outside its own folder or an npm package the root `package.json` doesn't declare, or whose generated `package.json` is stale, and CI installs every skill on its own and runs it (`bun run check:standalone`).
 
 ## Prerequisites
 

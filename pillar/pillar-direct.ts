@@ -19,17 +19,17 @@ import {
   trueCV,
   falseCV,
 } from "@stacks/transactions";
-import { getPillarApi } from "../src/lib/services/pillar-api.service.js";
+import { getPillarApi } from "@aibtc/skills/src/lib/services/pillar-api.service.js";
 import {
   getSigningKeyService,
   generateAuthId,
   type SigAuth,
-} from "../src/lib/services/signing-key.service.js";
-import { getHiroApi } from "../src/lib/services/hiro-api.js";
-import { NETWORK, getExplorerTxUrl } from "../src/lib/config/networks.js";
-import { PILLAR_API_KEY } from "../src/lib/config/pillar.js";
-import { formatStx } from "../src/lib/utils/formatting.js";
-import { printJson, handleError } from "../src/lib/utils/cli.js";
+} from "@aibtc/skills/src/lib/services/signing-key.service.js";
+import { getHiroApi } from "@aibtc/skills/src/lib/services/hiro-api.js";
+import { NETWORK, getExplorerTxUrl } from "@aibtc/skills/src/lib/config/networks.js";
+import { PILLAR_API_KEY } from "@aibtc/skills/src/lib/config/pillar.js";
+import { formatStx } from "@aibtc/skills/src/lib/utils/formatting.js";
+import { printJson, handleError } from "@aibtc/skills/src/lib/utils/cli.js";
 
 // ---------------------------------------------------------------------------
 // Constants

@@ -1,7 +1,7 @@
 import { Glob } from "bun";
 import { join, dirname } from "node:path";
 import * as yaml from "yaml";
-import { importsSharedRuntime } from "./lib/shared-runtime.js";
+import { expectedSkillPackage, formatSkillPackage } from "./lib/skill-packages.js";
 
 // Types for the manifest output
 interface SkillEntry {
@@ -15,12 +15,17 @@ interface SkillEntry {
   tags: string[];
   userInvocable: boolean;
   /**
-   * True when the skill runs from its folder alone, e.g. after
-   * `npx skills add aibtcdev/skills/<name>` (with Bun, which installs npm
-   * imports on the fly). False when its scripts import the shared runtime in
-   * `src/lib/`, so it runs only from a full checkout (#470, #473).
+   * True when the skill's folder runs on its own after `npx skills add`
+   * (plus `install`, when set). Every skill qualifies since #473; kept for
+   * consumers that read it (aibtc.com/skills).
    */
   standalone: boolean;
+  /**
+   * Command to run inside the installed skill folder before first use, when
+   * the skill has dependencies (its generated package.json). Absent for
+   * doc-only skills.
+   */
+  install?: string;
   mcpTools?: string[];
   deprecated?: string;
 }
@@ -51,7 +56,7 @@ function parseCommaList(raw: string): string[] {
 }
 
 // Parse YAML frontmatter from SKILL.md content (agentskills.io spec format)
-function parseFrontmatter(content: string, skillName: string, standalone: boolean): SkillEntry {
+function parseFrontmatter(content: string, skillName: string): SkillEntry {
   // Extract the block between the first and second "---" delimiters
   const fmMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?/);
   if (!fmMatch) {
@@ -117,7 +122,7 @@ function parseFrontmatter(content: string, skillName: string, standalone: boolea
     requires: parsedRequires,
     tags: parsedTags,
     userInvocable,
-    standalone,
+    standalone: true,
   };
 
   if (author) skill.author = author;
@@ -141,6 +146,7 @@ function parseFrontmatter(content: string, skillName: string, standalone: boolea
 // Glob all SKILL.md files from repo root
 const glob = new Glob("*/SKILL.md");
 const skills: SkillEntry[] = [];
+const packageErrors: string[] = [];
 
 for await (const file of glob.scan({ cwd: repoRoot })) {
   const filePath = join(repoRoot, file);
@@ -149,8 +155,18 @@ for await (const file of glob.scan({ cwd: repoRoot })) {
   // Derive skill name from directory (first path segment)
   const skillName = file.split("/")[0];
 
-  const standalone = !(await importsSharedRuntime(repoRoot, skillName));
-  const skill = parseFrontmatter(content, skillName, standalone);
+  const skill = parseFrontmatter(content, skillName);
+
+  // Write the skill's own package.json so its folder installs on its own (#473).
+  const pkg = await expectedSkillPackage(repoRoot, skillName, packageJson.dependencies ?? {});
+  if (pkg.errors.length > 0) {
+    skill.standalone = false;
+    packageErrors.push(...pkg.errors.map((e) => `${skillName}: ${e}`));
+  }
+  if (pkg.json) {
+    await Bun.write(join(repoRoot, skillName, "package.json"), formatSkillPackage(pkg.json));
+    skill.install = "bun install";
+  }
   skills.push(skill);
 }
 
@@ -169,3 +185,8 @@ const outputPath = join(repoRoot, "skills.json");
 await Bun.write(outputPath, JSON.stringify(manifest, null, 2) + "\n");
 
 console.log(`Generated skills.json with ${skills.length} skills.`);
+if (packageErrors.length > 0) {
+  // `bun run validate` reports these too; surface them here so a stale import is caught early.
+  console.error(`Skills whose folder cannot run on its own:\n  - ${packageErrors.join("\n  - ")}`);
+  process.exit(1);
+}

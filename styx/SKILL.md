@@ -14,8 +14,6 @@ metadata:
 
 # Styx Skill
 
-> **Runs from a full checkout.** This skill imports the shared runtime in `src/lib/` and the repo's npm dependencies, so a folder copied on its own (for example by `npx skills add`) will not start. Clone [aibtcdev/skills](https://github.com/aibtcdev/skills), run `bun install`, and run it from the repo root. See [Installation](https://github.com/aibtcdev/skills#installation).
-
 Trustless BTC→sBTC conversion via the Styx protocol by FaktoryFun. Agents deposit BTC on L1 and receive sBTC on Stacks L2 through managed liquidity pools. Uses `@faktoryfun/styx-sdk`.
 
 ## How It Works

@@ -14,8 +14,6 @@ metadata:
 
 # Stacks Market Skill
 
-> **Runs from a full checkout.** This skill imports the shared runtime in `src/lib/` and the repo's npm dependencies, so a folder copied on its own (for example by `npx skills add`) will not start. Clone [aibtcdev/skills](https://github.com/aibtcdev/skills), run `bun install`, and run it from the repo root. See [Installation](https://github.com/aibtcdev/skills#installation).
-
 Trade prediction markets on [stacksmarket.app](https://www.stacksmarket.app) via the on-chain contract `SP3N5CN0PE7YRRP29X7K9XG22BT861BRS5BN8HFFA.market-factory-v18-bias`.
 
 - **Market Discovery** — List and search prediction markets via REST API with filters for status, category, and featured flag.

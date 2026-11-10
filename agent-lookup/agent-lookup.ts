@@ -7,7 +7,7 @@
  */
 
 import { Command } from "commander";
-import { printJson, handleError } from "../src/lib/utils/cli.js";
+import { printJson, handleError } from "@aibtc/skills/src/lib/utils/cli.js";
 
 const BASE_URL = "https://aibtc.com/api";
 

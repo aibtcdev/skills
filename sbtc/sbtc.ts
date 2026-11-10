@@ -7,14 +7,14 @@
  */
 
 import { Command } from "commander";
-import { NETWORK, getExplorerTxUrl } from "../src/lib/config/networks.js";
-import { getWalletManager } from "../src/lib/services/wallet-manager.js";
-import { getAccount, getWalletAddress } from "../src/lib/services/x402.service.js";
-import { getSbtcService } from "../src/lib/services/sbtc.service.js";
-import { getSbtcDepositService } from "../src/lib/services/sbtc-deposit.service.js";
-import { MempoolApi, getMempoolTxUrl } from "../src/lib/services/mempool-api.js";
-import { resolveFee } from "../src/lib/utils/fee.js";
-import { printJson, handleError } from "../src/lib/utils/cli.js";
+import { NETWORK, getExplorerTxUrl } from "@aibtc/skills/src/lib/config/networks.js";
+import { getWalletManager } from "@aibtc/skills/src/lib/services/wallet-manager.js";
+import { getAccount, getWalletAddress } from "@aibtc/skills/src/lib/services/x402.service.js";
+import { getSbtcService } from "@aibtc/skills/src/lib/services/sbtc.service.js";
+import { getSbtcDepositService } from "@aibtc/skills/src/lib/services/sbtc-deposit.service.js";
+import { MempoolApi, getMempoolTxUrl } from "@aibtc/skills/src/lib/services/mempool-api.js";
+import { resolveFee } from "@aibtc/skills/src/lib/utils/fee.js";
+import { printJson, handleError } from "@aibtc/skills/src/lib/utils/cli.js";
 
 // ---------------------------------------------------------------------------
 // Program

@@ -2,11 +2,13 @@ import { Glob } from "bun";
 import { join, dirname } from "node:path";
 import * as yaml from "yaml";
 import { z } from "zod";
-import { CHECKOUT_NOTE, importsSharedRuntime } from "./lib/shared-runtime.js";
+import { expectedSkillPackage, formatSkillPackage } from "./lib/skill-packages.js";
 
 // Resolve repo root from the scripts/ directory
 const scriptsDir = dirname(import.meta.path);
 const repoRoot = dirname(scriptsDir);
+const rootDependencies: Record<string, string> =
+  (await Bun.file(join(repoRoot, "package.json")).json()).dependencies ?? {};
 
 // CLI flags
 const skipSpec = process.argv.includes("--skip-spec");
@@ -241,17 +243,24 @@ for await (const file of skillGlob2.scan({ cwd: repoRoot })) {
       );
     }
 
-    // A skill that imports the shared runtime cannot run from a copied
-    // folder (`npx skills add`), so its SKILL.md must say so, and only then
-    // (#470). skills.json derives `standalone` from the same check.
-    const needsCheckout = await importsSharedRuntime(repoRoot, skillDir);
-    const hasNote = content.includes(CHECKOUT_NOTE);
-    if (needsCheckout && !hasNote) {
+    // The skill folder must run on its own once copied by `npx skills add`
+    // and `bun install`ed: no imports outside it, every npm import declared,
+    // and its generated package.json current (#473).
+    const pkg = await expectedSkillPackage(repoRoot, skillDir, rootDependencies);
+    errors.push(...pkg.errors);
+    const pkgPath = join(repoRoot, skillDir, "package.json");
+    const pkgFile = Bun.file(pkgPath);
+    const actual = (await pkgFile.exists()) ? await pkgFile.text() : null;
+    const expected = pkg.json ? formatSkillPackage(pkg.json) : null;
+    if (expected !== actual) {
       errors.push(
-        `imports ../src/ but SKILL.md lacks the "${CHECKOUT_NOTE}" note — add it under the title (see README "Installation")`
+        expected === null
+          ? `${skillDir}/package.json exists but the skill has no scripts — delete it`
+          : `${skillDir}/package.json is missing or stale — run \`bun run manifest\``
       );
-    } else if (!needsCheckout && hasNote) {
-      errors.push(`SKILL.md has the "${CHECKOUT_NOTE}" note but no script imports ../src/ — remove the note`);
+    }
+    if (content.includes("**Runs from a full checkout.**")) {
+      errors.push(`SKILL.md still has the "Runs from a full checkout" note — every skill runs from its own folder now (#473)`);
     }
 
     // Validate entry file(s) exist on disk

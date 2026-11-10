@@ -9,7 +9,8 @@
     "manifest": "bun run scripts/generate-manifest.ts",
     "validate": "bun run scripts/validate-frontmatter.ts",
     "test": "bun test",
-    "scaffold": "bun run scripts/scaffold-skill.ts"
+    "scaffold": "bun run scripts/scaffold-skill.ts",
+    "check:standalone": "bun run scripts/check-standalone.ts"
   },
   "keywords": [
     "claude",

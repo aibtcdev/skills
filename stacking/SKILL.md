@@ -14,8 +14,6 @@ metadata:
 
 # Stacking Skill
 
-> **Runs from a full checkout.** This skill imports the shared runtime in `src/lib/` and the repo's npm dependencies, so a folder copied on its own (for example by `npx skills add`) will not start. Clone [aibtcdev/skills](https://github.com/aibtcdev/skills), run `bun install`, and run it from the repo root. See [Installation](https://github.com/aibtcdev/skills#installation).
-
 STX staking on **PoX-5** (active on mainnet since reward cycle 141). PoX-5 is not a rename of pox-4:
 
 - Every stake names a **signer manager**, a contract implementing pox-5's `signer-manager-trait`. There is no pool delegation (`delegate-stx`) and no reward address on the stake itself; the manager decides who may join and reads any payout preferences from optional **signer calldata**.

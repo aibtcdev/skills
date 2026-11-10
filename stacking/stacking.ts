@@ -8,18 +8,18 @@
  */
 
 import { Command } from "commander";
-import { NETWORK, getExplorerTxUrl } from "../src/lib/config/networks.js";
-import { getAccount, getWalletAddress } from "../src/lib/services/x402.service.js";
-import { getHiroApi } from "../src/lib/services/hiro-api.js";
+import { NETWORK, getExplorerTxUrl } from "@aibtc/skills/src/lib/config/networks.js";
+import { getAccount, getWalletAddress } from "@aibtc/skills/src/lib/services/x402.service.js";
+import { getHiroApi } from "@aibtc/skills/src/lib/services/hiro-api.js";
 import {
   MAX_STAKE_CYCLES,
   buildPayoutCalldata,
   getStackingService,
   type PoxState,
   type StakerInfo,
-} from "../src/lib/services/stacking.service.js";
-import { btcAddressToPoxAddr } from "../src/lib/utils/bitcoin.js";
-import { printJson, handleError } from "../src/lib/utils/cli.js";
+} from "@aibtc/skills/src/lib/services/stacking.service.js";
+import { btcAddressToPoxAddr } from "@aibtc/skills/src/lib/utils/bitcoin.js";
+import { printJson, handleError } from "@aibtc/skills/src/lib/utils/cli.js";
 
 // ---------------------------------------------------------------------------
 // Helpers

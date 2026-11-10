@@ -27,8 +27,8 @@ import { nip19 } from "nostr-tools";
 import { SimplePool } from "nostr-tools/pool";
 import type { Filter } from "nostr-tools/filter";
 import WebSocket from "ws";
-import { printJson, handleError } from "../src/lib/utils/cli.js";
-import { getWalletManager } from "../src/lib/services/wallet-manager.js";
+import { printJson, handleError } from "@aibtc/skills/src/lib/utils/cli.js";
+import { getWalletManager } from "@aibtc/skills/src/lib/services/wallet-manager.js";
 
 // ---------------------------------------------------------------------------
 // Constants

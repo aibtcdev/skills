@@ -1,6 +1,6 @@
 {
   "version": "0.44.0",
-  "generated": "2026-11-10T04:22:52.672Z",
+  "generated": "2026-11-10T10:56:22.406Z",
   "skills": [
     {
       "name": "agent-lookup",
@@ -16,9 +16,10 @@
         "read-only"
       ],
       "userInvocable": false,
-      "standalone": false,
+      "standalone": true,
       "author": "DeOrganized",
-      "authorAgent": "Long Elio"
+      "authorAgent": "Long Elio",
+      "install": "bun install"
     },
     {
       "name": "aibtc-agents",
@@ -59,7 +60,8 @@
         "arxiv_search",
         "arxiv_compile_digest",
         "arxiv_list_digests"
-      ]
+      ],
+      "install": "bun install"
     },
     {
       "name": "bitflow",
@@ -94,7 +96,7 @@
         "requires-funds"
       ],
       "userInvocable": false,
-      "standalone": false,
+      "standalone": true,
       "author": "whoabuddy",
       "authorAgent": "Trustless Indra",
       "mcpTools": [
@@ -109,7 +111,8 @@
         "bitflow_get_order",
         "bitflow_cancel_order",
         "bitflow_get_keeper_user"
-      ]
+      ],
+      "install": "bun install"
     },
     {
       "name": "bitflow-hodlmm-deposit",
@@ -136,7 +139,8 @@
       "userInvocable": false,
       "standalone": true,
       "author": "macbotmini-eng",
-      "authorAgent": "Hex Stallion"
+      "authorAgent": "Hex Stallion",
+      "install": "bun install"
     },
     {
       "name": "bitflow-hodlmm-withdraw",
@@ -163,7 +167,8 @@
       "userInvocable": false,
       "standalone": true,
       "author": "macbotmini-eng",
-      "authorAgent": "Hex Stallion"
+      "authorAgent": "Hex Stallion",
+      "install": "bun install"
     },
     {
       "name": "bitflow-hodlmm-zest-yield-loop",
@@ -197,7 +202,8 @@
       "userInvocable": false,
       "standalone": true,
       "author": "macbotmini-eng",
-      "authorAgent": "Hex Stallion"
+      "authorAgent": "Hex Stallion",
+      "install": "bun install"
     },
     {
       "name": "bitflow-limit-order",
@@ -226,7 +232,8 @@
       "userInvocable": false,
       "standalone": true,
       "author": "ClankOS",
-      "authorAgent": "Grim Seraph"
+      "authorAgent": "Grim Seraph",
+      "install": "bun install"
     },
     {
       "name": "bitflow-swap-aggregator",
@@ -254,7 +261,8 @@
       "userInvocable": false,
       "standalone": true,
       "author": "macbotmini-eng",
-      "authorAgent": "Hex Stallion"
+      "authorAgent": "Hex Stallion",
+      "install": "bun install"
     },
     {
       "name": "bitflow-zest-sbtc-leverage-cycle",
@@ -287,7 +295,8 @@
       "userInvocable": false,
       "standalone": true,
       "author": "macbotmini-eng",
-      "authorAgent": "Hex Stallion"
+      "authorAgent": "Hex Stallion",
+      "install": "bun install"
     },
     {
       "name": "bns",
@@ -313,7 +322,7 @@
         "requires-funds"
       ],
       "userInvocable": false,
-      "standalone": false,
+      "standalone": true,
       "author": "whoabuddy",
       "authorAgent": "Trustless Indra",
       "mcpTools": [
@@ -326,7 +335,8 @@
         "claim_bns_name_fast",
         "preorder_bns_name",
         "register_bns_name"
-      ]
+      ],
+      "install": "bun install"
     },
     {
       "name": "bounty-scanner",
@@ -350,7 +360,7 @@
         "infrastructure"
       ],
       "userInvocable": false,
-      "standalone": false,
+      "standalone": true,
       "author": "pbtc21",
       "authorAgent": "Tiny Marten",
       "mcpTools": [
@@ -361,7 +371,8 @@
         "bounty_status",
         "bounty_my_claims",
         "bounty_stats"
-      ]
+      ],
+      "install": "bun install"
     },
     {
       "name": "btc",
@@ -386,7 +397,7 @@
         "requires-funds"
       ],
       "userInvocable": false,
-      "standalone": false,
+      "standalone": true,
       "author": "whoabuddy",
       "authorAgent": "Trustless Indra",
       "mcpTools": [
@@ -398,7 +409,8 @@
         "get_ordinal_utxos",
         "get_rune_utxos",
         "get_inscriptions_by_address"
-      ]
+      ],
+      "install": "bun install"
     },
     {
       "name": "business-dev",
@@ -423,9 +435,10 @@
         "infrastructure"
       ],
       "userInvocable": false,
-      "standalone": false,
+      "standalone": true,
       "author": "pbtc21",
-      "authorAgent": "Tiny Marten"
+      "authorAgent": "Tiny Marten",
+      "install": "bun install"
     },
     {
       "name": "ceo",
@@ -462,14 +475,15 @@
         "requires-funds"
       ],
       "userInvocable": false,
-      "standalone": false,
+      "standalone": true,
       "author": "tfibtcagent",
       "authorAgent": "Secret Dome",
       "mcpTools": [
         "estimate_child_inscription_fee",
         "inscribe_child",
         "inscribe_child_reveal"
-      ]
+      ],
+      "install": "bun install"
     },
     {
       "name": "clarity-audit",
@@ -569,13 +583,14 @@
         "requires-funds"
       ],
       "userInvocable": false,
-      "standalone": false,
+      "standalone": true,
       "author": "tfibtcagent",
       "mcpTools": [
         "deploy_contract",
         "call_contract",
         "call_read_only_function"
-      ]
+      ],
+      "install": "bun install"
     },
     {
       "name": "contract-preflight",
@@ -595,7 +610,8 @@
       "userInvocable": false,
       "standalone": true,
       "author": "secret-mars",
-      "authorAgent": "Secret Mars"
+      "authorAgent": "Secret Mars",
+      "install": "bun install"
     },
     {
       "name": "credentials",
@@ -614,7 +630,7 @@
         "sensitive"
       ],
       "userInvocable": false,
-      "standalone": false,
+      "standalone": true,
       "author": "whoabuddy",
       "authorAgent": "Trustless Indra",
       "mcpTools": [
@@ -623,7 +639,8 @@
         "credentials_set",
         "credentials_delete",
         "credentials_unlock"
-      ]
+      ],
+      "install": "bun install"
     },
     {
       "name": "dca",
@@ -652,7 +669,8 @@
       "userInvocable": false,
       "standalone": true,
       "author": "k9dreamermacmini-coder",
-      "authorAgent": "Graphite Elan"
+      "authorAgent": "Graphite Elan",
+      "install": "bun install"
     },
     {
       "name": "defi",
@@ -682,7 +700,7 @@
         "requires-funds"
       ],
       "userInvocable": false,
-      "standalone": false,
+      "standalone": true,
       "author": "whoabuddy",
       "authorAgent": "Trustless Indra",
       "mcpTools": [
@@ -697,7 +715,8 @@
         "zest_borrow",
         "zest_repay",
         "zest_enable_collateral"
-      ]
+      ],
+      "install": "bun install"
     },
     {
       "name": "defi-portfolio-scanner",
@@ -718,7 +737,8 @@
       "userInvocable": false,
       "standalone": true,
       "author": "azagh72-creator",
-      "authorAgent": "Flying Whale"
+      "authorAgent": "Flying Whale",
+      "install": "bun install"
     },
     {
       "name": "dog-intelligence",
@@ -746,7 +766,8 @@
       "userInvocable": false,
       "standalone": true,
       "author": "LimaDevBTC",
-      "authorAgent": "Xored Pike"
+      "authorAgent": "Xored Pike",
+      "install": "bun install"
     },
     {
       "name": "dual-stacking",
@@ -768,7 +789,7 @@
         "defi"
       ],
       "userInvocable": false,
-      "standalone": false,
+      "standalone": true,
       "author": "sonic-mast",
       "authorAgent": "Sonic Mast",
       "mcpTools": [
@@ -776,7 +797,8 @@
         "dual_stacking_get_rewards",
         "dual_stacking_enroll",
         "dual_stacking_opt_out"
-      ]
+      ],
+      "install": "bun install"
     },
     {
       "name": "erc8004",
@@ -799,7 +821,7 @@
         "requires-funds"
       ],
       "userInvocable": false,
-      "standalone": false,
+      "standalone": true,
       "author": "tfibtcagent",
       "authorAgent": "Secret Dome",
       "mcpTools": [
@@ -809,7 +831,8 @@
         "get_reputation",
         "request_validation",
         "get_validation_status"
-      ]
+      ],
+      "install": "bun install"
     },
     {
       "name": "hermetica-yield-rotator",
@@ -834,7 +857,8 @@
       "userInvocable": false,
       "standalone": true,
       "author": "cliqueengagements",
-      "authorAgent": "Micro Basilisk (Agent 77) — SP219TWC8G12CSX5AB093127NC82KYQWEH8ADD1AY | bc1qzh2z92dlvccxq5w756qppzz8fymhgrt2dv8cf5"
+      "authorAgent": "Micro Basilisk (Agent 77) — SP219TWC8G12CSX5AB093127NC82KYQWEH8ADD1AY | bc1qzh2z92dlvccxq5w756qppzz8fymhgrt2dv8cf5",
+      "install": "bun install"
     },
     {
       "name": "hodlmm-arb-executor",
@@ -862,7 +886,8 @@
       "authorAgent": [
         "Parallel Owl (ERC-8004 ID #354",
         "SP1KNKVXNNS9B6TBBT8YTM2VTYKVZYWS65TTRD430)"
-      ]
+      ],
+      "install": "bun install"
     },
     {
       "name": "hodlmm-bin-guardian",
@@ -883,7 +908,8 @@
       "userInvocable": false,
       "standalone": true,
       "author": "cliqueengagements",
-      "authorAgent": "Micro Basilisk (Agent 77) — SP219TWC8G12CSX5AB093127NC82KYQWEH8ADD1AY | bc1qzh2z92dlvccxq5w756qppzz8fymhgrt2dv8cf5"
+      "authorAgent": "Micro Basilisk (Agent 77) — SP219TWC8G12CSX5AB093127NC82KYQWEH8ADD1AY | bc1qzh2z92dlvccxq5w756qppzz8fymhgrt2dv8cf5",
+      "install": "bun install"
     },
     {
       "name": "hodlmm-flow",
@@ -905,7 +931,8 @@
       "userInvocable": false,
       "standalone": true,
       "author": "ClankOS",
-      "authorAgent": "Grim Seraph"
+      "authorAgent": "Grim Seraph",
+      "install": "bun install"
     },
     {
       "name": "hodlmm-inventory-balancer",
@@ -936,7 +963,8 @@
       "userInvocable": false,
       "standalone": true,
       "author": "cliqueengagements",
-      "authorAgent": "Micro Basilisk — Agent #77"
+      "authorAgent": "Micro Basilisk — Agent #77",
+      "install": "bun install"
     },
     {
       "name": "hodlmm-move-liquidity",
@@ -963,7 +991,8 @@
       "userInvocable": false,
       "standalone": true,
       "author": "cliqueengagements",
-      "authorAgent": "Micro Basilisk (Agent 77) — SP219TWC8G12CSX5AB093127NC82KYQWEH8ADD1AY | bc1qzh2z92dlvccxq5w756qppzz8fymhgrt2dv8cf5"
+      "authorAgent": "Micro Basilisk (Agent 77) — SP219TWC8G12CSX5AB093127NC82KYQWEH8ADD1AY | bc1qzh2z92dlvccxq5w756qppzz8fymhgrt2dv8cf5",
+      "install": "bun install"
     },
     {
       "name": "hodlmm-pulse",
@@ -986,7 +1015,8 @@
       "userInvocable": false,
       "standalone": true,
       "author": "ghislo749",
-      "authorAgent": "Grim Seraph"
+      "authorAgent": "Grim Seraph",
+      "install": "bun install"
     },
     {
       "name": "hodlmm-range-keeper",
@@ -1016,7 +1046,8 @@
       "userInvocable": false,
       "standalone": true,
       "author": "tearful-saw",
-      "authorAgent": "Elegant Orb"
+      "authorAgent": "Elegant Orb",
+      "install": "bun install"
     },
     {
       "name": "hodlmm-risk",
@@ -1037,7 +1068,8 @@
       "userInvocable": false,
       "standalone": true,
       "author": "locallaunchsc-cloud",
-      "authorAgent": "Risk Sentinel"
+      "authorAgent": "Risk Sentinel",
+      "install": "bun install"
     },
     {
       "name": "identity",
@@ -1063,7 +1095,7 @@
         "write"
       ],
       "userInvocable": false,
-      "standalone": false,
+      "standalone": true,
       "author": "whoabuddy",
       "authorAgent": "Trustless Indra",
       "mcpTools": [
@@ -1077,7 +1109,8 @@
         "identity_set_wallet",
         "identity_unset_wallet",
         "identity_transfer"
-      ]
+      ],
+      "install": "bun install"
     },
     {
       "name": "inbox",
@@ -1099,14 +1132,15 @@
         "requires-funds"
       ],
       "userInvocable": false,
-      "standalone": false,
+      "standalone": true,
       "author": "tfibtcagent",
       "authorAgent": "T-FI",
       "mcpTools": [
         "send_inbox_message_direct",
         "inbox_auto_reply",
         "inbox_auto_reply_configure"
-      ]
+      ],
+      "install": "bun install"
     },
     {
       "name": "jingswap",
@@ -1139,7 +1173,7 @@
         "defi"
       ],
       "userInvocable": false,
-      "standalone": false,
+      "standalone": true,
       "author": "Rapha-btc",
       "authorAgent": "Claude Code",
       "mcpTools": [
@@ -1158,7 +1192,8 @@
         "jingswap_settle",
         "jingswap_settle_with_refresh",
         "jingswap_cancel_cycle"
-      ]
+      ],
+      "install": "bun install"
     },
     {
       "name": "jingswap-cycle-agent",
@@ -1183,7 +1218,8 @@
       "userInvocable": false,
       "standalone": true,
       "author": "teflonmusk",
-      "authorAgent": "Dual Cougar"
+      "authorAgent": "Dual Cougar",
+      "install": "bun install"
     },
     {
       "name": "jingswap-v2",
@@ -1213,7 +1249,7 @@
         "defi"
       ],
       "userInvocable": false,
-      "standalone": false,
+      "standalone": true,
       "author": "Rapha-btc",
       "authorAgent": "Claude Code",
       "mcpTools": [
@@ -1229,7 +1265,8 @@
         "jingswap_v2_cancel_sbtc",
         "jingswap_v2_close_and_settle_with_refresh",
         "jingswap_v2_cancel_cycle"
-      ]
+      ],
+      "install": "bun install"
     },
     {
       "name": "launkr",
@@ -1259,14 +1296,15 @@
         "requires-funds"
       ],
       "userInvocable": false,
-      "standalone": false,
+      "standalone": true,
       "author": "rather-labs",
       "authorAgent": "Launkr by Rather Labs",
       "mcpTools": [
         "deploy_contract",
         "call_contract",
         "call_read_only_function"
-      ]
+      ],
+      "install": "bun install"
     },
     {
       "name": "lunarcrush",
@@ -1287,9 +1325,10 @@
         "requires-funds"
       ],
       "userInvocable": false,
-      "standalone": false,
+      "standalone": true,
       "author": "joevezzani",
-      "authorAgent": "Prime Spoke"
+      "authorAgent": "Prime Spoke",
+      "install": "bun install"
     },
     {
       "name": "maximumsats-wot",
@@ -1314,7 +1353,8 @@
       "userInvocable": false,
       "standalone": true,
       "author": "arc0btc",
-      "authorAgent": "SATMAX Agent"
+      "authorAgent": "SATMAX Agent",
+      "install": "bun install"
     },
     {
       "name": "mempool-watch",
@@ -1331,14 +1371,15 @@
         "read-only"
       ],
       "userInvocable": false,
-      "standalone": false,
+      "standalone": true,
       "author": "teflonbtc",
       "authorAgent": "Dual Cougar",
       "mcpTools": [
         "get_btc_mempool_info",
         "get_btc_transaction_status",
         "get_btc_address_txs"
-      ]
+      ],
+      "install": "bun install"
     },
     {
       "name": "nft",
@@ -1360,7 +1401,7 @@
         "write"
       ],
       "userInvocable": false,
-      "standalone": false,
+      "standalone": true,
       "author": "whoabuddy",
       "authorAgent": "Trustless Indra",
       "mcpTools": [
@@ -1370,7 +1411,8 @@
         "get_nft_owner",
         "get_collection_info",
         "get_nft_history"
-      ]
+      ],
+      "install": "bun install"
     },
     {
       "name": "nonce-manager",
@@ -1388,14 +1430,15 @@
         "l2"
       ],
       "userInvocable": false,
-      "standalone": false,
+      "standalone": true,
       "author": "rising-leviathan",
       "authorAgent": "Loom",
       "mcpTools": [
         "nonce_health",
         "nonce_heal",
         "nonce_fill_gap"
-      ]
+      ],
+      "install": "bun install"
     },
     {
       "name": "nostr",
@@ -1420,7 +1463,7 @@
         "write"
       ],
       "userInvocable": false,
-      "standalone": false,
+      "standalone": true,
       "author": [
         "cocoa007",
         "sonic-mast"
@@ -1437,7 +1480,8 @@
         "nostr_relay_list",
         "nostr_search_tags",
         "nostr_set_profile"
-      ]
+      ],
+      "install": "bun install"
     },
     {
       "name": "nostr-wot",
@@ -1458,7 +1502,8 @@
       "userInvocable": false,
       "standalone": true,
       "author": "arc0btc",
-      "authorAgent": "Trustless Indra"
+      "authorAgent": "Trustless Indra",
+      "install": "bun install"
     },
     {
       "name": "onboarding",
@@ -1479,9 +1524,10 @@
         "write"
       ],
       "userInvocable": false,
-      "standalone": false,
+      "standalone": true,
       "author": "k9dreamermacmini-coder",
-      "authorAgent": "k9dreamermacmini-coder"
+      "authorAgent": "k9dreamermacmini-coder",
+      "install": "bun install"
     },
     {
       "name": "openrouter",
@@ -1497,13 +1543,14 @@
         "read-only"
       ],
       "userInvocable": false,
-      "standalone": false,
+      "standalone": true,
       "author": "tfibtcagent",
       "authorAgent": "Secret Dome",
       "mcpTools": [
         "openrouter_integration_guide",
         "openrouter_models"
-      ]
+      ],
+      "install": "bun install"
     },
     {
       "name": "ordinals",
@@ -1526,7 +1573,7 @@
         "requires-funds"
       ],
       "userInvocable": false,
-      "standalone": false,
+      "standalone": true,
       "author": "whoabuddy",
       "authorAgent": "Trustless Indra",
       "mcpTools": [
@@ -1535,7 +1582,8 @@
         "inscribe",
         "inscribe_reveal",
         "get_inscription"
-      ]
+      ],
+      "install": "bun install"
     },
     {
       "name": "ordinals-marketplace",
@@ -1595,7 +1643,7 @@
         "defi"
       ],
       "userInvocable": false,
-      "standalone": false,
+      "standalone": true,
       "author": "secret-mars",
       "authorAgent": "Secret Mars",
       "mcpTools": [
@@ -1615,7 +1663,8 @@
         "taproot_get_pubkey",
         "taproot_verify_cosig",
         "taproot_multisig_guide"
-      ]
+      ],
+      "install": "bun install"
     },
     {
       "name": "pillar",
@@ -1675,7 +1724,7 @@
         "mainnet-only"
       ],
       "userInvocable": false,
-      "standalone": false,
+      "standalone": true,
       "author": "whoabuddy",
       "authorAgent": "Trustless Indra",
       "mcpTools": [
@@ -1718,7 +1767,8 @@
         "pillar_direct_stack_stx",
         "pillar_direct_revoke_fast_pool",
         "pillar_direct_stacking_status"
-      ]
+      ],
+      "install": "bun install"
     },
     {
       "name": "psbt",
@@ -1738,7 +1788,7 @@
         "requires-funds"
       ],
       "userInvocable": false,
-      "standalone": false,
+      "standalone": true,
       "author": "tfibtcagent",
       "authorAgent": "Secret Dome",
       "mcpTools": [
@@ -1746,7 +1796,8 @@
         "psbt_sign",
         "psbt_broadcast",
         "psbt_decode"
-      ]
+      ],
+      "install": "bun install"
     },
     {
       "name": "query",
@@ -1769,7 +1820,7 @@
         "read-only"
       ],
       "userInvocable": false,
-      "standalone": false,
+      "standalone": true,
       "author": "whoabuddy",
       "authorAgent": "Trustless Indra",
       "mcpTools": [
@@ -1782,7 +1833,8 @@
         "get_contract_events",
         "get_network_status",
         "call_read_only_function"
-      ]
+      ],
+      "install": "bun install"
     },
     {
       "name": "relay-diagnostic",
@@ -1800,13 +1852,14 @@
         "infrastructure"
       ],
       "userInvocable": false,
-      "standalone": false,
+      "standalone": true,
       "author": "tfibtcagent",
       "authorAgent": "Secret Dome",
       "mcpTools": [
         "check_relay_health",
         "recover_sponsor_nonce"
-      ]
+      ],
+      "install": "bun install"
     },
     {
       "name": "reputation",
@@ -1833,7 +1886,7 @@
         "write"
       ],
       "userInvocable": false,
-      "standalone": false,
+      "standalone": true,
       "author": "whoabuddy",
       "authorAgent": "Trustless Indra",
       "mcpTools": [
@@ -1848,7 +1901,8 @@
         "reputation_read_all_feedback",
         "reputation_read_feedback",
         "reputation_revoke_feedback"
-      ]
+      ],
+      "install": "bun install"
     },
     {
       "name": "runes",
@@ -1868,7 +1922,7 @@
         "requires-funds"
       ],
       "userInvocable": false,
-      "standalone": false,
+      "standalone": true,
       "author": "whoabuddy",
       "authorAgent": "Trustless Indra",
       "mcpTools": [
@@ -1881,7 +1935,8 @@
         "get_rune_balances",
         "get_rune_utxos",
         "transfer_rune"
-      ]
+      ],
+      "install": "bun install"
     },
     {
       "name": "sbtc",
@@ -1904,7 +1959,7 @@
         "requires-funds"
       ],
       "userInvocable": false,
-      "standalone": false,
+      "standalone": true,
       "author": "whoabuddy",
       "authorAgent": "Trustless Indra",
       "mcpTools": [
@@ -1914,7 +1969,8 @@
         "sbtc_get_peg_info",
         "sbtc_deposit",
         "sbtc_deposit_status"
-      ]
+      ],
+      "install": "bun install"
     },
     {
       "name": "sbtc-auto-funnel",
@@ -1940,7 +1996,8 @@
       "userInvocable": false,
       "standalone": true,
       "author": "secret-mars",
-      "authorAgent": "Secret Mars"
+      "authorAgent": "Secret Mars",
+      "install": "bun install"
     },
     {
       "name": "sbtc-yield-maximizer",
@@ -1967,9 +2024,10 @@
         "l2"
       ],
       "userInvocable": false,
-      "standalone": false,
+      "standalone": true,
       "author": "Ololadestephen",
-      "authorAgent": "Wide Eden"
+      "authorAgent": "Wide Eden",
+      "install": "bun install"
     },
     {
       "name": "settings",
@@ -1990,7 +2048,7 @@
         "infrastructure"
       ],
       "userInvocable": false,
-      "standalone": false,
+      "standalone": true,
       "author": "whoabuddy",
       "authorAgent": "Trustless Indra",
       "mcpTools": [
@@ -2005,7 +2063,8 @@
         "recover_sponsor_nonce",
         "nonce_health",
         "nonce_fill_gap"
-      ]
+      ],
+      "install": "bun install"
     },
     {
       "name": "signing",
@@ -2031,7 +2090,7 @@
         "l1"
       ],
       "userInvocable": false,
-      "standalone": false,
+      "standalone": true,
       "author": "whoabuddy",
       "authorAgent": "Trustless Indra",
       "mcpTools": [
@@ -2045,7 +2104,8 @@
         "sip018_hash",
         "sip018_sign",
         "sip018_verify"
-      ]
+      ],
+      "install": "bun install"
     },
     {
       "name": "souldinals",
@@ -2068,7 +2128,7 @@
         "requires-funds"
       ],
       "userInvocable": false,
-      "standalone": false,
+      "standalone": true,
       "author": "strange-lux-agent",
       "authorAgent": "Strange Lux",
       "mcpTools": [
@@ -2077,7 +2137,8 @@
         "souldinals_list_souls",
         "souldinals_load_soul",
         "souldinals_display_soul"
-      ]
+      ],
+      "install": "bun install"
     },
     {
       "name": "stacking",
@@ -2102,7 +2163,7 @@
         "requires-funds"
       ],
       "userInvocable": false,
-      "standalone": false,
+      "standalone": true,
       "author": "whoabuddy",
       "authorAgent": "Trustless Indra",
       "mcpTools": [
@@ -2114,7 +2175,8 @@
         "unstake_stx",
         "get_stacking_rewards",
         "claim_stacking_rewards"
-      ]
+      ],
+      "install": "bun install"
     },
     {
       "name": "stacking-delegation",
@@ -2137,7 +2199,8 @@
       "userInvocable": false,
       "standalone": true,
       "author": "secret-mars",
-      "authorAgent": "Secret Mars"
+      "authorAgent": "Secret Mars",
+      "install": "bun install"
     },
     {
       "name": "stacking-lottery",
@@ -2161,7 +2224,7 @@
         "requires-funds"
       ],
       "userInvocable": false,
-      "standalone": false,
+      "standalone": true,
       "author": "whoabuddy",
       "authorAgent": "Trustless Indra",
       "mcpTools": [
@@ -2171,7 +2234,8 @@
         "stacking_lottery_start_pot",
         "stacking_lottery_claim_rewards",
         "stacking_lottery_cancel_pot"
-      ]
+      ],
+      "install": "bun install"
     },
     {
       "name": "stacks-alpha-engine",
@@ -2204,7 +2268,8 @@
       "userInvocable": false,
       "standalone": true,
       "author": "cliqueengagements",
-      "authorAgent": "Micro Basilisk (Agent 77) — SP219TWC8G12CSX5AB093127NC82KYQWEH8ADD1AY | bc1qzh2z92dlvccxq5w756qppzz8fymhgrt2dv8cf5"
+      "authorAgent": "Micro Basilisk (Agent 77) — SP219TWC8G12CSX5AB093127NC82KYQWEH8ADD1AY | bc1qzh2z92dlvccxq5w756qppzz8fymhgrt2dv8cf5",
+      "install": "bun install"
     },
     {
       "name": "stacks-market",
@@ -2234,7 +2299,7 @@
         "requires-funds"
       ],
       "userInvocable": false,
-      "standalone": false,
+      "standalone": true,
       "author": "whoabuddy",
       "authorAgent": "Trustless Indra",
       "mcpTools": [
@@ -2249,7 +2314,8 @@
         "stacks_market_search",
         "stacks_market_sell_no",
         "stacks_market_sell_yes"
-      ]
+      ],
+      "install": "bun install"
     },
     {
       "name": "stackspot",
@@ -2273,7 +2339,7 @@
         "requires-funds"
       ],
       "userInvocable": false,
-      "standalone": false,
+      "standalone": true,
       "author": "whoabuddy",
       "authorAgent": "Trustless Indra",
       "mcpTools": [
@@ -2283,7 +2349,8 @@
         "stackspot_start_pot",
         "stackspot_claim_rewards",
         "stackspot_cancel_pot"
-      ]
+      ],
+      "install": "bun install"
     },
     {
       "name": "stx",
@@ -2306,7 +2373,7 @@
         "requires-funds"
       ],
       "userInvocable": false,
-      "standalone": false,
+      "standalone": true,
       "author": "whoabuddy",
       "authorAgent": "Trustless Indra",
       "mcpTools": [
@@ -2316,7 +2383,8 @@
         "call_contract",
         "deploy_contract",
         "get_transaction_status"
-      ]
+      ],
+      "install": "bun install"
     },
     {
       "name": "styx",
@@ -2342,7 +2410,7 @@
         "defi"
       ],
       "userInvocable": false,
-      "standalone": false,
+      "standalone": true,
       "author": "arc0btc",
       "authorAgent": "Trustless Indra",
       "mcpTools": [
@@ -2353,7 +2421,8 @@
         "styx_deposit",
         "styx_status",
         "styx_history"
-      ]
+      ],
+      "install": "bun install"
     },
     {
       "name": "taproot-multisig",
@@ -2375,9 +2444,10 @@
         "sensitive"
       ],
       "userInvocable": false,
-      "standalone": false,
+      "standalone": true,
       "author": "arc0btc",
-      "authorAgent": "Trustless Indra"
+      "authorAgent": "Trustless Indra",
+      "install": "bun install"
     },
     {
       "name": "tenero",
@@ -2404,7 +2474,7 @@
         "read-only"
       ],
       "userInvocable": false,
-      "standalone": false,
+      "standalone": true,
       "author": "whoabuddy",
       "authorAgent": "Trustless Indra",
       "mcpTools": [
@@ -2419,7 +2489,8 @@
         "tenero_wallet_holdings",
         "tenero_wallet_trades",
         "tenero_whale_trades"
-      ]
+      ],
+      "install": "bun install"
     },
     {
       "name": "tokens",
@@ -2440,7 +2511,7 @@
         "write"
       ],
       "userInvocable": false,
-      "standalone": false,
+      "standalone": true,
       "author": "whoabuddy",
       "authorAgent": "Trustless Indra",
       "mcpTools": [
@@ -2449,7 +2520,8 @@
         "get_token_info",
         "list_user_tokens",
         "get_token_holders"
-      ]
+      ],
+      "install": "bun install"
     },
     {
       "name": "transfer",
@@ -2469,14 +2541,15 @@
         "requires-funds"
       ],
       "userInvocable": false,
-      "standalone": false,
+      "standalone": true,
       "author": "tfibtcagent",
       "authorAgent": "Secret Dome",
       "mcpTools": [
         "transfer_stx",
         "transfer_token",
         "transfer_nft"
-      ]
+      ],
+      "install": "bun install"
     },
     {
       "name": "validation",
@@ -2498,14 +2571,15 @@
         "write"
       ],
       "userInvocable": false,
-      "standalone": false,
+      "standalone": true,
       "author": "whoabuddy",
       "authorAgent": "Trustless Indra",
       "mcpTools": [
         "request_validation",
         "get_validation_status",
         "get_validation_summary"
-      ]
+      ],
+      "install": "bun install"
     },
     {
       "name": "vibewatch-sentiment",
@@ -2528,9 +2602,10 @@
         "requires-funds"
       ],
       "userInvocable": false,
-      "standalone": false,
+      "standalone": true,
       "author": "brandonjamesmarshall",
-      "authorAgent": "Sonic Mast"
+      "authorAgent": "Sonic Mast",
+      "install": "bun install"
     },
     {
       "name": "wallet",
@@ -2557,7 +2632,7 @@
         "sensitive"
       ],
       "userInvocable": false,
-      "standalone": false,
+      "standalone": true,
       "author": "whoabuddy",
       "authorAgent": "Trustless Indra",
       "mcpTools": [
@@ -2573,7 +2648,8 @@
         "wallet_set_timeout",
         "wallet_status",
         "get_wallet_info"
-      ]
+      ],
+      "install": "bun install"
     },
     {
       "name": "wot",
@@ -2626,7 +2702,7 @@
         "write"
       ],
       "userInvocable": false,
-      "standalone": false,
+      "standalone": true,
       "author": "whoabuddy",
       "authorAgent": "Trustless Indra",
       "mcpTools": [
@@ -2637,7 +2713,8 @@
         "scaffold_x402_ai_endpoint",
         "openrouter_integration_guide",
         "openrouter_models"
-      ]
+      ],
+      "install": "bun install"
     },
     {
       "name": "yield-dashboard",
@@ -2659,7 +2736,7 @@
         "mainnet-only"
       ],
       "userInvocable": false,
-      "standalone": false,
+      "standalone": true,
       "author": "cocoa007",
       "authorAgent": "Fluid Briar",
       "mcpTools": [
@@ -2667,7 +2744,8 @@
         "yield_dashboard_positions",
         "yield_dashboard_apy_breakdown",
         "yield_dashboard_rebalance"
-      ]
+      ],
+      "install": "bun install"
     },
     {
       "name": "yield-hunter",
@@ -2690,7 +2768,7 @@
         "requires-funds"
       ],
       "userInvocable": false,
-      "standalone": false,
+      "standalone": true,
       "author": "whoabuddy",
       "authorAgent": "Trustless Indra",
       "mcpTools": [
@@ -2698,7 +2776,8 @@
         "yield_hunter_stop",
         "yield_hunter_status",
         "yield_hunter_configure"
-      ]
+      ],
+      "install": "bun install"
     },
     {
       "name": "zest-asset-deposit-primitive",
@@ -2726,7 +2805,8 @@
       "userInvocable": false,
       "standalone": true,
       "author": "macbotmini-eng",
-      "authorAgent": "Hex Stallion"
+      "authorAgent": "Hex Stallion",
+      "install": "bun install"
     },
     {
       "name": "zest-auto-repay",
@@ -2754,7 +2834,8 @@
       "userInvocable": false,
       "standalone": true,
       "author": "azagh72-creator",
-      "authorAgent": "Flying Whale"
+      "authorAgent": "Flying Whale",
+      "install": "bun install"
     },
     {
       "name": "zest-borrow-asset-primitive",
@@ -2782,7 +2863,8 @@
       "userInvocable": false,
       "standalone": true,
       "author": "macbotmini-eng",
-      "authorAgent": "Hex Stallion"
+      "authorAgent": "Hex Stallion",
+      "install": "bun install"
     },
     {
       "name": "zest-yield-manager",
@@ -2808,7 +2890,8 @@
       "userInvocable": false,
       "standalone": true,
       "author": "secret-mars",
-      "authorAgent": "Secret Mars"
+      "authorAgent": "Secret Mars",
+      "install": "bun install"
     }
   ]
 }

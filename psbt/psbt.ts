@@ -13,10 +13,10 @@ import {
   P2WPKH_INPUT_VBYTES,
   P2WPKH_OUTPUT_VBYTES,
   TX_OVERHEAD_VBYTES,
-} from "../src/lib/config/bitcoin-constants.js";
-import { NETWORK } from "../src/lib/config/networks.js";
-import { MempoolApi, getMempoolTxUrl } from "../src/lib/services/mempool-api.js";
-import { getWalletManager } from "../src/lib/services/wallet-manager.js";
+} from "@aibtc/skills/src/lib/config/bitcoin-constants.js";
+import { NETWORK } from "@aibtc/skills/src/lib/config/networks.js";
+import { MempoolApi, getMempoolTxUrl } from "@aibtc/skills/src/lib/services/mempool-api.js";
+import { getWalletManager } from "@aibtc/skills/src/lib/services/wallet-manager.js";
 
 // ---------------------------------------------------------------------------
 // PSBT helpers (mirrors psbt.helpers.ts in aibtc-mcp-server)

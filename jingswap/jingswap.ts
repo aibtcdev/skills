@@ -14,10 +14,10 @@ import {
   PostConditionMode,
   Pc,
 } from "@stacks/transactions";
-import { getAccount, getWalletAddress } from "../src/lib/services/x402.service.js";
-import { NETWORK, getExplorerTxUrl } from "../src/lib/config/networks.js";
-import { callContract } from "../src/lib/transactions/builder.js";
-import { printJson, handleError } from "../src/lib/utils/cli.js";
+import { getAccount, getWalletAddress } from "@aibtc/skills/src/lib/services/x402.service.js";
+import { NETWORK, getExplorerTxUrl } from "@aibtc/skills/src/lib/config/networks.js";
+import { callContract } from "@aibtc/skills/src/lib/transactions/builder.js";
+import { printJson, handleError } from "@aibtc/skills/src/lib/utils/cli.js";
 
 // ---------------------------------------------------------------------------
 // Constants

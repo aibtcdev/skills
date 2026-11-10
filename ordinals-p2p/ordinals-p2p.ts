@@ -13,9 +13,9 @@ import { Command } from "commander";
 import { secp256k1 } from "@noble/curves/secp256k1.js";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { hexToBytes } from "@noble/hashes/utils.js";
-import { getWalletManager } from "../src/lib/services/wallet-manager.js";
-import { NETWORK } from "../src/lib/config/networks.js";
-import { printJson, handleError } from "../src/lib/utils/cli.js";
+import { getWalletManager } from "@aibtc/skills/src/lib/services/wallet-manager.js";
+import { NETWORK } from "@aibtc/skills/src/lib/config/networks.js";
+import { printJson, handleError } from "@aibtc/skills/src/lib/utils/cli.js";
 
 // ---------------------------------------------------------------------------
 // Config
