@@ -764,6 +764,29 @@ export class HiroApiService {
 
 let _hiroApiInstance: HiroApiService | null = null;
 
+/**
+ * A `client` for @stacks/transactions builders and fetch helpers that use
+ * the same Stacks API as HiroApiService: the configured custom URL (falling
+ * back to Hiro for `network`) and the Hiro API key. Without it, a builder
+ * called without an explicit `nonce` looks the nonce up on the public Hiro
+ * API, ignoring both settings.
+ */
+export async function getStacksClient(
+  network: Network
+): Promise<{ baseUrl: string; fetch: (url: string, init?: RequestInit) => Promise<Response> }> {
+  const baseUrl = (await getStacksApiUrl()) || getApiBaseUrl(network);
+  const apiKey = (await getHiroApiKey()) || process.env.HIRO_API_KEY || "";
+  return {
+    baseUrl,
+    fetch: (url, init) => {
+      if (!apiKey) return fetch(url, init);
+      const headers = new Headers(init?.headers);
+      headers.set("x-hiro-api-key", apiKey);
+      return fetch(url, { ...init, headers });
+    },
+  };
+}
+
 export function getHiroApi(network: Network): HiroApiService {
   if (!_hiroApiInstance || _hiroApiInstance["network"] !== network) {
     _hiroApiInstance = new HiroApiService(network);

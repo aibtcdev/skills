@@ -114,8 +114,8 @@ describe("classifyCanonicalPaymentOutcome", () => {
 describe("createApiClient canonical payment flow", () => {
   const originalMnemonic = process.env.CLIENT_MNEMONIC;
   let recipientAddress = "";
-  // The sponsored path checks the payer's balance on the Stacks API before
-  // signing. Answer it from a local fake so these tests never depend on what
+  // The sponsored path checks the payer's balance and looks up its nonce on
+  // the Stacks API before signing. Answer both from a local fake so these tests never depend on what
   // the test mnemonic holds on the live network (it is unfunded on mainnet).
   let stacksApi: ReturnType<typeof createServer> | null = null;
 
@@ -135,6 +135,12 @@ describe("createApiClient canonical payment flow", () => {
             non_fungible_tokens: {},
           })
         );
+        return;
+      }
+      if (url.pathname === `/extended/v3/principals/${account.address}/nonces`) {
+        res.statusCode = 200;
+        res.setHeader("content-type", "application/json");
+        res.end(JSON.stringify({ next_nonce: 0 }));
         return;
       }
       res.statusCode = 404;
