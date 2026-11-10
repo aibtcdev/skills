@@ -236,10 +236,12 @@ program
 // get-server-version
 // ---------------------------------------------------------------------------
 
+const LATEST_RELEASE_API = "https://api.github.com/repos/aibtcdev/skills/releases/latest";
+
 program
   .command("get-server-version")
   .description(
-    "Check the currently installed package version and compare with the latest on npm"
+    "Check the installed skills version and compare it with the latest GitHub release"
   )
   .action(async () => {
     try {
@@ -251,18 +253,25 @@ program
       // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
       const packageName = (packageJson.name as string) || "@aibtc/skills";
 
+      // Releases are cut by Release Please as GitHub releases tagged
+      // "skills-vX.Y.Z"; this package is not published to npm.
       let latestVersion = "unknown";
-
+      let releaseUrl: string | undefined;
       try {
-        const response = await fetch(
-          `https://registry.npmjs.org/${packageName}/latest`
-        );
+        const response = await fetch(LATEST_RELEASE_API, {
+          headers: { Accept: "application/vnd.github+json", "User-Agent": "aibtc-skills-settings" },
+          signal: AbortSignal.timeout(10_000),
+        });
         if (response.ok) {
-          const data = (await response.json()) as { version: string };
-          latestVersion = data.version;
+          const data = (await response.json()) as { tag_name?: string; html_url?: string };
+          const match = /^skills-v(\d+\.\d+\.\d+)$/.exec(data.tag_name ?? "");
+          if (match) {
+            latestVersion = match[1];
+            releaseUrl = data.html_url;
+          }
         }
       } catch {
-        // Network error or npm registry unavailable — non-fatal
+        // Network error or GitHub unavailable — non-fatal
       }
 
       const compare = (a: string, b: string): number => {
@@ -286,11 +295,12 @@ program
         isLatest,
         updateAvailable,
         package: packageName,
+        ...(releaseUrl ? { releaseUrl } : {}),
         hint: updateAvailable
-          ? "Update available! Install the latest version to get new features."
+          ? "Update available: `git pull` in a checkout, or re-run `npx skills add aibtcdev/skills/<skill>` and `bun install` for installed skills."
           : fetched
             ? "Running the latest version."
-            : "Unable to verify latest version (network error).",
+            : "Unable to verify the latest version (GitHub unreachable or rate-limited).",
       });
     } catch (error) {
       handleError(error);
@@ -327,7 +337,7 @@ program
           ...status,
           hint: status.healthy
             ? "Relay pool and sponsor diagnostics look healthy."
-            : "Issues detected � inspect pool, sponsor, and stuck transaction details.",
+            : "Issues detected — inspect pool, sponsor, and stuck transaction details.",
         });
       } catch (error) {
         handleError(error);
