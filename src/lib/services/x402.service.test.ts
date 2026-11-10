@@ -137,10 +137,17 @@ describe("createApiClient canonical payment flow", () => {
         );
         return;
       }
-      if (url.pathname === `/extended/v3/principals/${account.address}/nonces`) {
+      // Sender nonce, on whichever route this @stacks/transactions version reads
+      // (7.6.x: v1 possible_next_nonce, 7.7+: v3 next_nonce, fallback: /v2/accounts).
+      const nonceRoutes: Record<string, unknown> = {
+        [`/extended/v1/address/${account.address}/nonces`]: { possible_next_nonce: 0 },
+        [`/extended/v3/principals/${account.address}/nonces`]: { next_nonce: 0 },
+        [`/v2/accounts/${account.address}`]: { nonce: 0, balance: "0x0", locked: "0x0" },
+      };
+      if (url.pathname in nonceRoutes) {
         res.statusCode = 200;
         res.setHeader("content-type", "application/json");
-        res.end(JSON.stringify({ next_nonce: 0 }));
+        res.end(JSON.stringify(nonceRoutes[url.pathname]));
         return;
       }
       res.statusCode = 404;
