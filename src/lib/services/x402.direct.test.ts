@@ -27,6 +27,7 @@ import {
   resolvePreferredAsset,
   spendableStx,
   selectStacksPaymentOption,
+  findStacksNetworkMismatch,
   SpendLimitError,
 } from "./x402.service.js";
 
@@ -277,6 +278,31 @@ describe("selectStacksPaymentOption", () => {
     expect(pick([bareSbtc, sbtc], "sBTC", "direct")).toBe(sbtc);
     expect(pick([bareSbtc, sbtc], "sBTC", "sponsored")).toBe(bareSbtc);
     expect(pick([bareSbtc], "sBTC", "direct")).toBeNull();
+  });
+
+  test("an offer on the other Stacks network does not mask one on the wallet's network (#469)", () => {
+    const other: Network = network === "mainnet" ? "testnet" : "mainnet";
+    const otherChain = getStacksChainId(other) as NetworkV2;
+    const wrongStx: PaymentRequirementsV2 = { ...stx, network: otherChain };
+    const wrongBareSbtc: PaymentRequirementsV2 = { ...bareSbtc, network: otherChain };
+    expect(pick([wrongStx, stx])).toBe(stx);
+    expect(pick([stx, wrongStx])).toBe(stx);
+    expect(pick([wrongBareSbtc, bareSbtc], "sBTC", "sponsored")).toBe(bareSbtc);
+    expect(pick([wrongStx])).toBeNull();
+    expect(pick([wrongStx], undefined, "sponsored")).toBeNull();
+    // An unparseable chain id is left to the callers' network guards.
+    const unknownStx: PaymentRequirementsV2 = { ...stx, network: "stacks:unknown" as NetworkV2 };
+    expect(pick([unknownStx])).toBe(unknownStx);
+  });
+
+  test("findStacksNetworkMismatch names the other network only when nothing else is offered", () => {
+    const other: Network = network === "mainnet" ? "testnet" : "mainnet";
+    const wrongStx: PaymentRequirementsV2 = { ...stx, network: getStacksChainId(other) as NetworkV2 };
+    expect(findStacksNetworkMismatch([wrongStx], network)).toBe(other);
+    expect(findStacksNetworkMismatch([evm, wrongStx], network)).toBe(other);
+    expect(findStacksNetworkMismatch([wrongStx, { ...stx, asset: "SP1.other-token" }], network)).toBeNull();
+    expect(findStacksNetworkMismatch([wrongStx, { ...stx, network: "stacks:unknown" as NetworkV2 }], network)).toBeNull();
+    expect(findStacksNetworkMismatch([evm], network)).toBeNull();
   });
 
   test("resolvePreferredAsset canonicalizes case and rejects anything else", () => {
@@ -787,6 +813,32 @@ describe("createApiClient payment modes", () => {
     const api = await createApiClient(f.origin, "test.direct-network");
     await expect(api.request({ method: "GET", url: "/paid" })).rejects.toThrow(/Network mismatch/);
     expect(f.paidRequests).toHaveLength(0);
+  });
+
+  test("a wrong-network offer first does not mask the wallet-network offer (#469)", async () => {
+    process.env.X402_PAYMENT_MODE = "direct";
+    const other: Network = network === "mainnet" ? "testnet" : "mainnet";
+    const f = await up({
+      accept: { asset: "STX", amount: "1000", network: getStacksChainId(other) },
+      acceptsAfter: [{ asset: "STX", amount: "1000" }],
+    });
+    const api = await createApiClient(f.origin, "test.direct-network-order");
+    const res = await api.request({ method: "GET", url: "/paid" });
+    expect(res.status).toBe(200);
+    expect(f.paidRequests).toHaveLength(1);
+  });
+
+  test("a challenge on the other network only reports a network mismatch, not an asset refusal (#469)", async () => {
+    for (const mode of ["direct", "sponsored"] as const) {
+      process.env.X402_PAYMENT_MODE = mode;
+      const other: Network = network === "mainnet" ? "testnet" : "mainnet";
+      const f = await up({ accept: { asset: "STX", network: getStacksChainId(other) } });
+      const api = await createApiClient(f.origin, `test.${mode}-network-only`);
+      const err = await rejection(api.request({ method: "GET", url: "/paid" }));
+      expect(err.message).toMatch(/Network mismatch: endpoint requires/);
+      expect(err.message).not.toMatch(/Offered assets/);
+      expect(f.paidRequests).toHaveLength(0);
+    }
   });
 
   test("a failed paid replay surfaces the server's status and body plus the txid", async () => {

@@ -148,8 +148,9 @@ export function resolvePreferredAsset(raw: string | undefined): X402PaymentAsset
  * `*.sbtc-token`, padding, any other contract) are skipped, so a payable
  * option later in `accepts` is not lost behind one that would be refused
  * (#464). Wire order is kept among payable options. Returns null when none
- * qualifies; the caller reports what was offered. The builders still check
- * the chosen asset again before signing.
+ * qualifies; the caller reports what was offered (see
+ * findStacksNetworkMismatch). Offers on the other Stacks network are skipped
+ * too (#469). The builders still check the chosen asset again before signing.
  */
 export function selectStacksPaymentOption(
   accepts: readonly PaymentRequirementsV2[],
@@ -158,6 +159,12 @@ export function selectStacksPaymentOption(
 ): PaymentRequirementsV2 | null {
   const payableAs = (opt: PaymentRequirementsV2): X402PaymentAsset | null => {
     if (typeof opt.network !== "string" || !opt.network.startsWith("stacks:")) return null;
+    // An offer on the other Stacks network is never payable from this wallet;
+    // skipping it keeps it from masking a later offer on the wallet's network
+    // (#469). An unparseable chain id stays eligible: the callers' network
+    // guards decide it, as before.
+    const chainNetwork = getNetworkFromStacksChainId(opt.network);
+    if (chainNetwork !== null && chainNetwork !== payable.network) return null;
     if (typeof opt.asset !== "string") return null;
     try {
       return payable.mode === "direct"
@@ -172,6 +179,34 @@ export function selectStacksPaymentOption(
       const kind = payableAs(opt);
       return kind !== null && (!preferredAsset || kind === preferredAsset);
     }) ?? null
+  );
+}
+
+/**
+ * When selectStacksPaymentOption found nothing, the Stacks network the
+ * challenge does offer, if it names only networks other than the wallet's.
+ * Lets the caller report a network mismatch instead of an asset refusal.
+ * Returns null when any Stacks option is on the wallet's network (or has an
+ * unparseable chain id): the refusal is then about the asset.
+ */
+export function findStacksNetworkMismatch(
+  accepts: readonly PaymentRequirementsV2[],
+  network: Network
+): Network | null {
+  let other: Network | null = null;
+  for (const opt of accepts) {
+    if (typeof opt.network !== "string" || !opt.network.startsWith("stacks:")) continue;
+    const chainNetwork = getNetworkFromStacksChainId(opt.network);
+    if (chainNetwork === null || chainNetwork === network) return null;
+    other ??= chainNetwork;
+  }
+  return other;
+}
+
+function networkMismatchMessage(endpointNetwork: Network, walletNetwork: Network): string {
+  return (
+    `Network mismatch: endpoint requires ${endpointNetwork} but wallet is configured for ${walletNetwork}. ` +
+    `Switch to a ${endpointNetwork} wallet or use a ${walletNetwork} endpoint.`
   );
 }
 
@@ -1251,6 +1286,11 @@ export async function createApiClient(
         });
 
         if (!selectedOption) {
+          // Only the other Stacks network is offered: say so, not "no asset" (#469).
+          const otherNetwork = findStacksNetworkMismatch(paymentRequired.accepts, account.network);
+          if (otherNetwork) {
+            return Promise.reject(new Error(networkMismatchMessage(otherNetwork, account.network)));
+          }
           const stacksAssets = paymentRequired.accepts
             .filter((opt) => typeof opt.network === "string" && opt.network.startsWith("stacks:"))
             .map((opt) => opt.asset);
@@ -1277,10 +1317,7 @@ export async function createApiClient(
         const paymentNetwork = getNetworkFromStacksChainId(selectedOption.network);
         if (paymentNetwork && paymentNetwork !== account.network) {
           return Promise.reject(
-            new Error(
-              `Network mismatch: endpoint requires ${paymentNetwork} but wallet is configured for ${account.network}. ` +
-              `Switch to a ${paymentNetwork} wallet or use a ${account.network} endpoint.`
-            )
+            new Error(networkMismatchMessage(paymentNetwork, account.network))
           );
         }
 
