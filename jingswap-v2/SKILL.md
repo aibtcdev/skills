@@ -14,6 +14,8 @@ metadata:
 
 # Jingswap V2 Skill
 
+> **Runs from a full checkout.** This skill imports the shared runtime in `src/lib/` and the repo's npm dependencies, so a folder copied on its own (for example by `npx skills add`) will not start. Clone [aibtcdev/skills](https://github.com/aibtcdev/skills), run `bun install`, and run it from the repo root. See [Installation](https://github.com/aibtcdev/skills#installation).
+
 Limit-price auction for swapping sBTC against STX on Stacks. Two markets:
 
 | Market | Contract | Premium |

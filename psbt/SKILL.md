@@ -14,6 +14,8 @@ metadata:
 
 # PSBT Skill
 
+> **Runs from a full checkout.** This skill imports the shared runtime in `src/lib/` and the repo's npm dependencies, so a folder copied on its own (for example by `npx skills add`) will not start. Clone [aibtcdev/skills](https://github.com/aibtcdev/skills), run `bun install`, and run it from the repo root. See [Installation](https://github.com/aibtcdev/skills#installation).
+
 Provides PSBT (Partially Signed Bitcoin Transaction) construction and signing operations on the Bitcoin L1. PSBTs enable multi-party signing workflows such as ordinals marketplace purchases where both buyer and seller must sign before broadcast.
 
 - **estimate-fee** — Read-only fee estimation for a PSBT given its structure.

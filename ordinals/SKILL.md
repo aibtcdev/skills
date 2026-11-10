@@ -14,6 +14,8 @@ metadata:
 
 # Ordinals Skill
 
+> **Runs from a full checkout.** This skill imports the shared runtime in `src/lib/` and the repo's npm dependencies, so a folder copied on its own (for example by `npx skills add`) will not start. Clone [aibtcdev/skills](https://github.com/aibtcdev/skills), run `bun install`, and run it from the repo root. See [Installation](https://github.com/aibtcdev/skills#installation).
+
 Provides Bitcoin ordinals operations using the micro-ordinals library, mempool.space API, and Unisat API. Creating inscriptions follows the two-step commit/reveal pattern — first `inscribe` broadcasts the commit transaction, then after it confirms, `inscribe-reveal` broadcasts the reveal transaction to finalize the inscription.
 
 Inscription transfers use the Unisat API to look up inscription UTXOs and build mixed-input transactions (P2TR inscription + P2WPKH fees).

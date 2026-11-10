@@ -14,6 +14,8 @@ metadata:
 
 # Child Inscription Skill
 
+> **Runs from a full checkout.** This skill imports the shared runtime in `src/lib/` and the repo's npm dependencies, so a folder copied on its own (for example by `npx skills add`) will not start. Clone [aibtcdev/skills](https://github.com/aibtcdev/skills), run `bun install`, and run it from the repo root. See [Installation](https://github.com/aibtcdev/skills#installation).
+
 Creates parent-child Ordinals inscriptions per the [Ordinals provenance spec](https://docs.ordinals.com/inscriptions/provenance.html). The inscription owner spends the parent UTXO in the reveal transaction, embedding a pointer that establishes on-chain provenance for the child.
 
 - **estimate** — Read-only fee calculation, no wallet required.

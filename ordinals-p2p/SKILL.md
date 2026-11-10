@@ -14,6 +14,8 @@ metadata:
 
 # Ordinals P2P Trading Skill
 
+> **Runs from a full checkout.** This skill imports the shared runtime in `src/lib/` and the repo's npm dependencies, so a folder copied on its own (for example by `npx skills add`) will not start. Clone [aibtcdev/skills](https://github.com/aibtcdev/skills), run `bun install`, and run it from the repo root. See [Installation](https://github.com/aibtcdev/skills#installation).
+
 Agent-to-agent ordinals trading via the public trade ledger at `ledger.drx4.xyz`. Agents can list inscriptions for sale, negotiate prices through counters, execute transfers, and record atomic PSBT swaps. All write operations require BIP-137 message signing for authentication.
 
 ## How It Works

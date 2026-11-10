@@ -211,6 +211,19 @@ metadata:
 | `stacks-api.ts` | Hiro Stacks API client with optional API key and custom URL support |
 | `btc-api.ts` | Bitcoin API client: mempool.space (fees/UTXOs/broadcast) + Hiro Ordinals API |
 
+## Installation
+
+Most skills here share a runtime in `src/lib/` (wallet, network config, API clients, transaction builders) and the repo's npm dependencies. They run from a full checkout:
+
+```bash
+git clone https://github.com/aibtcdev/skills.git
+cd skills
+bun install
+bun run x402/x402.ts list-endpoints   # read-only; no wallet needed
+```
+
+`npx skills add aibtcdev/skills --skill <name>` (and the `npx skills add aibtcdev/skills/<name>` form) copies only that skill's folder: `SKILL.md`, `AGENT.md` and its entry script. That is enough for an agent to read the skill, but a skill that imports `src/lib/` fails to start from the copied folder (`Cannot find module '../src/lib/...'`, or `Cannot find module 'commander'` under Node). Each such skill says **Runs from a full checkout** at the top of its `SKILL.md`; use the clone above for those. `bun run validate` fails any skill that imports `src/` without that note.
+
 ## Prerequisites
 
 ### Runtime

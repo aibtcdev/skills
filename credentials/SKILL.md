@@ -14,6 +14,8 @@ metadata:
 
 # Credentials Skill
 
+> **Runs from a full checkout.** This skill imports the shared runtime in `src/lib/` and the repo's npm dependencies, so a folder copied on its own (for example by `npx skills add`) will not start. Clone [aibtcdev/skills](https://github.com/aibtcdev/skills), run `bun install`, and run it from the repo root. See [Installation](https://github.com/aibtcdev/skills#installation).
+
 Manages arbitrary named secrets — API keys, tokens, passwords, URLs — encrypted at rest using AES-256-GCM with per-credential PBKDF2 key derivation. Values are stored as encrypted blobs in `~/.aibtc/credentials.json`; only identifiers, labels, categories, and timestamps are stored in plaintext. No wallet is required — the credential store uses its own master password independent of the wallet system.
 
 ## Usage

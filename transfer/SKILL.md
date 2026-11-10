@@ -14,6 +14,8 @@ metadata:
 
 # Transfer Skill
 
+> **Runs from a full checkout.** This skill imports the shared runtime in `src/lib/` and the repo's npm dependencies, so a folder copied on its own (for example by `npx skills add`) will not start. Clone [aibtcdev/skills](https://github.com/aibtcdev/skills), run `bun install`, and run it from the repo root. See [Installation](https://github.com/aibtcdev/skills#installation).
+
 Unified asset transfer skill for the Stacks L2 — sends STX, SIP-010 fungible tokens, and SIP-009 NFTs to a recipient address. All three subcommands require an unlocked wallet.
 
 ## Usage

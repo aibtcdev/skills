@@ -14,6 +14,8 @@ metadata:
 
 # sBTC Skill
 
+> **Runs from a full checkout.** This skill imports the shared runtime in `src/lib/` and the repo's npm dependencies, so a folder copied on its own (for example by `npx skills add`) will not start. Clone [aibtcdev/skills](https://github.com/aibtcdev/skills), run `bun install`, and run it from the repo root. See [Installation](https://github.com/aibtcdev/skills#installation).
+
 Provides sBTC (wrapped Bitcoin on Stacks L2) operations. sBTC uses 8 decimals — the same as Bitcoin. Transfer and deposit operations require an unlocked wallet (use `bun run wallet/wallet.ts unlock` first). Balance and info queries work without a wallet.
 
 ## Usage

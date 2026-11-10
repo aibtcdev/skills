@@ -14,6 +14,8 @@ metadata:
 
 # Nonce Manager
 
+> **Runs from a full checkout.** This skill imports the shared runtime in `src/lib/` and the repo's npm dependencies, so a folder copied on its own (for example by `npx skills add`) will not start. Clone [aibtcdev/skills](https://github.com/aibtcdev/skills), run `bun install`, and run it from the repo root. See [Installation](https://github.com/aibtcdev/skills#installation).
+
 Backup sender nonce tracker for Stacks transactions. Use canonical payment-status polling by `paymentId` as the primary x402 state machine; use this tool for local nonce coordination and recovery when a fresh sender nonce is actually needed.
 
 ## Problem
