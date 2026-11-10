@@ -167,6 +167,19 @@ console.log(
 );
 console.log("");
 
+// Marker for skills that need the full repo checkout to run (#470).
+const CHECKOUT_NOTE = "**Runs from a full checkout.**";
+const SHARED_RUNTIME_IMPORT = /(?:from\s+|import\s*\(\s*|import\s+)["'](?:\.\.\/)+src\//;
+
+async function importsSharedRuntime(skillDir: string): Promise<boolean> {
+  const tsGlob = new Glob("**/*.ts");
+  for await (const rel of tsGlob.scan({ cwd: join(repoRoot, skillDir) })) {
+    if (rel.includes("node_modules/")) continue;
+    if (SHARED_RUNTIME_IMPORT.test(await Bun.file(join(repoRoot, skillDir, rel)).text())) return true;
+  }
+  return false;
+}
+
 // First pass: collect all skill names for referential integrity
 const knownSkills = new Set<string>();
 const skillGlob = new Glob("*/SKILL.md");
@@ -237,6 +250,14 @@ for await (const file of skillGlob2.scan({ cwd: repoRoot })) {
     if (unknownRequires.length > 0) {
       errors.push(
         `metadata.requires: unknown skills [${unknownRequires.join(", ")}] — must reference existing skill directories`
+      );
+    }
+
+    // A skill that imports the shared runtime cannot run from a copied
+    // folder (`npx skills add`), so its SKILL.md must say so (#470).
+    if (!content.includes(CHECKOUT_NOTE) && (await importsSharedRuntime(skillDir))) {
+      errors.push(
+        `imports ../src/ but SKILL.md lacks the "${CHECKOUT_NOTE}" note — add it under the title (see README "Installation")`
       );
     }
 

@@ -14,6 +14,8 @@ metadata:
 
 # NFT Skill
 
+> **Runs from a full checkout.** This skill imports the shared runtime in `src/lib/` and the repo's npm dependencies, so a folder copied on its own (for example by `npx skills add`) will not start. Clone [aibtcdev/skills](https://github.com/aibtcdev/skills), run `bun install`, and run it from the repo root. See [Installation](https://github.com/aibtcdev/skills#installation).
+
 Provides SIP-009 NFT (Non-Fungible Token) operations on Stacks L2. Transfer operations require an unlocked wallet (use `bun run wallet/wallet.ts unlock` first). Query operations work without a wallet.
 
 ## Usage

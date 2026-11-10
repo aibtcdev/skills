@@ -14,6 +14,8 @@ metadata:
 
 # Runes Skill
 
+> **Runs from a full checkout.** This skill imports the shared runtime in `src/lib/` and the repo's npm dependencies, so a folder copied on its own (for example by `npx skills add`) will not start. Clone [aibtcdev/skills](https://github.com/aibtcdev/skills), run `bun install`, and run it from the repo root. See [Installation](https://github.com/aibtcdev/skills#installation).
+
 Provides Bitcoin rune operations using the Unisat API for rune indexing and mempool.space for fee estimation and broadcasting. Rune transfers use Runestone OP_RETURN encoding with explicit change pointers to prevent accidental rune burning.
 
 Requires `UNISAT_API_KEY` environment variable. Works on both mainnet and testnet.

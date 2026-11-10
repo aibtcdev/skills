@@ -14,6 +14,8 @@ metadata:
 
 # Yield Hunter Skill
 
+> **Runs from a full checkout.** This skill imports the shared runtime in `src/lib/` and the repo's npm dependencies, so a folder copied on its own (for example by `npx skills add`) will not start. Clone [aibtcdev/skills](https://github.com/aibtcdev/skills), run `bun install`, and run it from the repo root. See [Installation](https://github.com/aibtcdev/skills#installation).
+
 Provides an autonomous yield hunting daemon that monitors your wallet's sBTC balance and automatically deposits to Zest Protocol's lending pool to earn yield. The daemon runs in the foreground and can be stopped with Ctrl+C or the `stop` subcommand.
 
 State is persisted to `~/.aibtc/yield-hunter-state.json` between runs.

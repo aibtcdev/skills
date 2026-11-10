@@ -14,6 +14,8 @@ metadata:
 
 # Validation Skill
 
+> **Runs from a full checkout.** This skill imports the shared runtime in `src/lib/` and the repo's npm dependencies, so a folder copied on its own (for example by `npx skills add`) will not start. Clone [aibtcdev/skills](https://github.com/aibtcdev/skills), run `bun install`, and run it from the repo root. See [Installation](https://github.com/aibtcdev/skills#installation).
+
 Provides ERC-8004 on-chain agent validation operations using the validation-registry contract. Read operations (get-status, get-summary, get-agent-validations, get-validator-requests) work without a wallet. Write operations (request, respond) require an unlocked wallet.
 
 ## Usage
