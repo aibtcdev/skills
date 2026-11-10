@@ -26,6 +26,18 @@ jobs:
       - name: TypeScript typecheck
         run: bun run typecheck
 
+      # Tests answer every Stacks API call from local fakes; run them against
+      # both network configs, since mainnet-only failures went unnoticed before.
+      - name: Tests (testnet)
+        run: bun test
+        env:
+          NETWORK: testnet
+
+      - name: Tests (mainnet)
+        run: bun test
+        env:
+          NETWORK: mainnet
+
       - name: Setup Python (tier-1 spec validator)
         uses: actions/setup-python@v5
         with:

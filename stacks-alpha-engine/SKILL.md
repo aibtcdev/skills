@@ -262,12 +262,12 @@ Unstaking sUSDh creates a claim. USDh is available after 7-day cooldown via `sta
 ## Dependencies
 
 - `commander` (CLI parsing, registry convention)
-- `tiny-secp256k1` (BIP-341 elliptic curve point addition for PoR)
+- `@noble/curves` (BIP-341 elliptic curve point addition for PoR; already a repo dependency)
 - Node.js built-ins: `crypto` (SHA-256), `os`/`path`/`fs` (cooldown state)
 
-### Why `tiny-secp256k1`?
+### Why `@noble/curves`?
 
-The sBTC Proof-of-Reserve module derives the signer's Bitcoin P2TR address from the aggregate pubkey registered on Stacks. This requires a BIP-341 Taproot key tweak: `output_key = internal_key + H_TapTweak(internal_key) * G`. Node.js `crypto` does not expose raw EC point addition. `tiny-secp256k1` provides exactly one function we need: `xOnlyPointAddTweak()`.
+The sBTC Proof-of-Reserve module derives the signer's Bitcoin P2TR address from the aggregate pubkey registered on Stacks. This requires a BIP-341 Taproot key tweak: `output_key = internal_key + H_TapTweak(internal_key) * G`. Node.js `crypto` does not expose raw EC point addition. `@noble/curves` (`schnorr.utils.lift_x` and `schnorr.Point`) does, and it is already a dependency of this repo. The derivation is checked against the BIP-86 test vectors in `taproot.test.ts`.
 
 ## Doctor Self-Tests (11 checks)
 
