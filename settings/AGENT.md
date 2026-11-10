@@ -24,7 +24,7 @@ Manages configuration stored at `~/.aibtc/config.json`. Controls the Hiro API ke
 | Point to a custom node | `set-stacks-api-url` — overrides the default Hiro API |
 | Check active API URL | `get-stacks-api-url` — shows active URL and source |
 | Revert to default node | `delete-stacks-api-url` — restores the Hiro API endpoint |
-| Check package version | `get-server-version` — compares installed vs latest npm version |
+| Check package version | `get-server-version` — compares installed vs latest GitHub release |
 | Diagnose relay issues | `check-relay-health` — verifies relay reachability and sponsor nonce status |
 
 ## Safety Checks
@@ -38,7 +38,7 @@ Manages configuration stored at `~/.aibtc/config.json`. Controls the Hiro API ke
 
 | Error message | Cause | Fix |
 |--------------|-------|-----|
-| Network error on `get-server-version` | npm registry unreachable | Non-fatal — `latestVersion` will be `"unknown"` |
+| Network error on `get-server-version` | GitHub API unreachable or rate-limited | Non-fatal — `latestVersion` will be `"unknown"` |
 | `"reachable": false` on `check-relay-health` | Relay URL unreachable or timed out | Check the relay URL; try again or use `--relay-url` to specify an alternative |
 | Hiro API HTTP error on `check-relay-health` | Hiro API unavailable or rate limited | Set a Hiro API key via `set-hiro-api-key` and retry |
 
@@ -46,7 +46,7 @@ Manages configuration stored at `~/.aibtc/config.json`. Controls the Hiro API ke
 
 - `get-hiro-api-key`: check `configured` (boolean) — if `false`, run `set-hiro-api-key` before high-volume queries
 - `get-stacks-api-url`: check `isCustom` to determine if a custom node is active; use `activeUrl` for display
-- `get-server-version`: check `updateAvailable` — if `true`, update the package before new workflows
+- `get-server-version`: check `updateAvailable` — if `true`, update (`git pull` in a checkout, or re-run `npx skills add` + `bun install`) before new workflows
 - `check-relay-health`: check `healthy` (boolean) first; if `false`, read `issues` array for specific problems; check `sponsor.missingNonces` for stuck transaction diagnosis
 
 ## Example Invocations
