@@ -114,6 +114,11 @@ async function startFake(sender: string, opts: FakeOptions = {}): Promise<Fake> 
         detected_mempool_nonces: [],
       });
     }
+    // Sponsored builds let @stacks/transactions look up the sender nonce (via getStacksClient).
+    if (url.pathname === `/extended/v3/principals/${sender}/nonces`) {
+      hiroHits.push(url.pathname);
+      return json(200, { next_nonce: opts.nonce ?? 7 });
+    }
     if (url.pathname === `/extended/v1/address/${sender}/balances`) {
       hiroHits.push(url.pathname);
       if (balances === "error") return json(500, { error: "balances unavailable" });
@@ -516,8 +521,12 @@ describe("createApiClient payment modes", () => {
       txStatus: undefined,
       settlementState: undefined,
     });
-    // The sponsored path reads only the wallet balance from the Stacks API.
-    expect(f.hiroHits).toEqual([`/extended/v1/address/${sender}/balances`]);
+    // The sponsored path reads only the wallet balance and the sender nonce, both from
+    // the configured Stacks API (the nonce used to go to public Hiro regardless).
+    expect(f.hiroHits).toEqual([
+      `/extended/v1/address/${sender}/balances`,
+      `/extended/v3/principals/${sender}/nonces`,
+    ]);
   });
 
   test("sponsored mode refuses before signing when the wallet lacks the sBTC price", async () => {

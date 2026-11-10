@@ -53,7 +53,7 @@ import type { Account } from "../transactions/builder.js";
 import { getWalletManager } from "./wallet-manager.js";
 import { formatStx, formatSbtc } from "../utils/formatting.js";
 import { getSbtcService } from "./sbtc.service.js";
-import { getHiroApi } from "./hiro-api.js";
+import { getHiroApi, getStacksClient } from "./hiro-api.js";
 import { createHash } from "node:crypto";
 import { InsufficientBalanceError } from "../utils/errors.js";
 import { getContracts, parseContractId } from "../config/contracts.js";
@@ -449,6 +449,8 @@ export async function buildSponsoredSbtcTransfer(
     ],
     sponsored: true,
     fee: 0n,
+    // The builder looks up the sender nonce itself; use the configured Stacks API.
+    client: await getStacksClient(account.network),
   });
 }
 
@@ -1381,6 +1383,7 @@ export async function createApiClient(
             memo: "",
             sponsored: true,
             fee: 0n,
+            client: await getStacksClient(account.network),
           });
         }
         }
