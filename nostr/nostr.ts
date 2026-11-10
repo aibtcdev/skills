@@ -20,10 +20,10 @@ import { Command } from "commander";
 import {
   finalizeEvent,
   getPublicKey,
-  nip19,
   type EventTemplate,
   type VerifiedEvent,
 } from "nostr-tools/pure";
+import { nip19 } from "nostr-tools";
 import { SimplePool } from "nostr-tools/pool";
 import type { Filter } from "nostr-tools/filter";
 import WebSocket from "ws";
