@@ -1,6 +1,7 @@
 import { Glob } from "bun";
 import { join, dirname } from "node:path";
 import * as yaml from "yaml";
+import { importsSharedRuntime } from "./lib/shared-runtime.js";
 
 // Types for the manifest output
 interface SkillEntry {
@@ -13,6 +14,13 @@ interface SkillEntry {
   requires: string[];
   tags: string[];
   userInvocable: boolean;
+  /**
+   * True when the skill runs from its folder alone, e.g. after
+   * `npx skills add aibtcdev/skills/<name>` (with Bun, which installs npm
+   * imports on the fly). False when its scripts import the shared runtime in
+   * `src/lib/`, so it runs only from a full checkout (#470, #473).
+   */
+  standalone: boolean;
   mcpTools?: string[];
   deprecated?: string;
 }
@@ -43,7 +51,7 @@ function parseCommaList(raw: string): string[] {
 }
 
 // Parse YAML frontmatter from SKILL.md content (agentskills.io spec format)
-function parseFrontmatter(content: string, skillName: string): SkillEntry {
+function parseFrontmatter(content: string, skillName: string, standalone: boolean): SkillEntry {
   // Extract the block between the first and second "---" delimiters
   const fmMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?/);
   if (!fmMatch) {
@@ -109,6 +117,7 @@ function parseFrontmatter(content: string, skillName: string): SkillEntry {
     requires: parsedRequires,
     tags: parsedTags,
     userInvocable,
+    standalone,
   };
 
   if (author) skill.author = author;
@@ -140,7 +149,8 @@ for await (const file of glob.scan({ cwd: repoRoot })) {
   // Derive skill name from directory (first path segment)
   const skillName = file.split("/")[0];
 
-  const skill = parseFrontmatter(content, skillName);
+  const standalone = !(await importsSharedRuntime(repoRoot, skillName));
+  const skill = parseFrontmatter(content, skillName, standalone);
   skills.push(skill);
 }
 

@@ -2,6 +2,7 @@ import { Glob } from "bun";
 import { join, dirname } from "node:path";
 import * as yaml from "yaml";
 import { z } from "zod";
+import { CHECKOUT_NOTE, importsSharedRuntime } from "./lib/shared-runtime.js";
 
 // Resolve repo root from the scripts/ directory
 const scriptsDir = dirname(import.meta.path);
@@ -167,19 +168,6 @@ console.log(
 );
 console.log("");
 
-// Marker for skills that need the full repo checkout to run (#470).
-const CHECKOUT_NOTE = "**Runs from a full checkout.**";
-const SHARED_RUNTIME_IMPORT = /(?:from\s+|import\s*\(\s*|import\s+)["'](?:\.\.\/)+src\//;
-
-async function importsSharedRuntime(skillDir: string): Promise<boolean> {
-  const tsGlob = new Glob("**/*.ts");
-  for await (const rel of tsGlob.scan({ cwd: join(repoRoot, skillDir) })) {
-    if (rel.includes("node_modules/")) continue;
-    if (SHARED_RUNTIME_IMPORT.test(await Bun.file(join(repoRoot, skillDir, rel)).text())) return true;
-  }
-  return false;
-}
-
 // First pass: collect all skill names for referential integrity
 const knownSkills = new Set<string>();
 const skillGlob = new Glob("*/SKILL.md");
@@ -254,11 +242,16 @@ for await (const file of skillGlob2.scan({ cwd: repoRoot })) {
     }
 
     // A skill that imports the shared runtime cannot run from a copied
-    // folder (`npx skills add`), so its SKILL.md must say so (#470).
-    if (!content.includes(CHECKOUT_NOTE) && (await importsSharedRuntime(skillDir))) {
+    // folder (`npx skills add`), so its SKILL.md must say so, and only then
+    // (#470). skills.json derives `standalone` from the same check.
+    const needsCheckout = await importsSharedRuntime(repoRoot, skillDir);
+    const hasNote = content.includes(CHECKOUT_NOTE);
+    if (needsCheckout && !hasNote) {
       errors.push(
         `imports ../src/ but SKILL.md lacks the "${CHECKOUT_NOTE}" note — add it under the title (see README "Installation")`
       );
+    } else if (!needsCheckout && hasNote) {
+      errors.push(`SKILL.md has the "${CHECKOUT_NOTE}" note but no script imports ../src/ — remove the note`);
     }
 
     // Validate entry file(s) exist on disk

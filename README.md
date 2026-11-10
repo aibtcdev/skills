@@ -222,7 +222,7 @@ bun install
 bun run x402/x402.ts list-endpoints   # read-only; no wallet needed
 ```
 
-`npx skills add aibtcdev/skills --skill <name>` (and the `npx skills add aibtcdev/skills/<name>` form) copies only that skill's folder: `SKILL.md`, `AGENT.md` and its entry script. That is enough for an agent to read the skill, but a skill that imports `src/lib/` fails to start from the copied folder (`Cannot find module '../src/lib/...'`, or `Cannot find module 'commander'` under Node). Each such skill says **Runs from a full checkout** at the top of its `SKILL.md`; use the clone above for those. `bun run validate` fails any skill that imports `src/` without that note.
+`npx skills add aibtcdev/skills --skill <name>` (and the `npx skills add aibtcdev/skills/<name>` form) copies only that skill's folder: `SKILL.md`, `AGENT.md` and its entry script. That is enough for an agent to read the skill, but a skill that imports `src/lib/` fails to start from the copied folder (`Cannot find module '../src/lib/...'`, or `Cannot find module 'commander'` under Node). Each such skill says **Runs from a full checkout** at the top of its `SKILL.md`; use the clone above for those. `bun run validate` fails any skill that imports `src/` without that note (or carries it without needing it), and `skills.json` marks each skill with `"standalone": true | false` from the same check, for tools that list install commands. Standalone skills run from the copied folder with Bun, which installs their npm imports on first run.
 
 ## Prerequisites
 
