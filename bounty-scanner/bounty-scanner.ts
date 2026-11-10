@@ -7,8 +7,8 @@
  */
 
 import { Command } from "commander";
-import { printJson, handleError } from "../src/lib/utils/cli.js";
-import { getWalletManager } from "../src/lib/services/wallet-manager.js";
+import { printJson, handleError } from "@aibtc/skills/src/lib/utils/cli.js";
+import { getWalletManager } from "@aibtc/skills/src/lib/services/wallet-manager.js";
 import { readFileSync, existsSync, readdirSync } from "fs";
 import { join } from "path";
 

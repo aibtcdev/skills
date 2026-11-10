@@ -13,9 +13,9 @@
 import { Command } from "commander";
 import { schnorr } from "@noble/curves/secp256k1.js";
 import { hex } from "@scure/base";
-import { NETWORK } from "../src/lib/config/networks.js";
-import { printJson, handleError } from "../src/lib/utils/cli.js";
-import { getWalletManager } from "../src/lib/services/wallet-manager.js";
+import { NETWORK } from "@aibtc/skills/src/lib/config/networks.js";
+import { printJson, handleError } from "@aibtc/skills/src/lib/utils/cli.js";
+import { getWalletManager } from "@aibtc/skills/src/lib/services/wallet-manager.js";
 
 function requireUnlockedWallet() {
   const walletManager = getWalletManager();

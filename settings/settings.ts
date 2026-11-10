@@ -16,11 +16,11 @@ import {
   setStacksApiUrl,
   clearStacksApiUrl,
   initializeStorage,
-} from "../src/lib/utils/storage.js";
-import { getApiBaseUrl, NETWORK } from "../src/lib/config/networks.js";
-import { getSponsorRelayUrl } from "../src/lib/config/sponsor.js";
-import { checkRelayHealth } from "../src/lib/services/relay-health.service.js";
-import { printJson, handleError } from "../src/lib/utils/cli.js";
+} from "@aibtc/skills/src/lib/utils/storage.js";
+import { getApiBaseUrl, NETWORK } from "@aibtc/skills/src/lib/config/networks.js";
+import { getSponsorRelayUrl } from "@aibtc/skills/src/lib/config/sponsor.js";
+import { checkRelayHealth } from "@aibtc/skills/src/lib/services/relay-health.service.js";
+import { printJson, handleError } from "@aibtc/skills/src/lib/utils/cli.js";
 
 const require = createRequire(import.meta.url);
 
@@ -245,7 +245,7 @@ program
     try {
       // Read current version from package.json
       // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-      const packageJson = require("../package.json");
+      const packageJson = require("@aibtc/skills/package.json");
       // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
       const currentVersion = packageJson.version as string;
       // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access

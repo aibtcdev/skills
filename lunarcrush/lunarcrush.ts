@@ -8,8 +8,8 @@
  */
 
 import { Command } from "commander";
-import { createApiClient } from "../src/lib/services/x402.service.js";
-import { printJson, handleError } from "../src/lib/utils/cli.js";
+import { createApiClient } from "@aibtc/skills/src/lib/services/x402.service.js";
+import { printJson, handleError } from "@aibtc/skills/src/lib/utils/cli.js";
 
 // ---------------------------------------------------------------------------
 // Endpoint hosts

@@ -14,8 +14,6 @@ metadata:
 
 # Query Skill
 
-> **Runs from a full checkout.** This skill imports the shared runtime in `src/lib/` and the repo's npm dependencies, so a folder copied on its own (for example by `npx skills add`) will not start. Clone [aibtcdev/skills](https://github.com/aibtcdev/skills), run `bun install`, and run it from the repo root. See [Installation](https://github.com/aibtcdev/skills#installation).
-
 Provides Stacks network and blockchain query operations using the Hiro API. No wallet required for most queries; `get-account-info` and `get-account-transactions` fall back to the active wallet address if no address is provided.
 
 ## Usage

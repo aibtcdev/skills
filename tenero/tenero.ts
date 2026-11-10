@@ -7,8 +7,8 @@
  */
 
 import { Command } from "commander";
-import { getWalletManager } from "../src/lib/services/wallet-manager.js";
-import { printJson, handleError } from "../src/lib/utils/cli.js";
+import { getWalletManager } from "@aibtc/skills/src/lib/services/wallet-manager.js";
+import { printJson, handleError } from "@aibtc/skills/src/lib/utils/cli.js";
 
 const BASE_URL = "https://api.tenero.io";
 

@@ -48,10 +48,10 @@ import {
   NETWORK as BTC_MAINNET,
   TEST_NETWORK as BTC_TESTNET,
 } from "@scure/btc-signer";
-import { NETWORK } from "../src/lib/config/networks.js";
-import { getWalletManager } from "../src/lib/services/wallet-manager.js";
-import { printJson, handleError } from "../src/lib/utils/cli.js";
-import { taggedHash, bip322BuildToSpendTxId, bip322Sign } from "../src/lib/utils/bip322.js";
+import { NETWORK } from "@aibtc/skills/src/lib/config/networks.js";
+import { getWalletManager } from "@aibtc/skills/src/lib/services/wallet-manager.js";
+import { printJson, handleError } from "@aibtc/skills/src/lib/utils/cli.js";
+import { taggedHash, bip322BuildToSpendTxId, bip322Sign } from "@aibtc/skills/src/lib/utils/bip322.js";
 
 // ---------------------------------------------------------------------------
 // Constants

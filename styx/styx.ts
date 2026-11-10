@@ -24,11 +24,11 @@ import type {
 } from "@faktoryfun/styx-sdk";
 import * as btc from "@scure/btc-signer";
 import { hex } from "@scure/base";
-import { NETWORK } from "../src/lib/config/networks.js";
-import { getWalletManager } from "../src/lib/services/wallet-manager.js";
-import { MempoolApi, getMempoolTxUrl } from "../src/lib/services/mempool-api.js";
-import { UnisatIndexer } from "../src/lib/services/unisat-indexer.js";
-import { printJson, handleError } from "../src/lib/utils/cli.js";
+import { NETWORK } from "@aibtc/skills/src/lib/config/networks.js";
+import { getWalletManager } from "@aibtc/skills/src/lib/services/wallet-manager.js";
+import { MempoolApi, getMempoolTxUrl } from "@aibtc/skills/src/lib/services/mempool-api.js";
+import { UnisatIndexer } from "@aibtc/skills/src/lib/services/unisat-indexer.js";
+import { printJson, handleError } from "@aibtc/skills/src/lib/utils/cli.js";
 
 const FEE_PRIORITIES = ["low", "medium", "high"] as const;
 

@@ -7,12 +7,12 @@
  */
 
 import { Command } from "commander";
-import { getWalletManager } from "../src/lib/services/wallet-manager.js";
-import { getStxBalance } from "../src/lib/services/hiro-api.js";
-import { getWalletAddress } from "../src/lib/services/x402.service.js";
-import { NETWORK } from "../src/lib/config/networks.js";
-import type { Network } from "../src/lib/config/networks.js";
-import { printJson, handleError } from "../src/lib/utils/cli.js";
+import { getWalletManager } from "@aibtc/skills/src/lib/services/wallet-manager.js";
+import { getStxBalance } from "@aibtc/skills/src/lib/services/hiro-api.js";
+import { getWalletAddress } from "@aibtc/skills/src/lib/services/x402.service.js";
+import { NETWORK } from "@aibtc/skills/src/lib/config/networks.js";
+import type { Network } from "@aibtc/skills/src/lib/config/networks.js";
+import { printJson, handleError } from "@aibtc/skills/src/lib/utils/cli.js";
 
 // ---------------------------------------------------------------------------
 // Program

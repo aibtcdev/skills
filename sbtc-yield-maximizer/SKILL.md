@@ -13,8 +13,6 @@ metadata:
 
 # sBTC Yield Maximizer
 
-> **Runs from a full checkout.** This skill imports the shared runtime in `src/lib/` and the repo's npm dependencies, so a folder copied on its own (for example by `npx skills add`) will not start. Clone [aibtcdev/skills](https://github.com/aibtcdev/skills), run `bun install`, and run it from the repo root. See [Installation](https://github.com/aibtcdev/skills#installation).
-
 ## What it does
 
 Compares live Zest sBTC yield against current Bitflow sBTC HODLMM opportunity and routes idle sBTC to the highest safe path. This version executes a real Zest sBTC supply transaction when Zest is the winning route and executes the HODLMM leg by orchestrating `hodlmm-move-liquidity` via CLI when HODLMM is the winning safe executable route.

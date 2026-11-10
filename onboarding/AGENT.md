@@ -51,7 +51,7 @@ Automates first-hour setup for new AIBTC agents with idempotent, safe-by-default
 - `doctor` → `checks[]` with `check`, `ok`, `details`; `score` as "N/M"; `nextActions[]` with ready-to-run commands
 - `install-packs` (preview) → `skills[]` list and `commandTemplate` — verify before executing
 - `install-packs` (execute) → `installs[]` with `skill`, `success`, `exitCode` per skill
-- `install-packs` (both modes) → when `standalone` is false, the installed copy is for discovery only: run the skill from `runFrom` (`runCommand`), not from the copied folder
+- `install-packs` (execute) → each skill is `npx skills add`-ed into `installDir` and `bun install`-ed there (`depsInstalled`); run it from that folder, e.g. `cd <installDir> && bun run <skill>.ts --help`
 - `run` → `steps[]` array of `{step, result}` objects for each phase; `success: true` on completion
 - Feed `doctor.checks` into a readiness summary; use `nextActions[]` as the ordered remediation plan
 - Feed `run.steps` into an audit trail; check each step's `result.success` for partial failures

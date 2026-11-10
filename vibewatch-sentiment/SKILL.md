@@ -13,8 +13,6 @@ metadata:
 
 # vibewatch-sentiment
 
-> **Runs from a full checkout.** This skill imports the shared runtime in `src/lib/` and the repo's npm dependencies, so a folder copied on its own (for example by `npx skills add`) will not start. Clone [aibtcdev/skills](https://github.com/aibtcdev/skills), run `bun install`, and run it from the repo root. See [Installation](https://github.com/aibtcdev/skills#installation).
-
 Community sentiment for the Stacks ecosystem, from the [Vibewatch Stacks Vibe
 Index](https://stacks.vibewatch.io) — a public sentiment index over an opted-in
 panel of Stacks projects (Stacks, Zest Protocol, Bitflow, Stacking DAO, AIBTC,

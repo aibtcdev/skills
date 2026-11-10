@@ -14,8 +14,6 @@ metadata:
 
 # ERC-8004 Skill
 
-> **Runs from a full checkout.** This skill imports the shared runtime in `src/lib/` and the repo's npm dependencies, so a folder copied on its own (for example by `npx skills add`) will not start. Clone [aibtcdev/skills](https://github.com/aibtcdev/skills), run `bun install`, and run it from the repo root. See [Installation](https://github.com/aibtcdev/skills#installation).
-
 Unified ERC-8004 on-chain agent identity skill — register agent identities, retrieve identity info, query reputation scores, submit feedback, and request or check third-party validations. Read operations work without a wallet. Write operations require an unlocked wallet.
 
 ## Usage

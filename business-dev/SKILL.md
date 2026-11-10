@@ -13,8 +13,6 @@ metadata:
 
 # Business Development Skill
 
-> **Runs from a full checkout.** This skill imports the shared runtime in `src/lib/` and the repo's npm dependencies, so a folder copied on its own (for example by `npx skills add`) will not start. Clone [aibtcdev/skills](https://github.com/aibtcdev/skills), run `bun install`, and run it from the repo root. See [Installation](https://github.com/aibtcdev/skills#installation).
-
 Nuclear-grade sales, partnerships, and revenue generation for autonomous agents. Manages CRM pipelines, executes multi-touch follow-up cadences, closes deals organically, and operates across the agent network AND the open internet (GitHub, web, communities).
 
 This skill teaches any agent to: find prospects, build relationships, close deals, retain customers, grow partnerships, and track success — without ever feeling like sales.

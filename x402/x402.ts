@@ -7,7 +7,7 @@
  */
 
 import { Command } from "commander";
-import { NETWORK, API_URL, getInboxBase } from "../src/lib/config/networks.js";
+import { NETWORK, API_URL, getInboxBase } from "@aibtc/skills/src/lib/config/networks.js";
 import {
   classifyCanonicalPaymentOutcome,
   createApiClient,
@@ -18,15 +18,15 @@ import {
   getAccount,
   getWalletAddress,
   formatPaymentAmount,
-} from "../src/lib/services/x402.service.js";
+} from "@aibtc/skills/src/lib/services/x402.service.js";
 import {
   scaffoldProject,
   scaffoldAIProject,
   type EndpointConfig,
   type AIEndpointConfig,
-} from "../src/lib/services/scaffold.service.js";
+} from "@aibtc/skills/src/lib/services/scaffold.service.js";
 import path from "path";
-import { printJson, handleError } from "../src/lib/utils/cli.js";
+import { printJson, handleError } from "@aibtc/skills/src/lib/utils/cli.js";
 
 // ---------------------------------------------------------------------------
 // URL parsing helper
@@ -474,10 +474,10 @@ program
         }
 
         const { decodePaymentRequired } = await import(
-          "../src/lib/utils/x402-protocol.js"
+          "@aibtc/skills/src/lib/utils/x402-protocol.js"
         );
         const { getExplorerTxUrl } = await import(
-          "../src/lib/config/networks.js"
+          "@aibtc/skills/src/lib/config/networks.js"
         );
 
         const paymentRequired = decodePaymentRequired(paymentHeader);
@@ -497,7 +497,7 @@ program
 
         // Step 4: Execute with retry logic (handles nonce conflicts, 409s, 502/503)
         const { executeInboxWithRetry } = await import(
-          "../src/lib/utils/x402-retry.js"
+          "@aibtc/skills/src/lib/utils/x402-retry.js"
         );
 
         const result = await executeInboxWithRetry({
