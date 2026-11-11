@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.45.1](https://github.com/aibtcdev/skills/compare/skills-v0.45.0...skills-v0.45.1) (2026-11-11)
+
+
+### Bug Fixes
+
+* **x402,lunarcrush:** stop retries from paying twice; flag paid calls that return no data ([#486](https://github.com/aibtcdev/skills/issues/486)) ([0f64ff9](https://github.com/aibtcdev/skills/commit/0f64ff9f4698855f084189f5eee40cd3840c5a82))
+
 ## [0.45.0](https://github.com/aibtcdev/skills/compare/skills-v0.44.0...skills-v0.45.0) (2026-11-10)
 
 
