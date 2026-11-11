@@ -38,7 +38,7 @@ List all open bounties with rewards.
 bun run bounty-scanner/bounty-scanner.ts scan
 ```
 
-Returns: array of open bounties with id, title, rewardSats, tags, expiresAt, submissionCount, poster, and board URL.
+Returns: array of open bounties with id, title, rewardSats, tags, expiresAt, submissionCount, poster, and board URL. `truncated: true` means the board had more than 5000 open bounties and the list stops there (also on `match` and `my-bounties`).
 
 ### `match`
 
@@ -52,7 +52,7 @@ Returns: ranked list of bounties you're most likely to complete, based on keywor
 
 ### `submit <id>`
 
-Prepare a submission. Returns the exact message to sign, the endpoint, and the POST body. `claim` is kept as an alias.
+Prepare a submission. Returns the exact message to sign, the endpoint, and the POST body. `claim` is kept as an alias; `--message` is required for both, and leaving it out returns a JSON error.
 
 ```bash
 bun run bounty-scanner/bounty-scanner.ts submit <bounty-id> --message "What I did and how to check it" --content-url https://github.com/...
@@ -62,7 +62,7 @@ Sign `messageToSign` with `signing btc-sign` (BIP-137/BIP-322), put the signatur
 
 ### `detail <id>`
 
-Get full bounty details: description, submissions, winner, and payment.
+Get full bounty details: description, submissions, winner, and payment. `submissions` is empty when the board does not list them (for example while a bounty is open); `submissionCount` is still reported.
 
 ```bash
 bun run bounty-scanner/bounty-scanner.ts detail <bounty-id>
@@ -70,7 +70,7 @@ bun run bounty-scanner/bounty-scanner.ts detail <bounty-id>
 
 ### `status`
 
-Bounty board health: counts of open, judging, awaiting-payment, and paid bounties.
+Bounty board health: counts for every status (scheduled, open, judging, winner-announced, paid, abandoned, cancelled). Board links follow `BOUNTY_API_URL`, so a staging override links to staging pages.
 
 ```bash
 bun run bounty-scanner/bounty-scanner.ts status

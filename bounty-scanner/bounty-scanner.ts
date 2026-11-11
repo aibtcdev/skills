@@ -12,21 +12,45 @@ import { getWalletManager } from "@aibtc/skills/src/lib/services/wallet-manager.
 import { readFileSync, existsSync, readdirSync } from "fs";
 import { join } from "path";
 
-const BOUNTY_API =
-  process.env.BOUNTY_API_URL ?? "https://aibtc.com/api";
+const BOUNTY_API = (process.env.BOUNTY_API_URL ?? "https://aibtc.com/api").replace(/\/+$/, "");
+/** Web base for bounty links: the API base without its trailing /api, so an override (staging) links to its own pages. */
+const BOUNTY_WEB = BOUNTY_API.replace(/\/api$/, "");
 
-/** Signed submit message, as verified by POST /api/bounties/{id}/submit. */
-const SUBMIT_FORMAT =
-  "AIBTC Bounty Submit | {bountyId} | {submitterBtc} | {message} | {contentUrl} | {signedAt}";
+/**
+ * Signed submit message, as verified by POST /api/bounties/{id}/submit:
+ * "AIBTC Bounty Submit | {bountyId} | {submitterBtc} | {message} | {contentUrl} | {signedAt}".
+ * Built by plain interpolation: String.replace would expand `$` patterns in
+ * the message and re-substitute placeholder text it contains, so the signed
+ * string would differ from what the server rebuilds from the body.
+ */
+function buildSubmitMessage(parts: {
+  bountyId: string;
+  submitterBtc: string;
+  message: string;
+  contentUrl: string;
+  signedAt: string;
+}): string {
+  return `AIBTC Bounty Submit | ${parts.bountyId} | ${parts.submitterBtc} | ${parts.message} | ${parts.contentUrl} | ${parts.signedAt}`;
+}
 /** The submit route rejects signatures whose signedAt is older than this. */
 const SIGNATURE_WINDOW_SECONDS = 300;
 const SUBMISSION_MESSAGE_MAX = 2000;
-/** Page cap when walking a list endpoint (100 bounties per page). */
-const MAX_PAGES = 10;
+/** Page cap when walking a list endpoint (100 bounties per page); hitting it is reported as `truncated`. */
+const MAX_PAGES = 50;
 
 // ---------------------------------------------------------------------------
 // Types: aligned with the aibtc.com bounty board (/api/bounties)
 // ---------------------------------------------------------------------------
+
+const BOUNTY_STATUSES = [
+  "scheduled",
+  "open",
+  "judging",
+  "winner-announced",
+  "paid",
+  "abandoned",
+  "cancelled",
+] as const;
 
 type BountyStatus =
   | "scheduled"
@@ -75,7 +99,7 @@ interface BountyList {
 
 interface BountyDetail {
   bounty: Bounty;
-  submissions: Submission[];
+  submissions?: Submission[];
   submissionCount: number;
   submissionsNextOffset?: number | null;
   winner?: unknown;
@@ -102,10 +126,13 @@ async function getJson<T>(path: string): Promise<T> {
   return (await res.json()) as T;
 }
 
-/** Walk every page of /bounties for the given filters (bounded by MAX_PAGES). */
+/**
+ * Walk every page of /bounties for the given filters. Stops at MAX_PAGES;
+ * `truncated` says so, so callers never present a cut-off list as complete.
+ */
 async function fetchBounties(
   filters: Record<string, string> = {}
-): Promise<Bounty[]> {
+): Promise<{ bounties: Bounty[]; truncated: boolean }> {
   const out: Bounty[] = [];
   let offset: number | null = 0;
   for (let page = 0; page < MAX_PAGES && offset !== null; page++) {
@@ -118,13 +145,18 @@ async function fetchBounties(
     out.push(...(data.bounties ?? []));
     offset = data.nextOffset ?? null;
   }
-  return out;
+  return { bounties: out, truncated: offset !== null };
 }
 
 async function countBounties(status: BountyStatus): Promise<number> {
   const data = await getJson<BountyList>(
     `/bounties?status=${status}&limit=1&withCount=true`
   );
+  if (typeof data.total !== "number" || !Number.isFinite(data.total)) {
+    throw new Error(
+      `Bounty API at ${BOUNTY_API} returned no count for status=${status} (withCount unsupported?)`
+    );
+  }
   return data.total;
 }
 
@@ -133,7 +165,7 @@ async function fetchBountyDetail(id: string): Promise<BountyDetail> {
 }
 
 function bountyUrl(id: string): string {
-  return `https://aibtc.com/bounties/${id}`;
+  return `${BOUNTY_WEB}/bounties/${encodeURIComponent(id)}`;
 }
 
 function getBtcAddress(address?: string): string {
@@ -348,7 +380,7 @@ program
   .description("List all open bounties with rewards")
   .action(async () => {
     try {
-      const bounties = await fetchBounties({ status: "open" });
+      const { bounties, truncated } = await fetchBounties({ status: "open" });
       const open = bounties.map((b) => ({
         id: b.id,
         title: b.title,
@@ -364,6 +396,8 @@ program
       printJson({
         success: true,
         openBounties: open.length,
+        truncated,
+        ...(truncated && { note: `Stopped after ${MAX_PAGES * 100} bounties; the board has more.` }),
         bounties: open,
       });
     } catch (err) {
@@ -377,7 +411,7 @@ program
   .description("Match open bounties to your installed skills")
   .action(async () => {
     try {
-      const bounties = await fetchBounties({ status: "open" });
+      const { bounties, truncated } = await fetchBounties({ status: "open" });
       const skills = getInstalledSkills();
 
       const matches = bounties
@@ -410,6 +444,7 @@ program
         success: true,
         installedSkills: skills.length,
         openBounties: bounties.length,
+        truncated,
         recommendedBounties: recommended.length,
         matches: matches.slice(0, 10),
         note: "Display threshold: 0.3 (recommended). Auto-submit threshold: 0.7 (see AGENT.md).",
@@ -428,7 +463,9 @@ program
   .command("submit")
   .alias("claim")
   .argument("<bounty-id>", "Bounty id")
-  .requiredOption("--message <msg>", "Your submission: what you did and how to check it")
+  // Not requiredOption: a missing --message must still produce the JSON error
+  // the skill conventions promise (old `claim <id>` callers omit it).
+  .option("--message <msg>", "Your submission: what you did and how to check it (required)")
   .option("--content-url <url>", "Link to the work (PR, repo, post)")
   .option("--address <btc>", "Your registered BTC address (defaults to the unlocked wallet)")
   .description(
@@ -437,12 +474,19 @@ program
   .action(
     async (
       bountyId: string,
-      opts: { message: string; contentUrl?: string; address?: string }
+      opts: { message?: string; contentUrl?: string; address?: string }
     ) => {
       try {
-        if (opts.message.length > SUBMISSION_MESSAGE_MAX) {
+        if (!opts.message || !opts.message.trim()) {
           throw new Error(
-            `--message is ${opts.message.length} chars; the board accepts at most ${SUBMISSION_MESSAGE_MAX}.`
+            "--message is required: the aibtc.com board has no claim step, so a submission needs a message " +
+              "saying what you did and how to check it (`claim` is an alias of `submit`)."
+          );
+        }
+        const message = opts.message;
+        if (message.length > SUBMISSION_MESSAGE_MAX) {
+          throw new Error(
+            `--message is ${message.length} chars; the board accepts at most ${SUBMISSION_MESSAGE_MAX}.`
           );
         }
         const btcAddress = getBtcAddress(opts.address);
@@ -467,11 +511,13 @@ program
 
         const signedAt = new Date().toISOString();
         const contentUrl = opts.contentUrl ?? "";
-        const messageToSign = SUBMIT_FORMAT.replace("{bountyId}", bounty.id)
-          .replace("{submitterBtc}", btcAddress)
-          .replace("{message}", opts.message)
-          .replace("{contentUrl}", contentUrl)
-          .replace("{signedAt}", signedAt);
+        const messageToSign = buildSubmitMessage({
+          bountyId: bounty.id,
+          submitterBtc: btcAddress,
+          message,
+          contentUrl,
+          signedAt,
+        });
 
         printJson({
           success: true,
@@ -486,7 +532,7 @@ program
           messageToSign,
           body: {
             submitterBtcAddress: btcAddress,
-            message: opts.message,
+            message,
             ...(opts.contentUrl && { contentUrl: opts.contentUrl }),
             signedAt,
             signature: "<BIP-137/BIP-322 signature over messageToSign>",
@@ -505,15 +551,20 @@ program
   .description("Bounty board health: bounty counts by status")
   .action(async () => {
     try {
-      const statuses: BountyStatus[] = ["open", "judging", "winner-announced", "paid"];
-      const counts = await Promise.all(statuses.map((s) => countBounties(s)));
-      const byStatus = Object.fromEntries(statuses.map((s, i) => [s, counts[i]]));
+      const counts = await Promise.all(BOUNTY_STATUSES.map((s) => countBounties(s)));
+      const byStatus = Object.fromEntries(BOUNTY_STATUSES.map((s, i) => [s, counts[i]])) as Record<
+        BountyStatus,
+        number
+      >;
 
       printJson({
         success: true,
-        board: "https://aibtc.com/bounties",
+        board: `${BOUNTY_WEB}/bounties`,
         byStatus,
-        summary: `${byStatus.open} open | ${byStatus.judging} judging | ${byStatus["winner-announced"]} awaiting payment | ${byStatus.paid} paid`,
+        summary:
+          `${byStatus.scheduled} scheduled | ${byStatus.open} open | ${byStatus.judging} judging | ` +
+          `${byStatus["winner-announced"]} awaiting payment | ${byStatus.paid} paid | ` +
+          `${byStatus.abandoned} abandoned | ${byStatus.cancelled} cancelled`,
       });
     } catch (err) {
       handleError(err);
@@ -528,7 +579,7 @@ program
   .action(async (opts: { address?: string }) => {
     try {
       const btcAddress = getBtcAddress(opts.address);
-      const [posted, submitted] = await Promise.all([
+      const [postedPage, submittedPage] = await Promise.all([
         fetchBounties({ poster: btcAddress, status: "active" }),
         fetchBounties({ submitter: btcAddress, status: "active" }),
       ]);
@@ -546,8 +597,9 @@ program
       printJson({
         success: true,
         agent: btcAddress,
-        posted: posted.map((b) => row(b, "poster")),
-        submitted: submitted.map((b) => row(b, "submitter")),
+        posted: postedPage.bounties.map((b) => row(b, "poster")),
+        submitted: submittedPage.bounties.map((b) => row(b, "submitter")),
+        truncated: postedPage.truncated || submittedPage.truncated,
         note: "Active (non-terminal) bounties only. Use the board API with ?status=paid for finished ones.",
       });
     } catch (err) {
@@ -568,7 +620,8 @@ program
         success: true,
         bounty: { ...detail.bounty, url: bountyUrl(detail.bounty.id) },
         submissionCount: detail.submissionCount,
-        submissions: detail.submissions.map((s) => ({
+        // The board may leave submissions out (e.g. hidden while a bounty is open).
+        submissions: (detail.submissions ?? []).map((s) => ({
           id: s.id,
           submitterBtcAddress: s.submitterBtcAddress,
           message: s.message,
