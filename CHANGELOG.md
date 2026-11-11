@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.45.2](https://github.com/aibtcdev/skills/compare/skills-v0.45.1...skills-v0.45.2) (2026-11-11)
+
+
+### Bug Fixes
+
+* **bounty-scanner:** use the aibtc.com bounty board instead of bounty.drx4.xyz ([#485](https://github.com/aibtcdev/skills/issues/485)) ([234bf1e](https://github.com/aibtcdev/skills/commit/234bf1e5cc46eeac659502ae9143647bf9811eab))
+
 ## [0.45.1](https://github.com/aibtcdev/skills/compare/skills-v0.45.0...skills-v0.45.1) (2026-11-11)
 
 
