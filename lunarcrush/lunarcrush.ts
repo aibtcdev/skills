@@ -8,8 +8,16 @@
  */
 
 import { Command } from "commander";
-import { createApiClient } from "@aibtc/skills/src/lib/services/x402.service.js";
+import { createApiClient, getDirectPaymentMetadata } from "@aibtc/skills/src/lib/services/x402.service.js";
 import { printJson, handleError } from "@aibtc/skills/src/lib/utils/cli.js";
+import {
+  checkBeforePaying,
+  DegradedGuardError,
+  detectDegraded,
+  guardStatus,
+  recordOutcome,
+  type PaidEndpoint,
+} from "./degraded-guard.js";
 
 // ---------------------------------------------------------------------------
 // Endpoint hosts
@@ -61,6 +69,61 @@ function decodePaymentReceipt(header: unknown): Record<string, unknown> | undefi
 }
 
 // ---------------------------------------------------------------------------
+// Paid call with the empty-answer guard (#393)
+// ---------------------------------------------------------------------------
+
+async function paidCall(
+  endpoint: PaidEndpoint,
+  routePrefix: string,
+  opts: { symbol: string; network?: string; force?: boolean }
+): Promise<void> {
+  const symbol = normalizeSymbol(opts.symbol);
+  const { network, baseUrl } = resolveHost(opts.network);
+  const url = `${baseUrl}${routePrefix}/${symbol}`;
+
+  // Refuse before any request when this call would most likely buy an empty answer again.
+  if (!opts.force) checkBeforePaying(network, endpoint, symbol);
+
+  const api = await createApiClient(baseUrl, `lunarcrush.${endpoint}`);
+  const response = await api.request({ method: "GET", url: `${routePrefix}/${symbol}` });
+
+  const output: Record<string, unknown> = {
+    ...((response.data as Record<string, unknown>) ?? {}),
+    network,
+    endpoint: url,
+  };
+  const receipt = decodePaymentReceipt(response.headers?.["payment-response"]);
+  if (receipt) output.payment_receipt = receipt;
+
+  const reason = detectDegraded(endpoint, response.data);
+  const txid =
+    (typeof receipt?.transaction === "string" && receipt.transaction) || getDirectPaymentMetadata(response).txid || undefined;
+  recordOutcome(network, endpoint, symbol, reason ? { reason, txid } : null);
+  if (reason) {
+    // Paid, but nothing usable came back. Say so in the output, and hand the
+    // caller what the provider asked for to honour a manual re-serve.
+    output.degraded = {
+      paid: true,
+      reason,
+      claim: { txid: txid ?? null, symbol, endpoint: url, network, paid_at: new Date().toISOString() },
+      next_step:
+        "Treat this as no signal. Do not retry this symbol right away (the guard refuses for an hour). " +
+        "To ask for a re-serve, send the claim (txid + symbol) to the provider: " +
+        "https://github.com/aibtcdev/skills/issues/393",
+    };
+  }
+  printJson(output);
+}
+
+function handleGuardError(error: unknown): never {
+  if (error instanceof DegradedGuardError) {
+    printJson({ error: error.message, code: "LUNARCRUSH_GUARD", kind: error.kind, retry_after_seconds: error.retryAfterSeconds, paid: false });
+    process.exit(1);
+  }
+  handleError(error);
+}
+
+// ---------------------------------------------------------------------------
 // Commander setup
 // ---------------------------------------------------------------------------
 
@@ -69,6 +132,9 @@ program
   .name("lunarcrush")
   .description("Pay-per-call LunarCrush social/market intelligence via x402 on Stacks")
   .version("0.0.1");
+
+const FORCE_HELP =
+  "Pay even if this symbol just returned no data or the empty-answer breaker is open";
 
 // ---------------------------------------------------------------------------
 // oracle — premium combined endpoint with verdict + vibe one-liner
@@ -81,28 +147,12 @@ program
   )
   .requiredOption("--symbol <symbol>", "Crypto ticker (e.g. BTC, ETH, STX)")
   .option("--network <network>", "mainnet or testnet (default: mainnet)", "mainnet")
+  .option("--force", FORCE_HELP, false)
   .action(async (opts) => {
     try {
-      const symbol = normalizeSymbol(opts.symbol);
-      const { network, baseUrl } = resolveHost(opts.network);
-
-      const api = await createApiClient(baseUrl, "lunarcrush.oracle");
-      const response = await api.request({
-        method: "GET",
-        url: `/oracle/${symbol}`,
-      });
-
-      const output: Record<string, unknown> = {
-        ...((response.data as Record<string, unknown>) ?? {}),
-        network,
-        endpoint: `${baseUrl}/oracle/${symbol}`,
-      };
-      const receipt = decodePaymentReceipt(response.headers?.["payment-response"]);
-      if (receipt) output.payment_receipt = receipt;
-
-      printJson(output);
+      await paidCall("oracle", "/oracle", opts);
     } catch (error) {
-      handleError(error);
+      handleGuardError(error);
     }
   });
 
@@ -117,28 +167,12 @@ program
   )
   .requiredOption("--symbol <symbol>", "Crypto ticker (e.g. BTC, ETH, STX)")
   .option("--network <network>", "mainnet or testnet (default: mainnet)", "mainnet")
+  .option("--force", FORCE_HELP, false)
   .action(async (opts) => {
     try {
-      const symbol = normalizeSymbol(opts.symbol);
-      const { network, baseUrl } = resolveHost(opts.network);
-
-      const api = await createApiClient(baseUrl, "lunarcrush.score");
-      const response = await api.request({
-        method: "GET",
-        url: `/galaxy-score/${symbol}`,
-      });
-
-      const output: Record<string, unknown> = {
-        ...((response.data as Record<string, unknown>) ?? {}),
-        network,
-        endpoint: `${baseUrl}/galaxy-score/${symbol}`,
-      };
-      const receipt = decodePaymentReceipt(response.headers?.["payment-response"]);
-      if (receipt) output.payment_receipt = receipt;
-
-      printJson(output);
+      await paidCall("score", "/galaxy-score", opts);
     } catch (error) {
-      handleError(error);
+      handleGuardError(error);
     }
   });
 
@@ -158,6 +192,8 @@ program
         network,
         endpoint: `${baseUrl}/health`,
         ...(typeof data === "object" && data !== null ? (data as Record<string, unknown>) : {}),
+        // Local state of the empty-answer guard: which paid calls it would refuse right now.
+        guard: guardStatus(network),
       });
     } catch (error) {
       handleError(error);
