@@ -7,25 +7,35 @@
  */
 
 import { Command } from "commander";
-import { NETWORK, API_URL, getInboxBase } from "../src/lib/config/networks.js";
+import { NETWORK, API_URL, getInboxBase } from "@aibtc/skills/src/lib/config/networks.js";
 import {
   classifyCanonicalPaymentOutcome,
   createApiClient,
   createPlainClient,
   getCanonicalPaymentMetadata,
+  getDirectPaymentMetadata,
   probeEndpoint,
   getAccount,
   getWalletAddress,
   formatPaymentAmount,
-} from "../src/lib/services/x402.service.js";
+} from "@aibtc/skills/src/lib/services/x402.service.js";
 import {
   scaffoldProject,
   scaffoldAIProject,
   type EndpointConfig,
   type AIEndpointConfig,
-} from "../src/lib/services/scaffold.service.js";
+} from "@aibtc/skills/src/lib/services/scaffold.service.js";
+import {
+  clearDedupByTxid,
+  hasPaymentDetails,
+  listDedupEntries,
+  normalizeObligationId,
+  resolveDirectPaymentPolicy,
+} from "@aibtc/skills/src/lib/services/x402-guards.js";
+import { reconcileDedupEntry } from "@aibtc/skills/src/lib/services/x402-dedup-reconcile.js";
+import { createDedupChainReader } from "@aibtc/skills/src/lib/services/x402.service.js";
 import path from "path";
-import { printJson, handleError } from "../src/lib/utils/cli.js";
+import { printJson, handleError } from "@aibtc/skills/src/lib/utils/cli.js";
 
 // ---------------------------------------------------------------------------
 // URL parsing helper
@@ -40,18 +50,30 @@ interface ParsedUrl {
 
 function buildCanonicalPaymentOutput(value: unknown): Record<string, unknown> | undefined {
   const metadata = getCanonicalPaymentMetadata(value);
+  const direct = getDirectPaymentMetadata(value);
+  // Direct-mode payments always report their txid and settlement state, even
+  // when the server offers no canonical payment-status hint.
+  const directOutput = direct.mode
+    ? {
+        mode: direct.mode,
+        txid: direct.txid,
+        txStatus: direct.txStatus,
+        settlementState: direct.settlementState,
+      }
+    : undefined;
   if (!metadata.paymentStatus || !metadata.paymentDecision || !metadata.paymentId) {
-    return undefined;
+    return directOutput;
   }
 
   return {
+    ...directOutput,
     status: metadata.paymentStatus.status,
     terminalReason: metadata.paymentStatus.terminalReason,
     action: metadata.paymentDecision.action,
     guidance: metadata.paymentDecision.guidance,
     paymentId: metadata.paymentId,
     checkUrl: metadata.checkUrl,
-    txid: metadata.paymentStatus.txid,
+    txid: metadata.paymentStatus.txid ?? direct.txid,
   };
 }
 
@@ -190,6 +212,11 @@ program
   .option("--data <json>", "Request body for POST/PUT as JSON object", "{}")
   .option("--headers <json>", "Additional request headers as JSON object", "{}")
   .option(
+    "--obligation-id <id>",
+    "Stable name for what this call buys (e.g. job-123). Retries with the same id are treated as the same " +
+      "purchase by the direct-mode duplicate guard, even if the body or headers change. Never sent to the endpoint."
+  )
+  .option(
     "--auto-approve",
     "Skip cost probe and execute immediately, paying if required",
     false
@@ -203,6 +230,7 @@ program
       params: string;
       data: string;
       headers: string;
+      obligationId?: string;
       autoApprove: boolean;
     }) => {
       let fullUrl = "";
@@ -240,6 +268,7 @@ program
         } catch {
           throw new Error("--headers must be valid JSON object");
         }
+        const obligationId = normalizeObligationId(opts.obligationId);
 
         const parsed = parseEndpointUrl({
           url: opts.url,
@@ -275,7 +304,7 @@ program
               recipient: probeResult.recipient,
               network: probeResult.network,
             },
-            retryWith: `--auto-approve ${opts.url ? `--url ${opts.url}` : `--path ${opts.path}`}${opts.apiUrl ? ` --api-url ${opts.apiUrl}` : ""}${params ? ` --params '${JSON.stringify(params)}'` : ""}${data ? ` --data '${JSON.stringify(data)}'` : ""}${customHeaders ? ` --headers '${JSON.stringify(customHeaders)}'` : ""}`,
+            retryWith: `--auto-approve ${opts.url ? `--url ${opts.url}` : `--path ${opts.path}`}${opts.apiUrl ? ` --api-url ${opts.apiUrl}` : ""}${params ? ` --params '${JSON.stringify(params)}'` : ""}${data ? ` --data '${JSON.stringify(data)}'` : ""}${customHeaders ? ` --headers '${JSON.stringify(customHeaders)}'` : ""}${obligationId ? ` --obligation-id '${obligationId}'` : ""}`,
           });
           return;
         }
@@ -285,7 +314,11 @@ program
 
         if (probeResult.type === "payment_required") {
           const api = await createApiClient(parsed.baseUrl, "x402.execute-endpoint");
-          const response = await api.request({ method, url: parsed.requestPath, params, data, headers: customHeaders });
+          // The client lifts this header off before sending; it only names the purchase.
+          const paidHeaders = obligationId
+            ? { ...(customHeaders ?? {}), "X-Payment-Obligation-Id": obligationId }
+            : customHeaders;
+          const response = await api.request({ method, url: parsed.requestPath, params, data, headers: paidHeaders });
           const payment = buildCanonicalPaymentOutput(response);
 
           printJson({
@@ -399,6 +432,76 @@ program
   );
 
 // ---------------------------------------------------------------------------
+// dedup-status / clear-dedup (direct-mode duplicate guard)
+// ---------------------------------------------------------------------------
+
+program
+  .command("dedup-status")
+  .description(
+    "List direct-mode duplicate-guard records (payments whose outcome was ambiguous). " +
+      "With --check, also asks the chain what each expired record means now. Read-only."
+  )
+  .option("--check", "Reconcile each expired record against the Stacks API (read-only)", false)
+  .action(async (opts: { check: boolean }) => {
+    try {
+      const policy = resolveDirectPaymentPolicy();
+      const records = await listDedupEntries(policy);
+      const reader = opts.check ? createDedupChainReader(NETWORK) : null;
+      const now = Date.now();
+      const out = [];
+      for (const { key, entry } of records) {
+        const ageMs = now - entry.timestamp;
+        const state = entry.paidTxid ? "paid" : ageMs <= policy.dedupTtlMs ? "within-ttl" : "expired";
+        const row: Record<string, unknown> = {
+          key: `${key.slice(0, 12)}…`,
+          txid: entry.txid,
+          ageSeconds: Math.round(ageMs / 1000),
+          state,
+          ...(entry.paidTxid ? { paidTxid: entry.paidTxid } : {}),
+          ...(hasPaymentDetails(entry)
+            ? { nonce: entry.nonce, payTo: entry.payTo, amount: entry.amount, asset: entry.asset }
+            : { legacy: true }),
+        };
+        if (reader && state === "expired") {
+          if (!entry.payer || !entry.payTo || !entry.amount || !entry.asset) {
+            row.verdict = { action: "refuse", reason: "record predates nonce tracking; verify the txid by hand" };
+          } else {
+            row.verdict = await reconcileDedupEntry(
+              entry,
+              { payer: entry.payer, payTo: entry.payTo, amount: BigInt(entry.amount), asset: entry.asset },
+              reader
+            );
+          }
+        }
+        out.push(row);
+      }
+      printJson({
+        stateFile: policy.dedupStateFile,
+        ttlSeconds: Math.round(policy.dedupTtlMs / 1000),
+        records: out,
+      });
+    } catch (error) {
+      handleError(error);
+    }
+  });
+
+program
+  .command("clear-dedup")
+  .description(
+    "Operator override: delete the duplicate-guard record for a txid so an identical request can be paid again. " +
+      "Only after verifying on the explorer that the payment did not and cannot settle, or that a repeat purchase is intended."
+  )
+  .requiredOption("--txid <txid>", "Signed or confirmed txid named in the DUPLICATE_PAYMENT error")
+  .action(async (opts: { txid: string }) => {
+    try {
+      const removed = await clearDedupByTxid(opts.txid, resolveDirectPaymentPolicy());
+      printJson({ txid: opts.txid.replace(/^0x/, "").toLowerCase(), removed });
+    } catch (error) {
+      handleError(error);
+    }
+  });
+
+// ---------------------------------------------------------------------------
 // send-inbox-message
 // ---------------------------------------------------------------------------
 
@@ -461,10 +564,10 @@ program
         }
 
         const { decodePaymentRequired } = await import(
-          "../src/lib/utils/x402-protocol.js"
+          "@aibtc/skills/src/lib/utils/x402-protocol.js"
         );
         const { getExplorerTxUrl } = await import(
-          "../src/lib/config/networks.js"
+          "@aibtc/skills/src/lib/config/networks.js"
         );
 
         const paymentRequired = decodePaymentRequired(paymentHeader);
@@ -484,7 +587,7 @@ program
 
         // Step 4: Execute with retry logic (handles nonce conflicts, 409s, 502/503)
         const { executeInboxWithRetry } = await import(
-          "../src/lib/utils/x402-retry.js"
+          "@aibtc/skills/src/lib/utils/x402-retry.js"
         );
 
         const result = await executeInboxWithRetry({

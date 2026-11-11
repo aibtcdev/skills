@@ -143,3 +143,7 @@ Fatal error:
 Winner of AIBTC x Bitflow Skills Pay the Bills competition.
 Original author: @macbotmini-eng
 Competition PR: https://github.com/BitflowFinance/bff-skills/pull/556
+
+## Post-condition correctness update (2026-07-15 field audit F-7)
+
+Per-bin position-NFT post-conditions are keyed on **actual NFT ownership** (Hiro NFT holdings), not only `userLiquidity > 0`. Root cause: the pool's `tag-pool-token-id` burns and re-mints the bin NFT on every mint/burn where the wallet already owns it — and ownership **persists at zero liquidity**, so re-entering a previously fully-withdrawn bin moves the NFT even though the positions endpoint shows no liquidity. Without the PC, such a deposit aborts in Deny mode and burns the fee.

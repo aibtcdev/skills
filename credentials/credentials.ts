@@ -14,7 +14,7 @@ import {
   deleteCredential,
   rotatePassword,
 } from "./store.js";
-import { printJson, handleError } from "../src/lib/utils/cli.js";
+import { printJson, handleError } from "@aibtc/skills/src/lib/utils/cli.js";
 
 // ---------------------------------------------------------------------------
 // Program

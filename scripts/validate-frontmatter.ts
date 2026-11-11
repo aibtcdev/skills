@@ -2,26 +2,37 @@ import { Glob } from "bun";
 import { join, dirname } from "node:path";
 import * as yaml from "yaml";
 import { z } from "zod";
+import { expectedSkillPackage, formatSkillPackage } from "./lib/skill-packages.js";
 
 // Resolve repo root from the scripts/ directory
 const scriptsDir = dirname(import.meta.path);
 const repoRoot = dirname(scriptsDir);
+const rootDependencies: Record<string, string> =
+  (await Bun.file(join(repoRoot, "package.json")).json()).dependencies ?? {};
 
 // CLI flags
 const skipSpec = process.argv.includes("--skip-spec");
 
-// Find the skills-ref binary: prefer local venv, fall back to PATH
+// Find the spec validator binary: prefer local venv, fall back to PATH.
+// The PyPI package `skills-ref` (0.1.1) installs its CLI as `agentskills`;
+// older releases named it `skills-ref`. Look for both so tier-1 doesn't
+// silently skip when the package is installed (#383).
+const VALIDATOR_NAMES = ["agentskills", "skills-ref"];
 async function findSkillsRef(): Promise<string | null> {
-  const localBin = join(repoRoot, ".venv-skills-ref/bin/skills-ref");
-  try {
-    const stat = await Bun.file(localBin).stat();
-    if (stat.size > 0) return localBin;
-  } catch {
-    // not found locally
+  for (const name of VALIDATOR_NAMES) {
+    const localBin = join(repoRoot, `.venv-skills-ref/bin/${name}`);
+    try {
+      const stat = await Bun.file(localBin).stat();
+      if (stat.size > 0) return localBin;
+    } catch {
+      // not found locally
+    }
   }
   // Fall back to PATH (cross-platform)
-  const pathResult = Bun.which("skills-ref");
-  if (pathResult) return "skills-ref";
+  for (const name of VALIDATOR_NAMES) {
+    const pathResult = Bun.which(name);
+    if (pathResult) return pathResult;
+  }
   return null;
 }
 
@@ -72,6 +83,8 @@ const SkillMetadataSchema = z.object({
   }),
   tags: z.string().min(1, "tags is required"),
   "mcp-tools": z.string().optional(),
+  // Set when the skill no longer works; the value says why and what replaces it.
+  deprecated: z.string().min(1, "deprecated, when set, must say why").optional(),
 });
 
 const SkillFrontmatterSchema = z.object({
@@ -145,7 +158,7 @@ if (!skipSpec) {
   skillsRefBin = await findSkillsRef();
   if (skillsRefBin === null) {
     process.stderr.write(
-      "WARNING: skills-ref not found. Skipping tier-1 spec validation. Install with: pip install skills-ref\n"
+      "WARNING: spec validator (agentskills / skills-ref) not found. Skipping tier-1 spec validation. Install with: pip install skills-ref\n"
     );
   }
 }
@@ -228,6 +241,26 @@ for await (const file of skillGlob2.scan({ cwd: repoRoot })) {
       errors.push(
         `metadata.requires: unknown skills [${unknownRequires.join(", ")}] — must reference existing skill directories`
       );
+    }
+
+    // The skill folder must run on its own once copied by `npx skills add`
+    // and `bun install`ed: no imports outside it, every npm import declared,
+    // and its generated package.json current (#473).
+    const pkg = await expectedSkillPackage(repoRoot, skillDir, rootDependencies);
+    errors.push(...pkg.errors);
+    const pkgPath = join(repoRoot, skillDir, "package.json");
+    const pkgFile = Bun.file(pkgPath);
+    const actual = (await pkgFile.exists()) ? await pkgFile.text() : null;
+    const expected = pkg.json ? formatSkillPackage(pkg.json) : null;
+    if (expected !== actual) {
+      errors.push(
+        expected === null
+          ? `${skillDir}/package.json exists but the skill has no scripts — delete it`
+          : `${skillDir}/package.json is missing or stale — run \`bun run manifest\``
+      );
+    }
+    if (content.includes("**Runs from a full checkout.**")) {
+      errors.push(`SKILL.md still has the "Runs from a full checkout" note — every skill runs from its own folder now (#473)`);
     }
 
     // Validate entry file(s) exist on disk

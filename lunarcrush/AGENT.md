@@ -32,13 +32,15 @@ Before calling `score`:
 
 1. Confirm wallet balance ≥ 100,000 microSTX (mainnet) or testnet STX present.
 2. If you've already called for the same symbol within the last 60 seconds, **skip the call** — Cloudflare edge cache returns the same upstream data anyway, and you'd be paying again for cached data. Cache the prior response in agent memory.
-3. If `score` returns `galaxy_score: null` with a `warning` field, the LunarCrush upstream API failed. The payment was still consumed. Decide whether to retry (only worth it if you can wait 60s+ for cache miss to expire) or accept the partial response.
+3. If a paid call comes back with no usable data (`galaxy_score: null`, a `warning`, or an `UNKNOWN` oracle verdict), the output carries a `degraded` object: `paid: true`, the `reason`, and a `claim` (`txid`, `symbol`, `endpoint`, `network`, `paid_at`). The payment was still consumed. Treat it as no signal and skip downstream signal generation. Do not retry the symbol: the gap is usually per symbol, and the skill refuses to pay for the same endpoint + symbol again for an hour.
+4. For a manual re-serve, follow [Manual re-serve requests](#manual-re-serve-requests). Never pay again as a substitute for a claim.
 
 ## Cost guardrails
 
 - Default cost per `score`: ~$0.005 USD = ~22,000 microSTX at STX $0.22. **Confirm the live price via `meta` before bulk operations.**
 - A naive loop calling `score` on 100 symbols = $0.50 = ~2.27 STX at current rates. Acceptable for one-off analysis; bad as a polling cron. For polling, use a LunarCrush API subscription instead and use this skill for spot-checks.
 - If the agent is running a budget-bounded autonomous flow, declare a maximum total spend in microSTX and decrement after each call. Halt if exceeded.
+- **Empty-answer breaker.** After 3 consecutive paid calls for different symbols return no usable data (within 10 minutes of each other), the skill refuses every paid call for 10 minutes: the upstream is likely degraded, and a scan over many symbols would otherwise pay for nothing. Refusals happen before any request, so nothing is paid. Run `health` to see the breaker and per-symbol cooldowns. `--force` bypasses both; use it only when an operator asks, or for a single probe after the cooldown is mostly over.
 
 ## Error handling
 
@@ -46,22 +48,28 @@ Before calling `score`:
 |---|---|
 | Wallet balance too low to cover payment | Halt the flow. Slack-DM operator or call `wallet status`. Do not attempt the call. |
 | `402` returned but client retries exceeded | Likely a facilitator outage. Wait 5 min, retry once. If still failing, fall back to `meta` and verify the endpoint is up. |
-| `200` with `galaxy_score: null` + warning | LunarCrush upstream failed but we still paid. Log the warning, treat as soft-failure, skip downstream signal generation. |
+| Output has `degraded` (`paid: true`) | Paid, but LunarCrush had no data. Treat as no signal, skip downstream signal generation, and send `degraded.claim` to the provider for a re-serve. Do not retry the symbol. |
+| `code: "LUNARCRUSH_GUARD"`, `kind: "symbol-cooldown"` | Refused before paying: this endpoint + symbol returned no data within the last hour. Nothing was paid. Skip the symbol until `retry_after_seconds`. |
+| `code: "LUNARCRUSH_GUARD"`, `kind: "breaker-open"` | Refused before paying: several symbols in a row returned no data. Nothing was paid. Pause the scan for `retry_after_seconds`. |
 | `400 invalid_symbol` | Did not consume payment. Symbol must be lowercase a-z + 0-9 only, max 16 chars. Check input. |
 | `5xx` from worker | Worker outage. Retry once after 30s. If persists, alert operator. |
 
-## Manual retry policy
+## Manual re-serve requests
 
-If a paid call returns `200` with `galaxy_score: null`, open a GitHub issue referencing the LunarCrush payment-vs-delivery thread with the payment txid and symbol queried.
+When `score` or `oracle` returns `degraded`, preserve `degraded.claim` and `degraded.reason`. Ask the operator to open a [follow-up issue](https://github.com/aibtcdev/skills/issues/new) referencing [#393](https://github.com/aibtcdev/skills/issues/393) with that evidence. A null field alone does not establish an upstream failure; the provider confirms eligibility from its logs. Share only the claim and reason, never wallet secrets or signed payment headers.
 
-The maintainer can verify the on-chain payment, cross-check the server-side failure log, and honor a manual re-serve of the data. One retry per txid; caller-surfaced proof is required. This policy holds until an automated retry-with-proof endpoint ships.
+If `claim.txid` is `null`, ask the operator to recover the original txid from wallet history or the original payment log. Keep the unresolved claim pending until the payment can be verified; never invent a txid or make a new paid call to obtain one.
+
+For a manual re-serve, the provider should verify that the original payment settled on the stated network for the correct recipient and amount, match it to the failed symbol and endpoint in server-side logs, and check whether it has already been re-served. Request at most one manual re-serve per verified payment txid, without an additional payment. The caller-side cooldown does not enforce this provider-side limit.
+
+This follows the provider's [interim manual offer](https://github.com/aibtcdev/skills/issues/393#issuecomment-4514154712) while automated retry-with-proof is unavailable. No response-time or delivery-time commitment is defined here.
 
 ## Safety checks
 
 - **No private key handling.** This skill never logs, prints, or transmits the wallet seed phrase. All signing happens via `getAccount()` returning a properly-scoped account object.
 - **HTTPS only.** The x402 service interceptor rejects non-HTTPS endpoints (in case anyone passes `--network` with a custom URL).
-- **Output is stdout JSON only.** No files written. No external commands invoked.
-- **Idempotent free endpoints.** `health` and `meta` are free and safe to call repeatedly. `score` is paid and not idempotent (each call consumes a payment).
+- **Output is stdout JSON only.** No external commands invoked. The only file written is the guard state, `~/.aibtc/lunarcrush-guard.json` (symbols, reasons and txids of empty answers; override with `LUNARCRUSH_GUARD_STATE_FILE`). It is advisory: an unreadable file starts fresh.
+- **Idempotent free endpoints.** `health` and `meta` are free and safe to call repeatedly. `score` and `oracle` are paid and not idempotent (each call consumes a payment).
 
 ## When NOT to use this skill
 

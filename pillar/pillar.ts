@@ -12,10 +12,10 @@ import { exec } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
-import { getPillarApi } from "../src/lib/services/pillar-api.service.js";
-import { getHiroApi } from "../src/lib/services/hiro-api.js";
-import { NETWORK, getExplorerTxUrl } from "../src/lib/config/networks.js";
-import { printJson, handleError } from "../src/lib/utils/cli.js";
+import { getPillarApi } from "@aibtc/skills/src/lib/services/pillar-api.service.js";
+import { getHiroApi } from "@aibtc/skills/src/lib/services/hiro-api.js";
+import { NETWORK, getExplorerTxUrl } from "@aibtc/skills/src/lib/config/networks.js";
+import { printJson, handleError } from "@aibtc/skills/src/lib/utils/cli.js";
 
 // ---------------------------------------------------------------------------
 // Constants

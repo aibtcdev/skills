@@ -9,8 +9,10 @@
 import { Command } from "commander";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
-import { printJson, handleError } from "../src/lib/utils/cli.js";
-import { getWalletManager } from "../src/lib/services/wallet-manager.js";
+import { homedir } from "node:os";
+import { existsSync } from "node:fs";
+import { printJson, handleError } from "@aibtc/skills/src/lib/utils/cli.js";
+import { getWalletManager } from "@aibtc/skills/src/lib/services/wallet-manager.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -302,6 +304,69 @@ async function postRegistration(walletPassword?: string): Promise<JsonValue> {
   }
 }
 
+interface ManifestSkill {
+  name: string;
+  /** Command to run in the installed skill folder before first use (skills.json, #473). */
+  install?: string;
+}
+
+/**
+ * Skills from skills.json, keyed by name. Onboarding runs from a checkout or an
+ * installed copy of this repo; either way the manifest sits at its root.
+ */
+async function readManifestSkills(): Promise<Map<string, ManifestSkill>> {
+  try {
+    const manifest = (await Bun.file(resolve(repoRoot, "skills.json")).json()) as { skills?: ManifestSkill[] };
+    return new Map((manifest.skills ?? []).map((s) => [s.name, s]));
+  } catch {
+    return new Map();
+  }
+}
+
+/** Where `npx skills add -g` puts a skill. */
+function installedSkillDir(skill: string): string {
+  return resolve(homedir(), ".agents", "skills", skill);
+}
+
+function decode(buf: Uint8Array | undefined): string {
+  return buf ? new TextDecoder().decode(buf) : "";
+}
+
+/**
+ * `npx skills add` copies the skill folder, including its generated package.json;
+ * `bun install` in that folder then fetches its dependencies (and, for skills
+ * using shared code, this repo from GitHub) so the copy runs on its own (#473).
+ */
+function installSkill(skill: string, manifest: Map<string, ManifestSkill>): JsonValue {
+  const add = Bun.spawnSync({
+    cmd: ["npx", "skills", "add", `aibtcdev/skills/${skill}`, "-y", "-g"],
+    cwd: process.cwd(),
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const addOutput = (decode(add.stdout) || decode(add.stderr)).trim().slice(0, 600);
+  const dir = installedSkillDir(skill);
+  const result: JsonValue = { skill, success: add.exitCode === 0, exitCode: add.exitCode, output: addOutput, installDir: dir };
+  if (add.exitCode !== 0) return result;
+
+  const needsDeps = manifest.get(skill)?.install !== undefined || existsSync(resolve(dir, "package.json"));
+  if (!needsDeps) return result;
+  if (!existsSync(resolve(dir, "package.json"))) {
+    return {
+      ...result,
+      success: false,
+      error: `Installed, but ${dir}/package.json was not found; run \`bun install\` in the skill's install folder.`,
+    };
+  }
+  const deps = Bun.spawnSync({ cmd: [process.execPath, "install"], cwd: dir, stdout: "pipe", stderr: "pipe" });
+  return {
+    ...result,
+    success: deps.exitCode === 0,
+    depsInstalled: deps.exitCode === 0,
+    ...(deps.exitCode === 0 ? {} : { depsOutput: (decode(deps.stderr) || decode(deps.stdout)).trim().slice(-600) }),
+  };
+}
+
 function flattenRequestedPacks(pack: string): PackDefinition[] {
   assertValidPack(pack);
 
@@ -427,31 +492,15 @@ program
           mode: "preview",
           selectedPacks: selected,
           skills,
-          commandTemplate: "npx skills add aibtcdev/skills/<skill> -y -g",
+          commandTemplate: "npx skills add aibtcdev/skills/<skill> -y -g && (cd ~/.agents/skills/<skill> && bun install)",
           warning:
             "Finance pack is write-capable on mainnet. Install only when you intend to use DeFi operations.",
         });
         return;
       }
 
-      const installs = skills.map((skillName) => {
-        const proc = Bun.spawnSync({
-          cmd: ["npx", "skills", "add", `aibtcdev/skills/${skillName}`, "-y", "-g"],
-          cwd: process.cwd(),
-          stdout: "pipe",
-          stderr: "pipe",
-        });
-
-        const stdout = proc.stdout ? new TextDecoder().decode(proc.stdout) : "";
-        const stderr = proc.stderr ? new TextDecoder().decode(proc.stderr) : "";
-
-        return {
-          skill: skillName,
-          success: proc.exitCode === 0,
-          exitCode: proc.exitCode,
-          output: (stdout || stderr).trim().slice(0, 600),
-        };
-      });
+      const manifest = await readManifestSkills();
+      const installs = skills.map((skill) => installSkill(skill, manifest));
 
       printJson({
         success: installs.every((i) => i.success),
@@ -521,19 +570,8 @@ program
 
         if (opts.install) {
           const skills = mergedSkillList(opts.pack);
-          const installs = skills.map((skillName) => {
-            const proc = Bun.spawnSync({
-              cmd: ["npx", "skills", "add", `aibtcdev/skills/${skillName}`, "-y", "-g"],
-              cwd: process.cwd(),
-              stdout: "pipe",
-              stderr: "pipe",
-            });
-            return {
-              skill: skillName,
-              success: proc.exitCode === 0,
-              exitCode: proc.exitCode,
-            };
-          });
+          const manifest = await readManifestSkills();
+          const installs = skills.map((skill) => installSkill(skill, manifest));
           steps.push({ step: "install-packs", result: installs });
         }
 

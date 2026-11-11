@@ -75,6 +75,21 @@ export interface AppConfig {
   autoLockTimeout: number; // Minutes, 0 = never
   hiroApiKey?: string;
   stacksApiUrl?: string;
+  /** Inbox auto-reply settings; same key and shape as aibtc-mcp-server. */
+  inboxAutoReply?: InboxAutoReplyConfig;
+}
+
+export interface InboxAutoReplyConfig {
+  enabled: boolean;
+  /** Inference marketplace model id. */
+  model: string;
+  systemPrompt: string;
+  /**
+   * Written as the fixed constants for older aibtc-mcp-server builds that read
+   * them from this file (1.78.0 has no default). Never read by this repo.
+   */
+  dailyCapSats?: number;
+  maxSatsPerReply?: number;
 }
 
 /**
@@ -570,6 +585,17 @@ export async function setStacksApiUrl(url: string): Promise<void> {
   await writeAppConfig(config);
   _cachedStacksApiUrl = url;
 }
+
+/**
+ * Test-only hooks. `overrideStacksApiUrl` points every Hiro client at a
+ * fake server without touching ~/.aibtc/config.json; pass `null` to restore
+ * the on-disk value on the next read.
+ */
+export const _testing = {
+  overrideStacksApiUrl(url: string | null): void {
+    _cachedStacksApiUrl = url === null ? undefined : url;
+  },
+};
 
 /**
  * Remove custom Stacks API URL from config and clear in-memory cache.

@@ -156,3 +156,5 @@ User: "DCA 100 STX into sBTC, 10 orders, daily"
 - Confirm the on-chain result (tx hash)
 - Update plan state file with execution log entry
 - Report completion with summary: order number, amount swapped, avg entry price, remaining orders
+
+- `DCA_FEE_USTX` (env, optional): swap fee in micro-STX. Validated whole number, > 0, <= 1000000. Default 50000.

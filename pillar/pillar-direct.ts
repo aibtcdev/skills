@@ -9,7 +9,6 @@
  */
 
 import { Command } from "commander";
-import crypto from "crypto";
 import {
   tupleCV,
   stringAsciiCV,
@@ -19,17 +18,18 @@ import {
   trueCV,
   falseCV,
 } from "@stacks/transactions";
-import { getPillarApi } from "../src/lib/services/pillar-api.service.js";
+import { getPillarApi } from "@aibtc/skills/src/lib/services/pillar-api.service.js";
 import {
   getSigningKeyService,
   generateAuthId,
   type SigAuth,
-} from "../src/lib/services/signing-key.service.js";
-import { getHiroApi } from "../src/lib/services/hiro-api.js";
-import { NETWORK, getExplorerTxUrl } from "../src/lib/config/networks.js";
-import { PILLAR_API_KEY } from "../src/lib/config/pillar.js";
-import { formatStx } from "../src/lib/utils/formatting.js";
-import { printJson, handleError } from "../src/lib/utils/cli.js";
+} from "@aibtc/skills/src/lib/services/signing-key.service.js";
+import { getHiroApi } from "@aibtc/skills/src/lib/services/hiro-api.js";
+import { NETWORK, getExplorerTxUrl } from "@aibtc/skills/src/lib/config/networks.js";
+import { PILLAR_API_KEY } from "@aibtc/skills/src/lib/config/pillar.js";
+import { currentPillarKeyPassword, unlockPillarKey } from "@aibtc/skills/src/lib/services/pillar-key-password.js";
+import { formatStx } from "@aibtc/skills/src/lib/utils/formatting.js";
+import { printJson, handleError } from "@aibtc/skills/src/lib/utils/cli.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -41,18 +41,6 @@ const MAINNET_SBTC_TOKEN =
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-/**
- * Derive a deterministic password from PILLAR_API_KEY.
- * Allows auto-unlock of signing keys after restarts without user input.
- */
-function getDerivedPassword(): string {
-  const secret = PILLAR_API_KEY || "pillar-direct-default";
-  return crypto
-    .createHash("sha256")
-    .update(`pillar-agent-signing-key:${secret}`)
-    .digest("hex");
-}
 
 /**
  * Get active signing session, auto-unlocking if needed.
@@ -76,11 +64,10 @@ async function requireActiveKey() {
       return aReady - bReady;
     });
 
-    const password = getDerivedPassword();
     let unlocked = false;
     for (const key of sortedKeys) {
       try {
-        await keyService.unlock(key.id, password);
+        await unlockPillarKey(key.id, PILLAR_API_KEY);
         unlocked = true;
         break;
       } catch {
@@ -212,7 +199,7 @@ program
   .action(async (opts: { smartWallet: string }) => {
     try {
       const keyService = getSigningKeyService();
-      const password = getDerivedPassword();
+      const password = await currentPillarKeyPassword(PILLAR_API_KEY);
       const { keyId, pubkey } = await keyService.generateKey(
         password,
         opts.smartWallet
@@ -247,7 +234,6 @@ program
   .action(async (opts: { keyId?: string }) => {
     try {
       const keyService = getSigningKeyService();
-      const password = getDerivedPassword();
 
       let targetKeyId = opts.keyId;
       if (!targetKeyId) {
@@ -258,7 +244,7 @@ program
         targetKeyId = keys[0].id;
       }
 
-      await keyService.unlock(targetKeyId, password);
+      await unlockPillarKey(targetKeyId, PILLAR_API_KEY);
       const session = keyService.getActiveKey();
 
       if (!session) {
@@ -932,7 +918,7 @@ program
       }
 
       const api = getPillarApi();
-      const password = getDerivedPassword();
+      const password = await currentPillarKeyPassword(PILLAR_API_KEY);
 
       // Check name availability
       const nameCheck = await api.get<{
@@ -1439,11 +1425,32 @@ program
 // direct-stack-stx
 // ---------------------------------------------------------------------------
 
+/**
+ * The Pillar smart wallet's Fast Pool functions are hardcoded to pox-4
+ * (`pox-4.allow-contract-caller` + `pox4-fast-pool-v3.delegate-stx`, and
+ * `pox-4.revoke-delegate-stx`). Once PoX has moved past pox-4 those calls abort
+ * on chain, so refuse before signing instead of burning gas on a sure failure.
+ * Mirrors aibtcdev/aibtc-mcp-server#682.
+ */
+async function assertFastPoolPoxActive(action: string): Promise<void> {
+  const pox = await getHiroApi(NETWORK).getPoxInfo();
+  if (!pox.contract_id.endsWith(".pox-4")) {
+    throw new Error(
+      `${action} is unavailable: the Pillar smart wallet's Fast Pool path calls pox-4, but the ` +
+        `active PoX contract is ${pox.contract_id}, so the transaction would abort on chain. ` +
+        `This needs a Pillar wallet contract update. For STX staking on PoX-5, use ` +
+        `bun run stacking/stacking.ts stack-stx with a signer manager (see list-signers).`
+    );
+  }
+}
+
 program
   .command("direct-stack-stx")
   .description(
     "Stack STX from your Pillar smart wallet via Fast Pool or Stacking DAO. " +
-      "Agent-signed, no browser needed. Backend sponsors gas."
+      "Agent-signed, no browser needed. Backend sponsors gas. " +
+      "Fast Pool goes through pox-4 and is refused while pox-4 is not the active PoX contract " +
+      "(PoX-5 is live; use the stacking skill for PoX-5 staking)."
   )
   .requiredOption(
     "--stx-amount <microStx>",
@@ -1451,7 +1458,7 @@ program
   )
   .requiredOption(
     "--pool <pool>",
-    "Stacking pool: fast-pool (delegates to pox4-fast-pool-v3) or stacking-dao (deposits for stSTX)"
+    "Stacking pool: fast-pool (delegates to pox4-fast-pool-v3; refused while pox-4 is not active) or stacking-dao (deposits for stSTX)"
   )
   .action(async (opts: { stxAmount: string; pool: string }) => {
     try {
@@ -1464,6 +1471,10 @@ program
       const validPools = ["fast-pool", "stacking-dao"];
       if (!validPools.includes(opts.pool)) {
         throw new Error(`--pool must be one of: ${validPools.join(", ")}`);
+      }
+
+      if (opts.pool === "fast-pool") {
+        await assertFastPoolPoxActive("Fast Pool stacking");
       }
 
       const stxAmount = parseInt(opts.stxAmount, 10);
@@ -1524,7 +1535,8 @@ program
 program
   .command("direct-revoke-fast-pool")
   .description(
-    "Revoke Fast Pool STX delegation from your Pillar smart wallet. " +
+    "Revoke Fast Pool STX delegation from your Pillar smart wallet (pox-4 revoke-delegate-stx; " +
+      "refused while pox-4 is not the active PoX contract). " +
       "Agent-signed, no browser needed. STX stays locked until current PoX cycle ends."
   )
   .action(async () => {
@@ -1534,6 +1546,8 @@ program
         printJson(guard);
         return;
       }
+
+      await assertFastPoolPoxActive("Revoking Fast Pool");
 
       const { keyService, session } = await requireActiveKey();
       const authId = generateAuthId();

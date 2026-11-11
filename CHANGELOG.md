@@ -1,5 +1,97 @@
 # Changelog
 
+## [0.45.2](https://github.com/aibtcdev/skills/compare/skills-v0.45.1...skills-v0.45.2) (2026-11-11)
+
+
+### Bug Fixes
+
+* **bounty-scanner:** use the aibtc.com bounty board instead of bounty.drx4.xyz ([#485](https://github.com/aibtcdev/skills/issues/485)) ([234bf1e](https://github.com/aibtcdev/skills/commit/234bf1e5cc46eeac659502ae9143647bf9811eab))
+
+## [0.45.1](https://github.com/aibtcdev/skills/compare/skills-v0.45.0...skills-v0.45.1) (2026-11-11)
+
+
+### Bug Fixes
+
+* **x402,lunarcrush:** stop retries from paying twice; flag paid calls that return no data ([#486](https://github.com/aibtcdev/skills/issues/486)) ([0f64ff9](https://github.com/aibtcdev/skills/commit/0f64ff9f4698855f084189f5eee40cd3840c5a82))
+
+## [0.45.0](https://github.com/aibtcdev/skills/compare/skills-v0.44.0...skills-v0.45.0) (2026-11-10)
+
+
+### Features
+
+* **src:** make every skill run when installed on its own ([#473](https://github.com/aibtcdev/skills/issues/473)) ([#482](https://github.com/aibtcdev/skills/issues/482)) ([0693724](https://github.com/aibtcdev/skills/commit/06937248fbcc235b8944a00cb7ca2302fb631414))
+* **src:** mark each skill standalone or checkout-only in skills.json ([#475](https://github.com/aibtcdev/skills/issues/475)) ([bec5894](https://github.com/aibtcdev/skills/commit/bec589456775edbabca69e3a45411e0c19f19440))
+
+
+### Bug Fixes
+
+* **aibtc-news:** remove the 13 skills that depend on the retired aibtc.news API ([#468](https://github.com/aibtcdev/skills/issues/468)) ([0987d09](https://github.com/aibtcdev/skills/commit/0987d09a9379409afbb330a93cf8c926bb5bcb12)), closes [#444](https://github.com/aibtcdev/skills/issues/444)
+* **inbox:** enforce auto-reply spend ceilings in runAutoReply, not only the CLI ([#465](https://github.com/aibtcdev/skills/issues/465)) ([d3efe6a](https://github.com/aibtcdev/skills/commit/d3efe6a52806938424080dd537f0da87b849c80b))
+* **inbox:** fix auto-reply sat limits in code, drop the cap flags ([#463](https://github.com/aibtcdev/skills/issues/463)) ([975119e](https://github.com/aibtcdev/skills/commit/975119e97255bd47162c2d4d40b582bee3b00c8a))
+* **inbox:** stop auto-reply paying twice for one message ([#455](https://github.com/aibtcdev/skills/issues/455)) ([#459](https://github.com/aibtcdev/skills/issues/459)) ([bf47c25](https://github.com/aibtcdev/skills/commit/bf47c251eb41df67da44d60fb848a153d737b72b))
+* **lunarcrush:** meta reads the catalog from /meta, not / (404) ([#456](https://github.com/aibtcdev/skills/issues/456)) ([7a1e47c](https://github.com/aibtcdev/skills/commit/7a1e47cb929a9a5ce97b38fcfb9ae696a19054e2))
+* **nostr:** declare nostr-tools and @noble/hashes so nostr and ordinals-p2p start ([#481](https://github.com/aibtcdev/skills/issues/481)) ([d5ae43b](https://github.com/aibtcdev/skills/commit/d5ae43bc0cabab9933143227e3a930e11055e5e0))
+* **nostr:** stop linking amplified notes to retired aibtc.news signal pages ([#467](https://github.com/aibtcdev/skills/issues/467)) ([0c54113](https://github.com/aibtcdev/skills/commit/0c541132e258ffca6c51d1211eb56fd578a3087a)), closes [#444](https://github.com/aibtcdev/skills/issues/444)
+* **onboarding:** say where installed pack skills actually run ([#470](https://github.com/aibtcdev/skills/issues/470)) ([#476](https://github.com/aibtcdev/skills/issues/476)) ([9de5f0b](https://github.com/aibtcdev/skills/commit/9de5f0b5c9bc83256dcf39783a35b71aa049d9a3))
+* **pillar:** stop encrypting signing keys under a public default password ([#484](https://github.com/aibtcdev/skills/issues/484)) ([b63faeb](https://github.com/aibtcdev/skills/commit/b63faeb67feb68f2a99be2c09df38cb02c54a9d2))
+* **settings:** read the latest version from GitHub releases, not npm ([#483](https://github.com/aibtcdev/skills/issues/483)) ([b05c7ac](https://github.com/aibtcdev/skills/commit/b05c7ac24450b08bc7ecaf49ee2fdf3f53fb18c7))
+* **src:** answer every nonce route @stacks/transactions may read in x402 test fakes ([#480](https://github.com/aibtcdev/skills/issues/480)) ([687d9f0](https://github.com/aibtcdev/skills/commit/687d9f006dd8c104ef0769dc82555e73885d6111))
+* **src:** isolate x402 and hodlmm-flow tests from the live network and each other ([#474](https://github.com/aibtcdev/skills/issues/474)) ([ff1126d](https://github.com/aibtcdev/skills/commit/ff1126d7cdc995fdd41a64fa73912449dd77b9a0))
+* **stacks-alpha-engine:** derive the P2TR tweak with @noble/curves, run tests in CI ([#478](https://github.com/aibtcdev/skills/issues/478)) ([dab2219](https://github.com/aibtcdev/skills/commit/dab2219f0bce0df2afa5af23806ac9cd85ea81d4))
+* **x402:** look up the sponsored payment nonce through the configured Stacks API ([#479](https://github.com/aibtcdev/skills/issues/479)) ([76c8b15](https://github.com/aibtcdev/skills/commit/76c8b151040801c1ffd93d4152a72269fdfa0521))
+* **x402:** select only payment options on the wallet's network ([#469](https://github.com/aibtcdev/skills/issues/469)) ([#471](https://github.com/aibtcdev/skills/issues/471)) ([125de8b](https://github.com/aibtcdev/skills/commit/125de8b26d1994c920e3cacacf5472a712ec501f))
+* **x402:** select only payment options the builder would sign for ([#466](https://github.com/aibtcdev/skills/issues/466)) ([03ebecd](https://github.com/aibtcdev/skills/commit/03ebecd1864a5b74991bb511c086a0296d784ba0)), closes [#464](https://github.com/aibtcdev/skills/issues/464)
+
+## [0.44.0](https://github.com/aibtcdev/skills/compare/skills-v0.43.1...skills-v0.44.0) (2026-10-27)
+
+
+### Features
+
+* **inbox:** add auto-reply subcommand via the inference marketplace ([#453](https://github.com/aibtcdev/skills/issues/453)) ([#454](https://github.com/aibtcdev/skills/issues/454)) ([4375ec7](https://github.com/aibtcdev/skills/commit/4375ec7bc91fc816ed0a05075b3ac929e990fc20))
+* **stacking:** move the stacking skill to pox-5 ([#430](https://github.com/aibtcdev/skills/issues/430)) ([e9e886c](https://github.com/aibtcdev/skills/commit/e9e886ca7a646d857e304e3ab3402a109ee8930f))
+* **vibewatch-sentiment:** --asset sBTC|STX picks the 402 option to pay ([#431](https://github.com/aibtcdev/skills/issues/431)) ([e4ddb86](https://github.com/aibtcdev/skills/commit/e4ddb863026d0ee0d1a559342f85a4d547915848))
+* **vibewatch-sentiment:** add vibewatch-sentiment skill ([#421](https://github.com/aibtcdev/skills/issues/421)) ([61a67fd](https://github.com/aibtcdev/skills/commit/61a67fd0ed0ea67e267aacff61aad1cc92abdb03))
+
+
+### Bug Fixes
+
+* **aibtc-news:** deprecate three skills that depend on the retired aibtc.news API ([#444](https://github.com/aibtcdev/skills/issues/444)) ([#451](https://github.com/aibtcdev/skills/issues/451)) ([aada32f](https://github.com/aibtcdev/skills/commit/aada32f03b9154e3a3bd4d1922c7ea9dc51f45fc))
+* **aibtc-news:** mark the ten aibtc-news skills deprecated ([#444](https://github.com/aibtcdev/skills/issues/444)) ([#450](https://github.com/aibtcdev/skills/issues/450)) ([8eb3995](https://github.com/aibtcdev/skills/commit/8eb3995130b6a93165a34ec025e544815194140d))
+* **launkr:** pin contract addresses, fix create-pool decimals, wait for swap confirmations ([#416](https://github.com/aibtcdev/skills/issues/416)) ([3e1d526](https://github.com/aibtcdev/skills/commit/3e1d526fa96c9f9eca621537736279231d1bc7c6))
+* **wallet:** don't let the auto-lock timer keep a one-shot CLI process alive ([#446](https://github.com/aibtcdev/skills/issues/446)) ([079861b](https://github.com/aibtcdev/skills/commit/079861b6fda90f3332ec052531610036242f9bac)), closes [#418](https://github.com/aibtcdev/skills/issues/418)
+* **wallet:** restore session from disk before status/list/lock check it ([#437](https://github.com/aibtcdev/skills/issues/437)) ([f2dcc1c](https://github.com/aibtcdev/skills/commit/f2dcc1c96204cd014697c0524e4c6faf9e06b31f))
+* **wallet:** say why a wallet may be locked (auto-lock) and that MCP-set passwords are literal ([#418](https://github.com/aibtcdev/skills/issues/418) items 5, 6) ([#452](https://github.com/aibtcdev/skills/issues/452)) ([953db64](https://github.com/aibtcdev/skills/commit/953db64664cd06edd2c459aca789aab5b295a9b9))
+* **x402:** derive payment-identifier with HMAC from account secret ([#434](https://github.com/aibtcdev/skills/issues/434)) ([#438](https://github.com/aibtcdev/skills/issues/438)) ([9e75572](https://github.com/aibtcdev/skills/commit/9e755723e94c0148efb2237630562e6817e670e4))
+* **x402:** derive the payment-identifier from the signed transaction ([#427](https://github.com/aibtcdev/skills/issues/427)) ([d8f011f](https://github.com/aibtcdev/skills/commit/d8f011f529637b1d88d3bfa4a223f84aaa9b6f63))
+* **x402:** exclude stacked STX from balance checks; check inbox and news payments ([#436](https://github.com/aibtcdev/skills/issues/436)) ([702ff4b](https://github.com/aibtcdev/skills/commit/702ff4bd2592208ec7ec383162b40ddc9b9eca80))
+* **x402:** pin sponsored sBTC payments with a deny-mode exact-amount post-condition ([#448](https://github.com/aibtcdev/skills/issues/448)) ([2ebf2c5](https://github.com/aibtcdev/skills/commit/2ebf2c5598f748c448ee456d30a3974af116e9b3))
+* **x402:** refuse non-canonical assets in sponsored mode too ([#419](https://github.com/aibtcdev/skills/issues/419)) ([#447](https://github.com/aibtcdev/skills/issues/447)) ([34675c4](https://github.com/aibtcdev/skills/commit/34675c49f69b81cbcc771a62129f95f563a5adbb))
+* **x402:** refuse sponsored payments the wallet cannot cover before signing ([#435](https://github.com/aibtcdev/skills/issues/435)) ([0639709](https://github.com/aibtcdev/skills/commit/063970975d5b5fbb1fe6821f318daa3aa2dfae22))
+
+## [0.43.1](https://github.com/aibtcdev/skills/compare/skills-v0.43.0...skills-v0.43.1) (2026-09-16)
+
+
+### Bug Fixes
+
+* **src:** stop double hex-encoding Clarity read-only arguments ([#426](https://github.com/aibtcdev/skills/issues/426)) ([df69485](https://github.com/aibtcdev/skills/commit/df69485bf626b2bc521b6074deac286bbcb1e466))
+* **stacking:** refuse writes when pox-4 is not the active PoX contract; read pox-5 staking status ([#424](https://github.com/aibtcdev/skills/issues/424)) ([3746472](https://github.com/aibtcdev/skills/commit/3746472413584e1467a2d5491e26d1c11d1682f9))
+
+## [0.43.0](https://github.com/aibtcdev/skills/compare/skills-v0.42.0...skills-v0.43.0) (2026-09-16)
+
+
+### Features
+
+* **hodlmm-bin-guardian:** detect grid-edge pinned pools — distinct PINNED action instead of an unpassable slippage HOLD ([#408](https://github.com/aibtcdev/skills/issues/408)) ([e0334ef](https://github.com/aibtcdev/skills/commit/e0334ef960117fd400adac15107c7e9f4fc01fea))
+* **launkr:** add restricted SIP-010 token launcher + XYK AMM skill ([#414](https://github.com/aibtcdev/skills/issues/414)) ([adbed4f](https://github.com/aibtcdev/skills/commit/adbed4f3f032f33a10ff6381588aa9a32de3592a))
+* **x402:** opt-in non-sponsored payment mode (X402_PAYMENT_MODE=direct) ([#423](https://github.com/aibtcdev/skills/issues/423)) ([b8a210a](https://github.com/aibtcdev/skills/commit/b8a210a0f0b2d8337d0ed545abbaa91030ea2b8e))
+
+
+### Bug Fixes
+
+* **bitflow-hodlmm-deposit:** allow first-time deposit by handling BFF user-bins 404 ([#397](https://github.com/aibtcdev/skills/issues/397)) ([6e1b320](https://github.com/aibtcdev/skills/commit/6e1b3203c3ba0c5aa57142fb661d016d771d099d))
+* **bitflow-hodlmm-deposit:** key NFT post-conditions on actual NFT ownership, not userLiquidity &gt; 0 ([#409](https://github.com/aibtcdev/skills/issues/409)) ([8754892](https://github.com/aibtcdev/skills/commit/8754892b3988cde653f8fd0aa35e60baefc3448a))
+* **dca:** validated configurable fee; fix(defi-portfolio-scanner): LTV threshold scale consistency (dormant until ltv is populated) ([#410](https://github.com/aibtcdev/skills/issues/410)) ([5b71650](https://github.com/aibtcdev/skills/commit/5b7165002ff1640b77b09714ecf3b50dee9adecf))
+
 ## [0.42.0](https://github.com/aibtcdev/skills/compare/skills-v0.41.0...skills-v0.42.0) (2026-05-11)
 
 

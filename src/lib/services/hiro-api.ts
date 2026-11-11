@@ -20,6 +20,21 @@ export class HiroApiRateLimitError extends Error {
   }
 }
 
+/**
+ * Non-2xx answer from the Hiro API. Carries the HTTP status so callers can
+ * tell "not found" (404) apart from an outage without reading message text.
+ * The message keeps the historical `Hiro API error (<status>): <body>` form.
+ */
+export class HiroApiError extends Error {
+  constructor(
+    message: string,
+    public readonly status: number
+  ) {
+    super(message);
+    this.name = "HiroApiError";
+  }
+}
+
 export interface AccountInfo {
   balance: string;
   locked: string;
@@ -158,6 +173,8 @@ export interface MempoolTransaction {
 
 export interface PoxInfo {
   contract_id: string;
+  /** sBTC token contract pox-5 pays rewards in (not always the network's default sBTC). */
+  pox_5_sbtc_contract?: string;
   pox_activation_threshold_ustx: number;
   first_burnchain_block_height: number;
   current_burnchain_block_height: number;
@@ -356,7 +373,7 @@ export class HiroApiService {
       }
 
       const errorText = await response.text();
-      throw new Error(`Hiro API error (${response.status}): ${errorText}`);
+      throw new HiroApiError(`Hiro API error (${response.status}): ${errorText}`, response.status);
     }
 
     return response.json();
@@ -761,6 +778,29 @@ export class HiroApiService {
 // ============================================================================
 
 let _hiroApiInstance: HiroApiService | null = null;
+
+/**
+ * A `client` for @stacks/transactions builders and fetch helpers that use
+ * the same Stacks API as HiroApiService: the configured custom URL (falling
+ * back to Hiro for `network`) and the Hiro API key. Without it, a builder
+ * called without an explicit `nonce` looks the nonce up on the public Hiro
+ * API, ignoring both settings.
+ */
+export async function getStacksClient(
+  network: Network
+): Promise<{ baseUrl: string; fetch: (url: string, init?: RequestInit) => Promise<Response> }> {
+  const baseUrl = (await getStacksApiUrl()) || getApiBaseUrl(network);
+  const apiKey = (await getHiroApiKey()) || process.env.HIRO_API_KEY || "";
+  return {
+    baseUrl,
+    fetch: (url, init) => {
+      if (!apiKey) return fetch(url, init);
+      const headers = new Headers(init?.headers);
+      headers.set("x-hiro-api-key", apiKey);
+      return fetch(url, { ...init, headers });
+    },
+  };
+}
 
 export function getHiroApi(network: Network): HiroApiService {
   if (!_hiroApiInstance || _hiroApiInstance["network"] !== network) {

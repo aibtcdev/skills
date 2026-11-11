@@ -22,6 +22,31 @@ const DCA_DIR = path.join(os.homedir(), ".aibtc", "dca");
 const WALLETS_FILE = path.join(os.homedir(), ".aibtc", "wallets.json");
 const WALLETS_DIR = path.join(os.homedir(), ".aibtc", "wallets");
 const STACKS_API = "https://api.hiro.so";
+
+// F-14: default swap fee in micro-STX. 5000 was 10–50x below every peer skill
+// (deposit/withdraw 50k, zest/swap-aggregator 70k, limit-order 100k,
+// move-liquidity 250k); 50000 is the modal value.
+const DEFAULT_DCA_FEE_USTX = 50_000n;
+// Sanity ceiling: 1 STX. A fat-fingered DCA_FEE_USTX should error, not pay it.
+const MAX_DCA_FEE_USTX = 1_000_000n;
+
+function resolveDcaFeeUstx(): bigint {
+  const raw = process.env.DCA_FEE_USTX;
+  if (raw === undefined || raw === "") return DEFAULT_DCA_FEE_USTX;
+  // Strict integer parse: BigInt("") is 0n (a silent ZERO-FEE mainnet tx —
+  // the exact stuck-nonce failure this fee exists to prevent) and
+  // BigInt("0.05") throws an unlabeled SyntaxError. Validate like the
+  // repo's parseNonNegativeBigInt convention instead.
+  if (!/^\d+$/.test(raw)) {
+    throw new Error(`DCA_FEE_USTX must be a whole number of micro-STX, got "${raw}"`);
+  }
+  const fee = BigInt(raw);
+  if (fee === 0n) throw new Error("DCA_FEE_USTX must be > 0 (a zero-fee tx strands the head nonce)");
+  if (fee > MAX_DCA_FEE_USTX) {
+    throw new Error(`DCA_FEE_USTX ${raw} exceeds the ${MAX_DCA_FEE_USTX} uSTX (1 STX) sanity cap`);
+  }
+  return fee;
+}
 const EXPLORER_BASE = "https://explorer.hiro.so/txid";
 
 const FREQUENCIES: Record<string, number> = {
@@ -373,7 +398,11 @@ async function executeDirectSwap(opts: {
     network,
     senderKey: opts.stxPrivateKey,
     anchorMode: AnchorMode.Any,
-    fee: 5000n,
+    // 2026-07-15 field audit F-14: an underpriced hardcoded fee is a
+    // stuck-head-nonce seed (one stuck tx stalls every later tx from the
+    // signer). Configurable via DCA_FEE_USTX (validated); default matches
+    // the repo's modal contract-call fee.
+    fee: resolveDcaFeeUstx(),
   });
 
   const broadcastRes = await broadcastTransaction({ transaction: tx, network });
@@ -860,7 +889,7 @@ async function cmdRun(
   if (plan.tokenInSymbol.toUpperCase() === "STX") {
     try {
       const balAtomic = await getStxBalance(walletKeys.stxAddress);
-      const neededAtomic = Number(humanToAtomic(plan.orderSizeHuman, plan.tokenInDecimals)) + 5000; // +fee
+      const neededAtomic = Number(humanToAtomic(plan.orderSizeHuman, plan.tokenInDecimals)) + Number(resolveDcaFeeUstx()); // + the same fee the tx will pay
       if (balAtomic < neededAtomic) {
         const balHuman = atomicToHuman(balAtomic, 6);
         fail(
