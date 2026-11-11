@@ -15,6 +15,7 @@ const BASE = process.env.SBOR_BASE || "https://sbor.xyz";
 const UA = "aibtc-skills-sbor/1.1";
 const TIMEOUT_MS = 10_000;
 const LATEST = "/api/v1/latest.json";
+const HISTORY = "/api/v1/history.json";
 
 /* Mainnet only, hard-coded, as in the other read-only mainnet skills
    (hodlmm-pulse, sbtc-yield-maximizer). SBOR has no wallet and no testnet
@@ -271,19 +272,36 @@ program.command("rate")
     }
     const path = o.date ? `/api/v1/archive/${o.date}.json` : LATEST;
     const d = await get<Latest>(path);
+    /* An archive file is never rewritten, so a fixing withdrawn later still
+       shows its figure there. The withdrawal is recorded in history.json, which
+       is read for every past date so a withdrawn figure is never returned as
+       the record of that day. */
+    const withdrawnThatDay: Record<string, string> = {};
+    if (o.date) {
+      const h = await get<Record<string, any>[]>(HISTORY);
+      const row = Array.isArray(h) ? h.find(r => r?.date === o.date) : undefined;
+      for (const [label, v] of Object.entries(row ?? {}))
+        if (v && typeof v === "object" && (v as any).withdrawn)
+          withdrawnThatDay[label] = String((v as any).reason ?? "Withdrawn after publication.");
+    }
+    const withdrawnEntry = (label: string) => ({
+      index: label, date: o.date, withdrawn: true, reason: withdrawnThatDay[label],
+      note: "This fixing was withdrawn after publication. Its figure stays in the archive file, which is never rewritten, but it is not a valid reading. Do not use it."
+    });
     if (o.index) {
+      if (withdrawnThatDay[o.index]) return out({ ...withdrawnEntry(o.index), ...meta(d, path) });
       const ix = lookup(d, o.index);
       return out(ix ? { ...summarise(ix), ...(o.index === BTC_REF && { note: REF_NOTE }), ...meta(d, path) } : absent(o.index, d, path));
     }
     const ref = refIndex(d);
     const missing = INDICES.filter(l => !d.indices[l]);
     out({
-      indices: Object.values(d.indices).map(summarise),
+      indices: Object.values(d.indices).map(ix => withdrawnThatDay[ix.label] ? withdrawnEntry(ix.label) : summarise(ix)),
       notPublished: missing.length ? missing.map(l => ({
         index: l,
         reason: "Market could not be read. Omitted rather than estimated. Treat as unknown, not zero."
       })) : undefined,
-      bitcoinCollateralUsdc: ref ? { ...summarise(ref), note: REF_NOTE } : undefined,
+      bitcoinCollateralUsdc: ref ? (withdrawnThatDay[ref.label] ? withdrawnEntry(ref.label) : { ...summarise(ref), note: REF_NOTE }) : undefined,
       onChain: ON_CHAIN,
       poxReference: d.poxReference ? {
         ...d.poxReference,
@@ -309,8 +327,9 @@ program.command("compare")
     if (raw === "") die(`--rate is required and cannot be empty.`);
     const rate = Number(raw);
     if (!Number.isFinite(rate)) die(`--rate must be a number, got "${o.rate}".`);
-    if (rate <= 0 || rate > 100)
-      die(`--rate must be a percentage between 0 and 100, got ${rate}. ` +
+    /* 0% is a real offer: supply rates of 0 occur in SBOR's own record. */
+    if (rate < 0 || rate > 100)
+      die(`--rate must be a percentage from 0 to 100, got ${rate}. ` +
           `4.2% is "--rate 4.2", not 0.042 and not 420.`);
 
     /* A fraction passed as a percentage cannot be detected with certainty,
@@ -318,7 +337,7 @@ program.command("compare")
        today. Rejecting everything below half a percent would refuse real
        questions. So it is accepted and flagged, loudly enough that an agent
        reading either the verdict or the plain sentence cannot miss it. */
-    const looksLikeFraction = rate < 0.5;
+    const looksLikeFraction = rate > 0 && rate < 0.5;
 
     const d = await get<Latest>(LATEST);
     requireFresh(d);
@@ -356,6 +375,16 @@ program.command("compare")
       benchmark: bench,
       differenceBps: diff,
       verdict: Math.abs(diff) < 1 ? "at market" : worse ? "worse than market" : "better than market",
+      /* On the supply side, an index whose assets carry their own yield has two
+         figures: the lending rate (the benchmark above) and the all-in rate. An
+         offer that already includes staking or protocol yield must be read
+         against the all-in figure, so both comparisons are returned. */
+      ...(side === "supply" && ix.allInSupplyDiffers && typeof ix.allInSupply === "number" && Number.isFinite(ix.allInSupply) ? {
+        allInSupply: ix.allInSupply,
+        allInDifferenceBps: bps(rate, ix.allInSupply),
+        allInVerdict: Math.abs(bps(rate, ix.allInSupply)) < 1 ? "at market" : bps(rate, ix.allInSupply) < 0 ? "worse than market" : "better than market",
+        allInSupplyNote: `The verdict above is against the lending rate alone (${bench}%). If the offer includes the asset's own staking or protocol yield, judge it by allInVerdict, against the all-in rate of ${ix.allInSupply}%. Do not add the two figures.`
+      } : {}),
       ...(looksLikeFraction && {
         unitsWarning: `--rate was given as ${rate}, which is ${rate}%, not ${pct100(rate)}%. Rates this low do occur, so this has been treated as ${rate}% and answered. If you meant ${pct100(rate)}%, pass --rate ${pct100(rate)} and read the verdict again. Do not act on this result until you have checked which you meant.`
       }),
@@ -368,9 +397,13 @@ program.command("compare")
         venue: best.venue, asset: best.asset, rate: best[side],
         utilization: best.utilization ?? null,
         capacityNote: best.utilization == null ? null
-          : best.utilization >= 90 ? "Above 90% utilised, so little of the supply is left to borrow at this rate."
-          : best.utilization <= 25 ? "Low utilisation, so there is unused capacity behind this rate."
-          : null
+          : side === "borrow"
+            ? (best.utilization >= 90 ? "Above 90% utilised, so little of the supply is left to borrow at this rate."
+              : best.utilization <= 25 ? "Low utilisation, so there is unused capacity behind this rate."
+              : null)
+            : (best.utilization >= 90 ? "Above 90% utilised, so nearly all of the supply is lent out and earning this rate."
+              : best.utilization <= 25 ? "Low utilisation, so most of the supply is not lent out. That is why the rate is low."
+              : null)
       } : null,
       venues: ix.venues,
       venueCount: ix.venues.length,
@@ -418,10 +451,16 @@ program.command("history")
     checkIndex(o.index, false);
     const days = Number(o.days);
     if (!Number.isFinite(days) || days < 1) die(`--days must be a positive number.`);
-    const h = await get<Record<string, any>[]>("/api/v1/history.json");
-    const cutoff = new Date(Date.now() - days * 864e5).toISOString().slice(0, 10);
-    const rows = h.filter(r => r.date >= cutoff && r[o.index]);
-    if (!rows.length) return out({ index: o.index, days, fixings: [], note: `No fixings for ${o.index} in the last ${days} days.` });
+    const h = await get<Record<string, any>[]>(HISTORY);
+    /* --days 30 means the last 30 calendar days, today included. */
+    const cutoff = new Date(Date.now() - (days - 1) * 864e5).toISOString().slice(0, 10);
+    const inWindow = h.filter(r => r.date >= cutoff);
+    const rows = inWindow.filter(r => r[o.index]);
+    /* A day with a fixing but no entry for this index means the index was not
+       published that day. It is listed, never skipped silently: a series with
+       hidden gaps would give a mean over days that do not exist. */
+    const notPublished = inWindow.filter(r => !r[o.index]).map(r => r.date).sort();
+    if (!rows.length) return out({ index: o.index, days, fixings: [], notPublished, notPublishedCount: notPublished.length, note: `No fixings for ${o.index} in the last ${days} days.` });
 
     const valid = rows.filter(r => !r[o.index].withdrawn && typeof r[o.index].borrow === "number");
 
@@ -457,8 +496,10 @@ program.command("history")
         ? `This window spans ${versions.length} methodology versions (${versions.join(", ")}), so no single mean is given. Use byMethodologyVersion, or narrow --days to stay within one version.`
         : undefined,
       withdrawnCount: rows.length - valid.length,
-      note: "Withdrawn fixings stay in the record rather than being deleted, and are excluded from every mean. A change in methodologyVersion means the basis changed.",
-      source: `${BASE}/api/v1/history.json`
+      notPublished,
+      notPublishedCount: notPublished.length,
+      note: "Withdrawn fixings stay in the record rather than being deleted, and are excluded from every mean. Days in notPublished had a fixing but no reading for this index: treat them as unknown, not as zero, and note that the series has gaps there. A change in methodologyVersion means the basis changed.",
+      source: `${BASE}${HISTORY}`
     });
   });
 

@@ -32,6 +32,10 @@ than proceeding. Route around the offer, do not override the check.
 published, that means the market could not be read. It is unknown, not free. Do
 not infer a rate from an absence.
 
+**A withdrawn fixing is not a reading, and a gap is not a value.** `rate --date`
+returns `withdrawn: true` and the reason instead of the figure. `history` lists
+the days an index was not published in `notPublished`: the series has gaps there.
+
 **Read `venueCount` before quoting, not the weight.** An index covering one venue
 is a reading of that venue, not a market average, whatever the constituent
 weights say. SBOR-STX is single venue today with a largest weight of about 0.56,
@@ -44,6 +48,11 @@ venue with headroom.
 
 **Do not add `supply` and `allInSupply`.** `allInSupply` already contains the
 lending rate. Adding them double counts.
+
+**Judge a supply offer that includes staking yield by `allInVerdict`.** On the
+supply side, `compare` returns `allInSupply`, `allInDifferenceBps` and
+`allInVerdict` when an index has an all-in rate. `verdict` is against the lending
+rate alone.
 
 **Do not compare `poxReference` with a lending rate.** One is a staking yield on
 a locked position, the other is the cost of a loan. They are different
