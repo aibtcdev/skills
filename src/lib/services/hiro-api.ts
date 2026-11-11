@@ -20,6 +20,21 @@ export class HiroApiRateLimitError extends Error {
   }
 }
 
+/**
+ * Non-2xx answer from the Hiro API. Carries the HTTP status so callers can
+ * tell "not found" (404) apart from an outage without reading message text.
+ * The message keeps the historical `Hiro API error (<status>): <body>` form.
+ */
+export class HiroApiError extends Error {
+  constructor(
+    message: string,
+    public readonly status: number
+  ) {
+    super(message);
+    this.name = "HiroApiError";
+  }
+}
+
 export interface AccountInfo {
   balance: string;
   locked: string;
@@ -358,7 +373,7 @@ export class HiroApiService {
       }
 
       const errorText = await response.text();
-      throw new Error(`Hiro API error (${response.status}): ${errorText}`);
+      throw new HiroApiError(`Hiro API error (${response.status}): ${errorText}`, response.status);
     }
 
     return response.json();

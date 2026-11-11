@@ -1,6 +1,6 @@
 {
-  "version": "0.44.0",
-  "generated": "2026-11-10T10:56:22.406Z",
+  "version": "0.45.0",
+  "generated": "2026-11-11T13:10:37.251Z",
   "skills": [
     {
       "name": "agent-lookup",
@@ -2687,6 +2687,8 @@
         "list-endpoints",
         "execute-endpoint",
         "probe-endpoint",
+        "dedup-status",
+        "clear-dedup",
         "send-inbox-message",
         "scaffold-endpoint",
         "scaffold-ai-endpoint",
