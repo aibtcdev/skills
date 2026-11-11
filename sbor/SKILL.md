@@ -1,6 +1,6 @@
 ---
 name: sbor
-description: SBOR, benchmark lending rates for Bitcoin DeFi, read from contract state. Get the current borrow and supply rate per currency on Stacks, or the cost of borrowing USDC against plain bitcoin across every eligible market SBOR reads (Morpho on Ethereum, Base, Arbitrum and Arc, Granite on Stacks); judge whether a rate you have been offered is above or below the market; list the venues behind a rate with their utilisation; read the history; compare with lending markets elsewhere; and check for cross-venue inversions.
+description: "SBOR, benchmark lending rates for Bitcoin DeFi, read from contract state. Get the current borrow and supply rate per currency on Stacks, or the cost of borrowing USDC against plain bitcoin across every eligible market SBOR reads (Morpho on Ethereum, Base, Arbitrum and Arc, Granite on Stacks); judge whether a rate you have been offered is above or below the market; list the venues behind a rate with their utilization; read the history; compare with lending markets elsewhere; and check for cross-venue inversions."
 metadata:
   user-invocable: "false"
   arguments: "rate | compare | markets | history | chains | inversions | context | method"
@@ -8,7 +8,7 @@ metadata:
   tags: "read-only, mainnet-only, defi, l2"
   requires: ""
   author: "sborxyz"
-  author-agent: ""
+  author-agent: "SBOR"
 ---
 
 # sbor
@@ -157,8 +157,9 @@ yield paid to STX stackers.
 
 **SBOR is young and says so.** The series began 2026-09-01 and the methodology
 has been revised several times since, as gaps were found and fixed. Every
-response carries `methodologyVersion`, `staleHours` and `stale`, and `history`
-reports per methodology version rather than averaging across a change, because a
+response from `rate`, `compare`, `markets`, `chains` and `context` carries
+`methodologyVersion`, `staleHours` and `stale`, and `history` lists each
+fixing's `methodologyVersion` and reports per methodology version rather than averaging across a change, because a
 mean spanning two definitions of a number is not a mean of anything.
 
 **It is one feed, unsigned.** Treat it as a sanity

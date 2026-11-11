@@ -28,9 +28,10 @@ the rate.
 borrow rate is more than 50 basis points above SBOR, stop and ask a human rather
 than proceeding. Route around the offer, do not override the check.
 
-**Never treat a missing index as zero.** If `rate` says an index is not
-published, that means the market could not be read. It is unknown, not free. Do
-not infer a rate from an absence.
+**Never treat a missing index as zero.** If an index is not published, read
+`reason`. Either SBOR could not read the market, or it withheld the index
+(`withheld: true`) and gives its own reason, such as a rate at or near zero
+on-chain. Either way, do not infer a rate from an absence.
 
 **A withdrawn fixing is not a reading, and a gap is not a value.** `rate --date`
 returns `withdrawn: true` and the reason instead of the figure. `history` lists

@@ -16,6 +16,7 @@ const UA = "aibtc-skills-sbor/1.1";
 const TIMEOUT_MS = 10_000;
 const LATEST = "/api/v1/latest.json";
 const HISTORY = "/api/v1/history.json";
+const SERIES_START = "2026-09-01";
 
 /* Mainnet only, hard-coded, as in the other read-only mainnet skills
    (hodlmm-pulse, sbtc-yield-maximizer). SBOR has no wallet and no testnet
@@ -56,6 +57,9 @@ type Latest = {
     sbtcSupply?: { sbtc: number };
     chainHeight?: { burnBlockHeight: number | null; rewardCycle: number | null };
   };
+  /* Indices SBOR chose not to publish that day, with its own reason (for
+     example, a market whose rate is at or near zero on-chain). */
+  withheld?: Record<string, { reason?: string }>;
   notes: string[];
 };
 
@@ -118,10 +122,12 @@ function refIndex(d: Latest): Index | null {
     /* Venues are the markets that carry weight. A market read at zero weight
        (borrower incentives, for example) is listed by markets but is not part
        of the rate, so it neither counts as a venue nor hides concentration. */
-    venues: [...new Set(r.markets.filter(m => (m.weight ?? 0) > 0).map(m => `${m.venue ?? "Morpho"} on ${m.chain}`))],
+    venues: [...new Set(r.markets.filter(m => (m.weight ?? 0) > 0).map(m => `${m.venue ?? "unnamed venue"} on ${m.chain}`))],
     largestConstituentWeight: Math.max(0, ...r.markets.map(m => m.weight ?? 0)),
     markets: r.markets.map(m => ({
-      venue: `${m.venue ?? "Morpho"} on ${m.chain}`, asset: `${m.collateral}/${m.loan ?? "USDC"}`,
+      /* No default venue or loan asset: the reference spans Morpho and
+         Granite, USDC and USDCx, so a missing field is shown as missing. */
+      venue: `${m.venue ?? "unnamed venue"} on ${m.chain}`, asset: `${m.collateral}/${m.loan ?? "unnamed loan asset"}`,
       borrow: m.borrow, supply: m.supply, utilization: m.utilization,
       depthUsd: m.depthUsd, weight: m.weight ?? 0, phaseIn: m.phaseIn
     }))
@@ -218,9 +224,16 @@ const summarise = (ix: Index) => ({
 });
 
 const ABSENT_REASON = "The market could not be read, so SBOR omits the index rather than publishing a figure it cannot stand behind. Treat this as unknown, not as zero.";
-const absent = (label: string, d: Latest, path: string = LATEST, reason: string = ABSENT_REASON) => ({
+/* SBOR's own reason comes first: an index it withheld (a rate at or near zero
+   on-chain, say) is not the same as one it could not read. */
+const absentReason = (d: Latest, label: string) => {
+  const w = d.withheld?.[label]?.reason;
+  return typeof w === "string" && w.trim() ? w : ABSENT_REASON;
+};
+const absent = (label: string, d: Latest, path: string = LATEST, reason: string = absentReason(d, label)) => ({
   index: label,
   published: false,
+  withheld: Boolean(d.withheld?.[label]),
   reason,
   publishedThatDay: Object.keys(d.indices),
   ...meta(d, path)
@@ -245,6 +258,24 @@ const isCalendarDate = (s: string): boolean => {
 /* Formats rate * 100 without floating point noise: 0.07 becomes "7", not
    "7.000000000000001". */
 const pct100 = (rate: number) => String(Number((rate * 100).toPrecision(12)));
+
+/* history.json keys each series by its own short name; the reference rate is
+   stored as btcUsdc. Every key is mapped to the label the skill uses. */
+const HISTORY_KEYS: Record<string, string> = { btcUsdc: BTC_REF };
+/* The fixings withdrawn after publication on one date, label to reason. An
+   archive file is never rewritten, so its figure for a withdrawn fixing still
+   stands there: history.json is where the withdrawal is recorded. */
+async function withdrawnOn(date: string): Promise<Record<string, string>> {
+  const h = await get<Record<string, any>[]>(HISTORY);
+  if (!Array.isArray(h))
+    die(`The history at ${BASE}${HISTORY} could not be read as a list, so a withdrawal cannot be ruled out. Do not substitute an estimate.`);
+  const row = h.find(r => r?.date === date);
+  const out: Record<string, string> = {};
+  for (const [key, v] of Object.entries(row ?? {}))
+    if (v && typeof v === "object" && (v as any).withdrawn)
+      out[HISTORY_KEYS[key] ?? key] = String((v as any).reason ?? "Withdrawn after publication.");
+  return out;
+}
 
 const program = new Command();
 program.name("sbor").description("Benchmark lending rates for Bitcoin DeFi, read from contract state");
@@ -272,20 +303,12 @@ program.command("rate")
     }
     const path = o.date ? `/api/v1/archive/${o.date}.json` : LATEST;
     const d = await get<Latest>(path);
-    /* An archive file is never rewritten, so a fixing withdrawn later still
-       shows its figure there. The withdrawal is recorded in history.json, which
-       is read for every past date so a withdrawn figure is never returned as
-       the record of that day. */
-    const withdrawnThatDay: Record<string, string> = {};
-    if (o.date) {
-      const h = await get<Record<string, any>[]>(HISTORY);
-      const row = Array.isArray(h) ? h.find(r => r?.date === o.date) : undefined;
-      for (const [label, v] of Object.entries(row ?? {}))
-        if (v && typeof v === "object" && (v as any).withdrawn)
-          withdrawnThatDay[label] = String((v as any).reason ?? "Withdrawn after publication.");
-    }
+    /* Withdrawals are checked for the current fixing too, not only past dates:
+       a fixing can be withdrawn on the day it was published. */
+    const day = o.date ?? String(d.fixing ?? "").slice(0, 10);
+    const withdrawnThatDay = await withdrawnOn(day);
     const withdrawnEntry = (label: string) => ({
-      index: label, date: o.date, withdrawn: true, reason: withdrawnThatDay[label],
+      index: label, date: day, withdrawn: true, reason: withdrawnThatDay[label],
       note: "This fixing was withdrawn after publication. Its figure stays in the archive file, which is never rewritten, but it is not a valid reading. Do not use it."
     });
     if (o.index) {
@@ -299,7 +322,8 @@ program.command("rate")
       indices: Object.values(d.indices).map(ix => withdrawnThatDay[ix.label] ? withdrawnEntry(ix.label) : summarise(ix)),
       notPublished: missing.length ? missing.map(l => ({
         index: l,
-        reason: "Market could not be read. Omitted rather than estimated. Treat as unknown, not zero."
+        withheld: Boolean(d.withheld?.[l]),
+        reason: absentReason(d, l)
       })) : undefined,
       bitcoinCollateralUsdc: ref ? (withdrawnThatDay[ref.label] ? withdrawnEntry(ref.label) : { ...summarise(ref), note: REF_NOTE }) : undefined,
       onChain: ON_CHAIN,
@@ -345,8 +369,12 @@ program.command("compare")
     const ix = lookup(d, o.index);
     if (!ix)
       die(`${o.index} is not published in the current fixing, so there is no benchmark to compare against. ` +
-          `When a market cannot be read, SBOR omits it rather than publishing a figure it cannot stand behind. ` +
-          `Treat this as unknown, not as zero. Published today: ${Object.keys(d.indices).join(", ")}.`);
+          `SBOR's reason: ${absentReason(d, o.index)} Published today: ${Object.keys(d.indices).join(", ")}.`);
+
+    /* A fixing withdrawn after publication is not a benchmark. */
+    const withdrawn = (await withdrawnOn(String(d.fixing ?? "").slice(0, 10)))[o.index];
+    if (withdrawn)
+      die(`Today's ${o.index} fixing was withdrawn after publication, so there is no valid benchmark to compare against. SBOR's reason: ${withdrawn} Refusing to return a verdict.`);
 
     const side = o.side as "borrow" | "supply";
     const bench = ix[side];
@@ -426,7 +454,10 @@ program.command("markets")
     checkIndex(o.index);
     const d = await get<Latest>(LATEST);
     const one = o.index ? lookup(d, o.index) : null;
-    const entries = o.index ? (one ? [one] : []) : Object.values(d.indices);
+    const ref = refIndex(d);
+    /* Without --index: every index, and the bitcoin-collateral reference too,
+       as rate lists them. */
+    const entries = o.index ? (one ? [one] : []) : [...Object.values(d.indices), ...(ref ? [ref] : [])];
     if (!entries.length) return out(absent(o.index, d));
     out({
       markets: entries.flatMap(ix => ix.markets.map(m => ({
@@ -438,7 +469,7 @@ program.command("markets")
         depthUsd: m.depthUsd, weight: m.weight,
         ...(typeof m.phaseIn === "number" && m.phaseIn < 1 && { phaseIn: m.phaseIn, phaseInNote: "A newly added market, phasing in over 30 days. Listed, not yet fully weighted." })
       }))),
-      note: "Utilisation is the share of supplied capital currently borrowed. It is why a rate sits where it does. Protocol yield comes from the asset, not the loan, and is not part of the lending rate.",
+      note: "Utilization is the share of supplied capital currently borrowed. It is why a rate sits where it does. Protocol yield comes from the asset, not the loan, and is not part of the lending rate.",
       ...meta(d)
     });
   });
@@ -449,12 +480,18 @@ program.command("history")
   .option("--days <n>", "how far back, default 30", "30")
   .action(async o => {
     checkIndex(o.index, false);
-    const days = Number(o.days);
-    if (!Number.isFinite(days) || days < 1) die(`--days must be a positive number.`);
+    const asked = Number(o.days);
+    if (!Number.isFinite(asked) || asked < 1) die(`--days must be a positive number.`);
+    /* The series starts 2026-09-01, so a window longer than that adds nothing.
+       Capping it also keeps a huge --days from breaking the date arithmetic. */
+    const sinceStart = Math.floor((Date.now() - Date.parse(`${SERIES_START}T00:00:00Z`)) / 864e5) + 1;
+    const days = Math.min(Math.floor(asked), Math.max(1, sinceStart));
     const h = await get<Record<string, any>[]>(HISTORY);
+    if (!Array.isArray(h))
+      die(`The history at ${BASE}${HISTORY} could not be read as a list. Do not substitute an estimate.`);
     /* --days 30 means the last 30 calendar days, today included. */
     const cutoff = new Date(Date.now() - (days - 1) * 864e5).toISOString().slice(0, 10);
-    const inWindow = h.filter(r => r.date >= cutoff);
+    const inWindow = h.filter(r => r && typeof r.date === "string" && r.date >= cutoff);
     const rows = inWindow.filter(r => r[o.index]);
     /* A day with a fixing but no entry for this index means the index was not
        published that day. It is listed, never skipped silently: a series with
@@ -481,7 +518,7 @@ program.command("history")
 
     const versions = Object.keys(byVersion);
     out({
-      index: o.index, days, count: rows.length,
+      index: o.index, days, ...(days < asked && { daysNote: `--days ${asked} was capped at ${days}: the series starts ${SERIES_START}.` }), count: rows.length,
       fixings: rows.map(r => r[o.index].withdrawn
         ? { date: r.date, withdrawn: true, reason: r[o.index].reason }
         : { date: r.date, borrow: r[o.index].borrow, supply: r[o.index].supply,
