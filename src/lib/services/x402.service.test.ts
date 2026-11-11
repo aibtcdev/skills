@@ -15,6 +15,7 @@ import {
   mnemonicToAccount,
 } from "./x402.service.js";
 import { X402_HEADERS } from "../utils/x402-protocol.js";
+import { _testing as storageTesting } from "../utils/storage.js";
 import type { PaymentDiagnosticEntry } from "../utils/x402-diagnostics.js";
 
 const TEST_MNEMONIC = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
@@ -113,14 +114,57 @@ describe("classifyCanonicalPaymentOutcome", () => {
 describe("createApiClient canonical payment flow", () => {
   const originalMnemonic = process.env.CLIENT_MNEMONIC;
   let recipientAddress = "";
+  // The sponsored path checks the payer's balance and looks up its nonce on
+  // the Stacks API before signing. Answer both from a local fake so these tests never depend on what
+  // the test mnemonic holds on the live network (it is unfunded on mainnet).
+  let stacksApi: ReturnType<typeof createServer> | null = null;
 
   beforeEach(async () => {
     process.env.CLIENT_MNEMONIC = TEST_MNEMONIC;
     const account = await mnemonicToAccount(TEST_MNEMONIC, NETWORK);
     recipientAddress = account.address;
+    stacksApi = createServer((req: IncomingMessage, res: ServerResponse) => {
+      const url = new URL(req.url ?? "/", "http://127.0.0.1");
+      if (url.pathname === `/extended/v1/address/${account.address}/balances`) {
+        res.statusCode = 200;
+        res.setHeader("content-type", "application/json");
+        res.end(
+          JSON.stringify({
+            stx: { balance: "1000000", total_sent: "0", total_received: "1000000", locked: "0", lock_height: 0 },
+            fungible_tokens: {},
+            non_fungible_tokens: {},
+          })
+        );
+        return;
+      }
+      // Sender nonce, on whichever route this @stacks/transactions version reads
+      // (7.6.x: v1 possible_next_nonce, 7.7+: v3 next_nonce, fallback: /v2/accounts).
+      const nonceRoutes: Record<string, unknown> = {
+        [`/extended/v1/address/${account.address}/nonces`]: { possible_next_nonce: 0 },
+        [`/extended/v3/principals/${account.address}/nonces`]: { next_nonce: 0 },
+        [`/v2/accounts/${account.address}`]: { nonce: 0, balance: "0x0", locked: "0x0" },
+      };
+      if (url.pathname in nonceRoutes) {
+        res.statusCode = 200;
+        res.setHeader("content-type", "application/json");
+        res.end(JSON.stringify(nonceRoutes[url.pathname]));
+        return;
+      }
+      res.statusCode = 404;
+      res.end("not found");
+    });
+    stacksApi.listen(0, "127.0.0.1");
+    await once(stacksApi, "listening");
+    storageTesting.overrideStacksApiUrl(serverOrigin(stacksApi));
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    storageTesting.overrideStacksApiUrl(null);
+    if (stacksApi) {
+      stacksApi.close();
+      await once(stacksApi, "close");
+      stacksApi = null;
+    }
     if (originalMnemonic === undefined) {
       delete process.env.CLIENT_MNEMONIC;
     } else {

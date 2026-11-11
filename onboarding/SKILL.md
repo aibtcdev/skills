@@ -57,6 +57,8 @@ Execute install:
 bun run onboarding/onboarding.ts install-packs --pack builder --run
 ```
 
+`--run` installs each skill with `npx skills add aibtcdev/skills/<skill> -y -g` (into `~/.agents/skills/<skill>`), then runs `bun install` in that folder so the skill runs on its own. Each `installs[]` entry reports `installDir` and `depsInstalled`; `success` is false if either step failed.
+
 ### run
 
 Execute the first-hour onboarding flow with optional registration and heartbeat check-in.

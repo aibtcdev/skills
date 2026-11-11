@@ -7,7 +7,7 @@
  */
 
 import { Command } from "commander";
-import { NETWORK } from "../src/lib/config/networks.js";
+import { NETWORK } from "@aibtc/skills/src/lib/config/networks.js";
 import {
   P2WPKH_INPUT_VBYTES,
   P2WPKH_OUTPUT_VBYTES,
@@ -15,22 +15,22 @@ import {
   TX_OVERHEAD_VBYTES,
   DUST_THRESHOLD,
   P2TR_INPUT_BASE_VBYTES,
-} from "../src/lib/config/bitcoin-constants.js";
-import { getWalletManager } from "../src/lib/services/wallet-manager.js";
-import { MempoolApi, getMempoolTxUrl } from "../src/lib/services/mempool-api.js";
-import { InscriptionParser } from "../src/lib/services/inscription-parser.js";
+} from "@aibtc/skills/src/lib/config/bitcoin-constants.js";
+import { getWalletManager } from "@aibtc/skills/src/lib/services/wallet-manager.js";
+import { MempoolApi, getMempoolTxUrl } from "@aibtc/skills/src/lib/services/mempool-api.js";
+import { InscriptionParser } from "@aibtc/skills/src/lib/services/inscription-parser.js";
 import {
   buildCommitTransaction,
   buildRevealTransaction,
   type InscriptionData,
-} from "../src/lib/transactions/inscription-builder.js";
-import { signBtcTransaction } from "../src/lib/transactions/bitcoin-builder.js";
+} from "@aibtc/skills/src/lib/transactions/inscription-builder.js";
+import { signBtcTransaction } from "@aibtc/skills/src/lib/transactions/bitcoin-builder.js";
 import {
   buildInscriptionTransfer,
   signInscriptionTransfer,
-} from "../src/lib/transactions/inscription-transfer-builder.js";
-import { UnisatIndexer } from "../src/lib/services/unisat-indexer.js";
-import { printJson, handleError } from "../src/lib/utils/cli.js";
+} from "@aibtc/skills/src/lib/transactions/inscription-transfer-builder.js";
+import { UnisatIndexer } from "@aibtc/skills/src/lib/services/unisat-indexer.js";
+import { printJson, handleError } from "@aibtc/skills/src/lib/utils/cli.js";
 
 // ---------------------------------------------------------------------------
 // Helpers

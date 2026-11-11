@@ -9,7 +9,7 @@
  * https://sbor.xyz
  */
 import { Command } from "commander";
-import { printJson, handleError } from "../src/lib/utils/cli.js";
+import { printJson, handleError } from "@aibtc/skills/src/lib/utils/cli.js";
 
 const BASE = process.env.SBOR_BASE || "https://sbor.xyz";
 const UA = "aibtc-skills-sbor/1.1";

@@ -31,6 +31,7 @@ import { checkSpend, recordSpend, releaseSpend, resolveDirectPaymentPolicy, with
 import {
   buildSponsoredSbtcTransfer,
   checkSponsoredPaymentBalance,
+  findStacksNetworkMismatch,
   resolveSponsoredPaymentTokenType,
   selectStacksPaymentOption,
 } from "./x402.service.js";
@@ -77,8 +78,13 @@ export async function postWithSponsoredPayment(options: {
   if (!paymentRequired?.accepts?.length) {
     throw new Error("402 response missing or empty payment-required header");
   }
-  const accept = selectStacksPaymentOption(paymentRequired.accepts, "sBTC");
+  const accept = selectStacksPaymentOption(paymentRequired.accepts, "sBTC", { network: NETWORK, mode: "sponsored" });
   if (!accept) {
+    // Only the other Stacks network is offered: report that, not a missing sBTC price (#469).
+    const otherNetwork = findStacksNetworkMismatch(paymentRequired.accepts, NETWORK);
+    if (otherNetwork) {
+      throw new Error(`Network mismatch: endpoint asks for payment on ${otherNetwork}, wallet is on ${NETWORK}.`);
+    }
     throw new Error(
       `The endpoint offers no sBTC payment on Stacks. Offered: ${paymentRequired.accepts.map((a) => `${a.asset} on ${a.network}`).join(", ")}`
     );

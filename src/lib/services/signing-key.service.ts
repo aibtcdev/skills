@@ -413,6 +413,34 @@ class SigningKeyService {
     }
   }
 
+  /**
+   * Re-encrypt a stored key under a new password. Decrypts with the old one
+   * first (throws "Invalid password" otherwise); the keystore is replaced
+   * atomically, so a crash leaves either the old or the new file.
+   */
+  async changePassword(keyId: string, oldPassword: string, newPassword: string): Promise<void> {
+    await this.ensureInitialized();
+
+    let keystore: SigningKeyKeystoreFile;
+    try {
+      keystore = await this.readKeystore(keyId);
+    } catch {
+      throw new Error(`Signing key not found: ${keyId}`);
+    }
+
+    let privateKeyHex: string;
+    try {
+      privateKeyHex = await decrypt(keystore.encrypted, oldPassword);
+    } catch {
+      throw new Error("Invalid password");
+    }
+
+    await this.writeKeystore(keyId, {
+      ...keystore,
+      encrypted: await encrypt(privateKeyHex, newPassword),
+    });
+  }
+
   // --------------------------------------------------------------------------
   // SIP-018 signing (off-chain, matching frontend turnkey-signing.ts)
   // --------------------------------------------------------------------------

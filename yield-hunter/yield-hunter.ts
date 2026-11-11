@@ -13,19 +13,19 @@ import { Command } from "commander";
 import fs from "fs/promises";
 import path from "path";
 import os from "os";
-import { NETWORK } from "../src/lib/config/networks.js";
-import { getHiroApi } from "../src/lib/services/hiro-api.js";
-import { getWalletManager } from "../src/lib/services/wallet-manager.js";
-import { getZestProtocolService } from "../src/lib/services/defi.service.js";
-import { getSbtcBalance } from "../src/lib/utils/tokens.js";
-import { ZEST_ASSETS, MAINNET_CONTRACTS } from "../src/lib/config/contracts.js";
+import { NETWORK } from "@aibtc/skills/src/lib/config/networks.js";
+import { getHiroApi } from "@aibtc/skills/src/lib/services/hiro-api.js";
+import { getWalletManager } from "@aibtc/skills/src/lib/services/wallet-manager.js";
+import { getZestProtocolService } from "@aibtc/skills/src/lib/services/defi.service.js";
+import { getSbtcBalance } from "@aibtc/skills/src/lib/utils/tokens.js";
+import { ZEST_ASSETS, MAINNET_CONTRACTS } from "@aibtc/skills/src/lib/config/contracts.js";
 import {
   cvToJSON,
   hexToCV,
   contractPrincipalCV,
 } from "@stacks/transactions";
-import { printJson, handleError } from "../src/lib/utils/cli.js";
-import { readStateFile, writeStateFile } from "../src/lib/utils/state.js";
+import { printJson, handleError } from "@aibtc/skills/src/lib/utils/cli.js";
+import { readStateFile, writeStateFile } from "@aibtc/skills/src/lib/utils/state.js";
 
 // ---------------------------------------------------------------------------
 // State file management

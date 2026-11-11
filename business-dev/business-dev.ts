@@ -7,7 +7,7 @@
  */
 
 import { Command } from "commander";
-import { printJson, handleError } from "../src/lib/utils/cli.js";
+import { printJson, handleError } from "@aibtc/skills/src/lib/utils/cli.js";
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";

@@ -1,6 +1,6 @@
 {
-  "version": "0.44.0",
-  "generated": "2026-11-04T20:12:38.629Z",
+  "version": "0.45.2",
+  "generated": "2026-11-11T19:44:45.989Z",
   "skills": [
     {
       "name": "agent-lookup",
@@ -16,8 +16,10 @@
         "read-only"
       ],
       "userInvocable": false,
+      "standalone": true,
       "author": "DeOrganized",
-      "authorAgent": "Long Elio"
+      "authorAgent": "Long Elio",
+      "install": "bun install"
     },
     {
       "name": "aibtc-agents",
@@ -33,325 +35,9 @@
         "read-only"
       ],
       "userInvocable": false,
+      "standalone": true,
       "author": "whoabuddy",
       "authorAgent": "Trustless Indra"
-    },
-    {
-      "name": "aibtc-news",
-      "description": "DEPRECATED: aibtc.news retired the API this skill calls (410 Gone). aibtc.news decentralized intelligence platform — list and claim editorial beats, file authenticated signals (news items) with BIP-322 signatures, browse signals, check weighted leaderboard, review signals as publisher, and trigger daily brief compilation.",
-      "entry": "aibtc-news/aibtc-news.ts",
-      "arguments": [
-        "list-beats",
-        "status",
-        "file-signal",
-        "list-signals",
-        "front-page",
-        "correspondents",
-        "leaderboard",
-        "claim-beat",
-        "review-signal",
-        "compile-brief",
-        "reset-leaderboard",
-        "about"
-      ],
-      "requires": [
-        "wallet",
-        "signing"
-      ],
-      "tags": [
-        "l2",
-        "write",
-        "infrastructure"
-      ],
-      "userInvocable": false,
-      "author": "whoabuddy",
-      "authorAgent": "Trustless Indra",
-      "deprecated": "aibtc.news retired its off-chain newsroom API (every route returns 410 Gone, #444). See https://aibtc.news/skill.md and the MCP legion_* tools."
-    },
-    {
-      "name": "aibtc-news-classifieds",
-      "description": "DEPRECATED: aibtc.news retired the API this skill calls (410 Gone). Classified ads and extended API coverage for aibtc.news — list, post, and browse classifieds; read briefs (x402); correct signals; file and review corrections; update beats; fetch streaks and editorial skill resources.",
-      "entry": "aibtc-news-classifieds/aibtc-news-classifieds.ts",
-      "arguments": [
-        "list-classifieds",
-        "get-classified",
-        "post-classified",
-        "check-classified-status",
-        "get-signal",
-        "correct-signal",
-        "corrections",
-        "update-beat",
-        "get-brief",
-        "inscribe-brief",
-        "get-inscription",
-        "streaks",
-        "list-skills"
-      ],
-      "requires": [
-        "wallet",
-        "signing"
-      ],
-      "tags": [
-        "l2",
-        "write",
-        "requires-funds"
-      ],
-      "userInvocable": false,
-      "author": "whoabuddy",
-      "authorAgent": "Trustless Indra",
-      "deprecated": "aibtc.news retired its off-chain newsroom API (every route returns 410 Gone, #444). See https://aibtc.news/skill.md and the MCP legion_* tools."
-    },
-    {
-      "name": "aibtc-news-correspondent",
-      "description": "DEPRECATED: aibtc.news retired the API this skill calls (410 Gone). Correspondent for aibtc.news: claim a beat, research daily using live on-chain and market data, file quality signals, earn $25 sBTC per signal included in the daily brief",
-      "entry": "aibtc-news-correspondent/SKILL.md",
-      "arguments": [
-        "claim-beat",
-        "research",
-        "file-signal",
-        "check-status",
-        "update-beat",
-        "check-leaderboard"
-      ],
-      "requires": [
-        "aibtc-news",
-        "wallet",
-        "signing"
-      ],
-      "tags": [
-        "l2",
-        "write"
-      ],
-      "userInvocable": false,
-      "author": "cedarxyz",
-      "authorAgent": "Ionic Anvil",
-      "mcpTools": [
-        "news_file_signal",
-        "news_signals",
-        "news_signal",
-        "news_status",
-        "news_beats",
-        "news_claim_beat",
-        "news_update_beat",
-        "news_skills",
-        "news_correspondents"
-      ],
-      "deprecated": "aibtc.news retired its off-chain newsroom API (every route returns 410 Gone, #444). See https://aibtc.news/skill.md and the MCP legion_* tools."
-    },
-    {
-      "name": "aibtc-news-deal-flow",
-      "description": "DEPRECATED: aibtc.news retired the API this skill calls (410 Gone). Deal Flow editorial skill — signal composition, source validation, and editorial voice guide for aibtc.news correspondents covering ordinals trades, bounty completions, x402 payments, inbox collaborations, contract deployments, reputation events, and agent onboarding.",
-      "entry": "aibtc-news-deal-flow/aibtc-news-deal-flow.ts",
-      "arguments": [
-        "compose-signal",
-        "check-sources",
-        "editorial-guide"
-      ],
-      "requires": [
-        "aibtc-news"
-      ],
-      "tags": [
-        "read-only",
-        "infrastructure",
-        "l2"
-      ],
-      "userInvocable": false,
-      "author": "pbtc21",
-      "authorAgent": "Tiny Marten",
-      "deprecated": "aibtc.news retired its off-chain newsroom API (every route returns 410 Gone, #444). See https://aibtc.news/skill.md and the MCP legion_* tools."
-    },
-    {
-      "name": "aibtc-news-editor",
-      "description": "DEPRECATED: aibtc.news retired the API this skill calls (410 Gone). Beat Editor for aibtc.news: review and approve/reject signals on assigned beat, file editorial reviews, manage beat cap via displacement, earn per-review sats",
-      "entry": "aibtc-news-editor/SKILL.md",
-      "arguments": [
-        "review-signals",
-        "file-editorial-review",
-        "check-earnings",
-        "check-status",
-        "displace-signal"
-      ],
-      "requires": [
-        "aibtc-news",
-        "wallet",
-        "signing"
-      ],
-      "tags": [
-        "l2",
-        "write"
-      ],
-      "userInvocable": false,
-      "author": "biwasxyz",
-      "authorAgent": "Codex",
-      "mcpTools": [
-        "news_list_signals",
-        "news_editor_review_signal",
-        "news_editor_file_review",
-        "news_editor_check_earnings",
-        "news_list_editors",
-        "news_list_beats",
-        "news_check_status",
-        "news_front_page"
-      ],
-      "deprecated": "aibtc.news retired its off-chain newsroom API (every route returns 410 Gone, #444). See https://aibtc.news/skill.md and the MCP legion_* tools."
-    },
-    {
-      "name": "aibtc-news-fact-checker",
-      "description": "DEPRECATED: aibtc.news retired the API this skill calls (410 Gone). Side role: find and correct bad signals, earn leaderboard points per Publisher-approved correction (max 3/day)",
-      "entry": "aibtc-news-fact-checker/SKILL.md",
-      "arguments": [
-        "scan-signals",
-        "verify-claim",
-        "file-correction",
-        "audit-agent",
-        "file-pattern-report"
-      ],
-      "requires": [
-        "aibtc-news",
-        "aibtc-news-classifieds",
-        "wallet",
-        "signing"
-      ],
-      "tags": [
-        "l2",
-        "write"
-      ],
-      "userInvocable": false,
-      "author": "cedarxyz",
-      "authorAgent": "Ionic Anvil",
-      "mcpTools": [
-        "news_correct_signal",
-        "news_signals",
-        "news_file_signal",
-        "news_correspondents"
-      ],
-      "deprecated": "aibtc.news retired its off-chain newsroom API (every route returns 410 Gone, #444). See https://aibtc.news/skill.md and the MCP legion_* tools."
-    },
-    {
-      "name": "aibtc-news-protocol",
-      "description": "DEPRECATED: aibtc.news retired the API this skill calls (410 Gone). AIBTC Network editorial skill — \"Protocol and Infrastructure Updates\" signal composition, source validation, and editorial voice guide for aibtc.news correspondents covering API changes, contract deployments, MCP updates, protocol upgrades, bugs, and breaking changes.",
-      "entry": "aibtc-news-protocol/aibtc-news-protocol.ts",
-      "arguments": [
-        "compose-signal",
-        "check-sources",
-        "editorial-guide"
-      ],
-      "requires": [
-        "aibtc-news"
-      ],
-      "tags": [
-        "read-only",
-        "infrastructure",
-        "l2"
-      ],
-      "userInvocable": false,
-      "author": "whoabuddy",
-      "authorAgent": "Trustless Indra",
-      "deprecated": "aibtc.news retired its off-chain newsroom API (every route returns 410 Gone, #444). See https://aibtc.news/skill.md and the MCP legion_* tools."
-    },
-    {
-      "name": "aibtc-news-publisher",
-      "description": "DEPRECATED: aibtc.news retired the API this skill calls (410 Gone). Designated Publisher for aibtc.news: review signals, curate the front page, compile and inscribe the daily brief, manage treasury and payouts",
-      "entry": "aibtc-news-publisher/SKILL.md",
-      "arguments": [
-        "review-signals",
-        "compile-brief",
-        "inscribe",
-        "process-payouts",
-        "review-corrections",
-        "file-editorial-note",
-        "reset-leaderboard"
-      ],
-      "requires": [
-        "aibtc-news",
-        "aibtc-news-classifieds",
-        "wallet",
-        "signing"
-      ],
-      "tags": [
-        "l2",
-        "write",
-        "infrastructure"
-      ],
-      "userInvocable": false,
-      "author": "cedarxyz",
-      "authorAgent": "Ionic Anvil",
-      "mcpTools": [
-        "news_signals",
-        "news_signal",
-        "news_publisher_compile_brief",
-        "news_correspondents",
-        "news_beats",
-        "news_status",
-        "news_skills",
-        "news_file_signal",
-        "news_register_editor",
-        "news_deactivate_editor",
-        "news_list_editors",
-        "news_publisher_set_beat_config",
-        "news_file_correction",
-        "news_record_editor_payout"
-      ],
-      "deprecated": "aibtc.news retired its off-chain newsroom API (every route returns 410 Gone, #444). See https://aibtc.news/skill.md and the MCP legion_* tools."
-    },
-    {
-      "name": "aibtc-news-sales",
-      "description": "DEPRECATED: aibtc.news retired the API this skill calls (410 Gone). Side role (Phase 0.5, deferred from launch): solicit classified ad listings for aibtc.news marketplace, earn leaderboard points per listing published (max 2/day)",
-      "entry": "aibtc-news-sales/SKILL.md",
-      "arguments": [
-        "find-sellers",
-        "pitch",
-        "submit-listing",
-        "track-listings"
-      ],
-      "requires": [
-        "aibtc-news",
-        "aibtc-news-classifieds",
-        "wallet",
-        "signing"
-      ],
-      "tags": [
-        "l2",
-        "write",
-        "requires-funds"
-      ],
-      "userInvocable": false,
-      "author": "cedarxyz",
-      "authorAgent": "Ionic Anvil",
-      "mcpTools": [
-        "news_classifieds",
-        "news_correspondents"
-      ],
-      "deprecated": "aibtc.news retired its off-chain newsroom API (every route returns 410 Gone, #444). See https://aibtc.news/skill.md and the MCP legion_* tools."
-    },
-    {
-      "name": "aibtc-news-scout",
-      "description": "DEPRECATED: aibtc.news retired the API this skill calls (410 Gone). Side role: recruit new agents to uncovered or underserved beats, earn +25 leaderboard points when they file their first signal (max 1/week)",
-      "entry": "aibtc-news-scout/SKILL.md",
-      "arguments": [
-        "find-gaps",
-        "find-candidates",
-        "recruit",
-        "hand-off"
-      ],
-      "requires": [
-        "aibtc-news"
-      ],
-      "tags": [
-        "l2",
-        "read-only"
-      ],
-      "userInvocable": false,
-      "author": "cedarxyz",
-      "authorAgent": "Ionic Anvil",
-      "mcpTools": [
-        "news_beats",
-        "news_correspondents",
-        "news_signals",
-        "news_status",
-        "news_about"
-      ],
-      "deprecated": "aibtc.news retired its off-chain newsroom API (every route returns 410 Gone, #444). See https://aibtc.news/skill.md and the MCP legion_* tools."
     },
     {
       "name": "arxiv-research",
@@ -367,13 +53,15 @@
         "read-only"
       ],
       "userInvocable": false,
+      "standalone": true,
       "author": "arc0btc",
       "authorAgent": "Trustless Indra",
       "mcpTools": [
         "arxiv_search",
         "arxiv_compile_digest",
         "arxiv_list_digests"
-      ]
+      ],
+      "install": "bun install"
     },
     {
       "name": "bitflow",
@@ -408,6 +96,7 @@
         "requires-funds"
       ],
       "userInvocable": false,
+      "standalone": true,
       "author": "whoabuddy",
       "authorAgent": "Trustless Indra",
       "mcpTools": [
@@ -422,7 +111,8 @@
         "bitflow_get_order",
         "bitflow_cancel_order",
         "bitflow_get_keeper_user"
-      ]
+      ],
+      "install": "bun install"
     },
     {
       "name": "bitflow-hodlmm-deposit",
@@ -447,8 +137,10 @@
         "l2"
       ],
       "userInvocable": false,
+      "standalone": true,
       "author": "macbotmini-eng",
-      "authorAgent": "Hex Stallion"
+      "authorAgent": "Hex Stallion",
+      "install": "bun install"
     },
     {
       "name": "bitflow-hodlmm-withdraw",
@@ -473,8 +165,10 @@
         "l2"
       ],
       "userInvocable": false,
+      "standalone": true,
       "author": "macbotmini-eng",
-      "authorAgent": "Hex Stallion"
+      "authorAgent": "Hex Stallion",
+      "install": "bun install"
     },
     {
       "name": "bitflow-hodlmm-zest-yield-loop",
@@ -506,8 +200,10 @@
         "l2"
       ],
       "userInvocable": false,
+      "standalone": true,
       "author": "macbotmini-eng",
-      "authorAgent": "Hex Stallion"
+      "authorAgent": "Hex Stallion",
+      "install": "bun install"
     },
     {
       "name": "bitflow-limit-order",
@@ -534,8 +230,10 @@
         "l2"
       ],
       "userInvocable": false,
+      "standalone": true,
       "author": "ClankOS",
-      "authorAgent": "Grim Seraph"
+      "authorAgent": "Grim Seraph",
+      "install": "bun install"
     },
     {
       "name": "bitflow-swap-aggregator",
@@ -561,8 +259,10 @@
         "l2"
       ],
       "userInvocable": false,
+      "standalone": true,
       "author": "macbotmini-eng",
-      "authorAgent": "Hex Stallion"
+      "authorAgent": "Hex Stallion",
+      "install": "bun install"
     },
     {
       "name": "bitflow-zest-sbtc-leverage-cycle",
@@ -593,8 +293,10 @@
         "l2"
       ],
       "userInvocable": false,
+      "standalone": true,
       "author": "macbotmini-eng",
-      "authorAgent": "Hex Stallion"
+      "authorAgent": "Hex Stallion",
+      "install": "bun install"
     },
     {
       "name": "bns",
@@ -620,6 +322,7 @@
         "requires-funds"
       ],
       "userInvocable": false,
+      "standalone": true,
       "author": "whoabuddy",
       "authorAgent": "Trustless Indra",
       "mcpTools": [
@@ -632,16 +335,17 @@
         "claim_bns_name_fast",
         "preorder_bns_name",
         "register_bns_name"
-      ]
+      ],
+      "install": "bun install"
     },
     {
       "name": "bounty-scanner",
-      "description": "Autonomous bounty hunting — scan open bounties, match to your skills, claim and track work",
+      "description": "Autonomous bounty hunting on the aibtc.com board: scan open bounties, match them to your skills, submit work and track it",
       "entry": "bounty-scanner/bounty-scanner.ts",
       "arguments": [
         "scan",
         "match",
-        "claim",
+        "submit",
         "status",
         "my-bounties",
         "detail"
@@ -656,17 +360,18 @@
         "infrastructure"
       ],
       "userInvocable": false,
+      "standalone": true,
       "author": "pbtc21",
       "authorAgent": "Tiny Marten",
       "mcpTools": [
         "bounty_list",
         "bounty_get",
-        "bounty_match",
-        "bounty_claim",
-        "bounty_status",
-        "bounty_my_claims",
-        "bounty_stats"
-      ]
+        "bounty_submit",
+        "bounty_submissions",
+        "bounty_my_posted",
+        "bounty_my_submissions"
+      ],
+      "install": "bun install"
     },
     {
       "name": "btc",
@@ -691,6 +396,7 @@
         "requires-funds"
       ],
       "userInvocable": false,
+      "standalone": true,
       "author": "whoabuddy",
       "authorAgent": "Trustless Indra",
       "mcpTools": [
@@ -702,7 +408,8 @@
         "get_ordinal_utxos",
         "get_rune_utxos",
         "get_inscriptions_by_address"
-      ]
+      ],
+      "install": "bun install"
     },
     {
       "name": "business-dev",
@@ -727,8 +434,10 @@
         "infrastructure"
       ],
       "userInvocable": false,
+      "standalone": true,
       "author": "pbtc21",
-      "authorAgent": "Tiny Marten"
+      "authorAgent": "Tiny Marten",
+      "install": "bun install"
     },
     {
       "name": "ceo",
@@ -743,6 +452,7 @@
         "infrastructure"
       ],
       "userInvocable": false,
+      "standalone": true,
       "author": "pbtc21",
       "authorAgent": "Tiny Marten"
     },
@@ -764,13 +474,15 @@
         "requires-funds"
       ],
       "userInvocable": false,
+      "standalone": true,
       "author": "tfibtcagent",
       "authorAgent": "Secret Dome",
       "mcpTools": [
         "estimate_child_inscription_fee",
         "inscribe_child",
         "inscribe_child_reveal"
-      ]
+      ],
+      "install": "bun install"
     },
     {
       "name": "clarity-audit",
@@ -789,6 +501,7 @@
         "sensitive"
       ],
       "userInvocable": false,
+      "standalone": true,
       "author": "whoabuddy",
       "authorAgent": "Arc"
     },
@@ -807,6 +520,7 @@
         "infrastructure"
       ],
       "userInvocable": false,
+      "standalone": true,
       "author": "whoabuddy",
       "authorAgent": "Arc"
     },
@@ -826,6 +540,7 @@
         "infrastructure"
       ],
       "userInvocable": false,
+      "standalone": true,
       "author": "whoabuddy",
       "authorAgent": "Arc"
     },
@@ -845,6 +560,7 @@
         "infrastructure"
       ],
       "userInvocable": false,
+      "standalone": true,
       "author": "whoabuddy",
       "authorAgent": "Arc"
     },
@@ -866,12 +582,14 @@
         "requires-funds"
       ],
       "userInvocable": false,
+      "standalone": true,
       "author": "tfibtcagent",
       "mcpTools": [
         "deploy_contract",
         "call_contract",
         "call_read_only_function"
-      ]
+      ],
+      "install": "bun install"
     },
     {
       "name": "contract-preflight",
@@ -889,8 +607,10 @@
         "l2"
       ],
       "userInvocable": false,
+      "standalone": true,
       "author": "secret-mars",
-      "authorAgent": "Secret Mars"
+      "authorAgent": "Secret Mars",
+      "install": "bun install"
     },
     {
       "name": "credentials",
@@ -909,6 +629,7 @@
         "sensitive"
       ],
       "userInvocable": false,
+      "standalone": true,
       "author": "whoabuddy",
       "authorAgent": "Trustless Indra",
       "mcpTools": [
@@ -917,7 +638,8 @@
         "credentials_set",
         "credentials_delete",
         "credentials_unlock"
-      ]
+      ],
+      "install": "bun install"
     },
     {
       "name": "dca",
@@ -944,8 +666,10 @@
         "l2"
       ],
       "userInvocable": false,
+      "standalone": true,
       "author": "k9dreamermacmini-coder",
-      "authorAgent": "Graphite Elan"
+      "authorAgent": "Graphite Elan",
+      "install": "bun install"
     },
     {
       "name": "defi",
@@ -975,6 +699,7 @@
         "requires-funds"
       ],
       "userInvocable": false,
+      "standalone": true,
       "author": "whoabuddy",
       "authorAgent": "Trustless Indra",
       "mcpTools": [
@@ -989,7 +714,8 @@
         "zest_borrow",
         "zest_repay",
         "zest_enable_collateral"
-      ]
+      ],
+      "install": "bun install"
     },
     {
       "name": "defi-portfolio-scanner",
@@ -1008,8 +734,10 @@
         "l2"
       ],
       "userInvocable": false,
+      "standalone": true,
       "author": "azagh72-creator",
-      "authorAgent": "Flying Whale"
+      "authorAgent": "Flying Whale",
+      "install": "bun install"
     },
     {
       "name": "dog-intelligence",
@@ -1035,8 +763,10 @@
         "l1"
       ],
       "userInvocable": false,
+      "standalone": true,
       "author": "LimaDevBTC",
-      "authorAgent": "Xored Pike"
+      "authorAgent": "Xored Pike",
+      "install": "bun install"
     },
     {
       "name": "dual-stacking",
@@ -1058,6 +788,7 @@
         "defi"
       ],
       "userInvocable": false,
+      "standalone": true,
       "author": "sonic-mast",
       "authorAgent": "Sonic Mast",
       "mcpTools": [
@@ -1065,7 +796,8 @@
         "dual_stacking_get_rewards",
         "dual_stacking_enroll",
         "dual_stacking_opt_out"
-      ]
+      ],
+      "install": "bun install"
     },
     {
       "name": "erc8004",
@@ -1088,6 +820,7 @@
         "requires-funds"
       ],
       "userInvocable": false,
+      "standalone": true,
       "author": "tfibtcagent",
       "authorAgent": "Secret Dome",
       "mcpTools": [
@@ -1097,7 +830,8 @@
         "get_reputation",
         "request_validation",
         "get_validation_status"
-      ]
+      ],
+      "install": "bun install"
     },
     {
       "name": "hermetica-yield-rotator",
@@ -1120,8 +854,10 @@
         "l2"
       ],
       "userInvocable": false,
+      "standalone": true,
       "author": "cliqueengagements",
-      "authorAgent": "Micro Basilisk (Agent 77) — SP219TWC8G12CSX5AB093127NC82KYQWEH8ADD1AY | bc1qzh2z92dlvccxq5w756qppzz8fymhgrt2dv8cf5"
+      "authorAgent": "Micro Basilisk (Agent 77) — SP219TWC8G12CSX5AB093127NC82KYQWEH8ADD1AY | bc1qzh2z92dlvccxq5w756qppzz8fymhgrt2dv8cf5",
+      "install": "bun install"
     },
     {
       "name": "hodlmm-arb-executor",
@@ -1144,11 +880,13 @@
         "l2"
       ],
       "userInvocable": false,
+      "standalone": true,
       "author": "ronkenx9",
       "authorAgent": [
         "Parallel Owl (ERC-8004 ID #354",
         "SP1KNKVXNNS9B6TBBT8YTM2VTYKVZYWS65TTRD430)"
-      ]
+      ],
+      "install": "bun install"
     },
     {
       "name": "hodlmm-bin-guardian",
@@ -1167,8 +905,10 @@
         "l2"
       ],
       "userInvocable": false,
+      "standalone": true,
       "author": "cliqueengagements",
-      "authorAgent": "Micro Basilisk (Agent 77) — SP219TWC8G12CSX5AB093127NC82KYQWEH8ADD1AY | bc1qzh2z92dlvccxq5w756qppzz8fymhgrt2dv8cf5"
+      "authorAgent": "Micro Basilisk (Agent 77) — SP219TWC8G12CSX5AB093127NC82KYQWEH8ADD1AY | bc1qzh2z92dlvccxq5w756qppzz8fymhgrt2dv8cf5",
+      "install": "bun install"
     },
     {
       "name": "hodlmm-flow",
@@ -1188,8 +928,10 @@
         "mainnet-only"
       ],
       "userInvocable": false,
+      "standalone": true,
       "author": "ClankOS",
-      "authorAgent": "Grim Seraph"
+      "authorAgent": "Grim Seraph",
+      "install": "bun install"
     },
     {
       "name": "hodlmm-inventory-balancer",
@@ -1218,8 +960,10 @@
         "requires-funds"
       ],
       "userInvocable": false,
+      "standalone": true,
       "author": "cliqueengagements",
-      "authorAgent": "Micro Basilisk — Agent #77"
+      "authorAgent": "Micro Basilisk — Agent #77",
+      "install": "bun install"
     },
     {
       "name": "hodlmm-move-liquidity",
@@ -1244,8 +988,10 @@
         "requires-funds"
       ],
       "userInvocable": false,
+      "standalone": true,
       "author": "cliqueengagements",
-      "authorAgent": "Micro Basilisk (Agent 77) — SP219TWC8G12CSX5AB093127NC82KYQWEH8ADD1AY | bc1qzh2z92dlvccxq5w756qppzz8fymhgrt2dv8cf5"
+      "authorAgent": "Micro Basilisk (Agent 77) — SP219TWC8G12CSX5AB093127NC82KYQWEH8ADD1AY | bc1qzh2z92dlvccxq5w756qppzz8fymhgrt2dv8cf5",
+      "install": "bun install"
     },
     {
       "name": "hodlmm-pulse",
@@ -1266,8 +1012,10 @@
         "infrastructure"
       ],
       "userInvocable": false,
+      "standalone": true,
       "author": "ghislo749",
-      "authorAgent": "Grim Seraph"
+      "authorAgent": "Grim Seraph",
+      "install": "bun install"
     },
     {
       "name": "hodlmm-range-keeper",
@@ -1295,8 +1043,10 @@
         "l2"
       ],
       "userInvocable": false,
+      "standalone": true,
       "author": "tearful-saw",
-      "authorAgent": "Elegant Orb"
+      "authorAgent": "Elegant Orb",
+      "install": "bun install"
     },
     {
       "name": "hodlmm-risk",
@@ -1315,34 +1065,10 @@
         "mainnet-only"
       ],
       "userInvocable": false,
+      "standalone": true,
       "author": "locallaunchsc-cloud",
-      "authorAgent": "Risk Sentinel"
-    },
-    {
-      "name": "hodlmm-signal-allocator",
-      "description": "DEPRECATED: its signal gate reads a retired aibtc.news API (410 Gone), so it can never allocate. Signal-gated HODLMM yield allocator. Reads aibtc.news signals and Quantum Readiness Index alongside live HODLMM APR to compute a risk-adjusted yield score, then executes a Bitflow swap to prepare wallet for HODLMM deposit when conditions align.",
-      "entry": "hodlmm-signal-allocator/hodlmm-signal-allocator.ts",
-      "arguments": [
-        "doctor",
-        "scan --pool <id> --wallet <stx-addr>",
-        "run --pool <id> --wallet <stx-addr> --amount-stx <n> [--confirm] [--dry-run]"
-      ],
-      "requires": [
-        "wallet",
-        "signing",
-        "settings"
-      ],
-      "tags": [
-        "defi",
-        "write",
-        "mainnet-only",
-        "requires-funds",
-        "l2"
-      ],
-      "userInvocable": false,
-      "author": "IamHarrie-Labs",
-      "authorAgent": "Serene Spring",
-      "deprecated": "Its signal gate reads aibtc.news/api/signals, which returns 410 Gone (#444), so the gate can never pass and the skill can never allocate."
+      "authorAgent": "Risk Sentinel",
+      "install": "bun install"
     },
     {
       "name": "identity",
@@ -1368,6 +1094,7 @@
         "write"
       ],
       "userInvocable": false,
+      "standalone": true,
       "author": "whoabuddy",
       "authorAgent": "Trustless Indra",
       "mcpTools": [
@@ -1381,7 +1108,8 @@
         "identity_set_wallet",
         "identity_unset_wallet",
         "identity_transfer"
-      ]
+      ],
+      "install": "bun install"
     },
     {
       "name": "inbox",
@@ -1403,32 +1131,15 @@
         "requires-funds"
       ],
       "userInvocable": false,
+      "standalone": true,
       "author": "tfibtcagent",
       "authorAgent": "T-FI",
       "mcpTools": [
         "send_inbox_message_direct",
         "inbox_auto_reply",
         "inbox_auto_reply_configure"
-      ]
-    },
-    {
-      "name": "inscription-queue-watcher",
-      "description": "DEPRECATED: aibtc.news retired the brief API this skill monitors (410 Gone). Read-only monitor for the aibtc.news brief to ordinals inscription pipeline — classifies each recent brief by compile/inscribe state and flags stuck briefs before editor payouts get voided.",
-      "entry": "inscription-queue-watcher/inscription-queue-watcher.ts",
-      "arguments": [
-        "doctor",
-        "run",
-        "list-archive"
       ],
-      "requires": [],
-      "tags": [
-        "read-only",
-        "infrastructure"
-      ],
-      "userInvocable": false,
-      "author": "cliqueengagements",
-      "authorAgent": "Micro Basilisk",
-      "deprecated": "It monitors aibtc.news daily briefs via aibtc.news/api/brief, which returns 410 Gone (#444); briefs no longer exist."
+      "install": "bun install"
     },
     {
       "name": "jingswap",
@@ -1461,6 +1172,7 @@
         "defi"
       ],
       "userInvocable": false,
+      "standalone": true,
       "author": "Rapha-btc",
       "authorAgent": "Claude Code",
       "mcpTools": [
@@ -1479,7 +1191,8 @@
         "jingswap_settle",
         "jingswap_settle_with_refresh",
         "jingswap_cancel_cycle"
-      ]
+      ],
+      "install": "bun install"
     },
     {
       "name": "jingswap-cycle-agent",
@@ -1502,8 +1215,10 @@
         "l2"
       ],
       "userInvocable": false,
+      "standalone": true,
       "author": "teflonmusk",
-      "authorAgent": "Dual Cougar"
+      "authorAgent": "Dual Cougar",
+      "install": "bun install"
     },
     {
       "name": "jingswap-v2",
@@ -1533,6 +1248,7 @@
         "defi"
       ],
       "userInvocable": false,
+      "standalone": true,
       "author": "Rapha-btc",
       "authorAgent": "Claude Code",
       "mcpTools": [
@@ -1548,7 +1264,8 @@
         "jingswap_v2_cancel_sbtc",
         "jingswap_v2_close_and_settle_with_refresh",
         "jingswap_v2_cancel_cycle"
-      ]
+      ],
+      "install": "bun install"
     },
     {
       "name": "launkr",
@@ -1578,13 +1295,15 @@
         "requires-funds"
       ],
       "userInvocable": false,
+      "standalone": true,
       "author": "rather-labs",
       "authorAgent": "Launkr by Rather Labs",
       "mcpTools": [
         "deploy_contract",
         "call_contract",
         "call_read_only_function"
-      ]
+      ],
+      "install": "bun install"
     },
     {
       "name": "lunarcrush",
@@ -1605,8 +1324,10 @@
         "requires-funds"
       ],
       "userInvocable": false,
+      "standalone": true,
       "author": "joevezzani",
-      "authorAgent": "Prime Spoke"
+      "authorAgent": "Prime Spoke",
+      "install": "bun install"
     },
     {
       "name": "maximumsats-wot",
@@ -1629,8 +1350,10 @@
         "read-only"
       ],
       "userInvocable": false,
+      "standalone": true,
       "author": "arc0btc",
-      "authorAgent": "SATMAX Agent"
+      "authorAgent": "SATMAX Agent",
+      "install": "bun install"
     },
     {
       "name": "mempool-watch",
@@ -1647,13 +1370,15 @@
         "read-only"
       ],
       "userInvocable": false,
+      "standalone": true,
       "author": "teflonbtc",
       "authorAgent": "Dual Cougar",
       "mcpTools": [
         "get_btc_mempool_info",
         "get_btc_transaction_status",
         "get_btc_address_txs"
-      ]
+      ],
+      "install": "bun install"
     },
     {
       "name": "nft",
@@ -1675,6 +1400,7 @@
         "write"
       ],
       "userInvocable": false,
+      "standalone": true,
       "author": "whoabuddy",
       "authorAgent": "Trustless Indra",
       "mcpTools": [
@@ -1684,7 +1410,8 @@
         "get_nft_owner",
         "get_collection_info",
         "get_nft_history"
-      ]
+      ],
+      "install": "bun install"
     },
     {
       "name": "nonce-manager",
@@ -1702,17 +1429,19 @@
         "l2"
       ],
       "userInvocable": false,
+      "standalone": true,
       "author": "rising-leviathan",
       "authorAgent": "Loom",
       "mcpTools": [
         "nonce_health",
         "nonce_heal",
         "nonce_fill_gap"
-      ]
+      ],
+      "install": "bun install"
     },
     {
       "name": "nostr",
-      "description": "Nostr protocol operations for AI agents — post kind:1 notes, read feeds, search by hashtag tags (#t filter), get/set profiles, derive keys (NIP-06 default via m/44'/1237'/0'/0/0), amplify aibtc.news signals to the Nostr network, and manage relay connections. Uses nostr-tools + ws packages. Write operations require an unlocked wallet. Use --key-source to select nip06 (default), taproot, or stacks derivation path.",
+      "description": "Nostr protocol operations for AI agents — post kind:1 notes, read feeds, search by hashtag tags (#t filter), get/set profiles, derive keys (NIP-06 default via m/44'/1237'/0'/0/0), amplify signals to the Nostr network, and manage relay connections. Uses nostr-tools + ws packages. Write operations require an unlocked wallet. Use --key-source to select nip06 (default), taproot, or stacks derivation path.",
       "entry": "nostr/nostr.ts",
       "arguments": [
         "post",
@@ -1733,6 +1462,7 @@
         "write"
       ],
       "userInvocable": false,
+      "standalone": true,
       "author": [
         "cocoa007",
         "sonic-mast"
@@ -1749,7 +1479,8 @@
         "nostr_relay_list",
         "nostr_search_tags",
         "nostr_set_profile"
-      ]
+      ],
+      "install": "bun install"
     },
     {
       "name": "nostr-wot",
@@ -1768,8 +1499,10 @@
         "read-only"
       ],
       "userInvocable": false,
+      "standalone": true,
       "author": "arc0btc",
-      "authorAgent": "Trustless Indra"
+      "authorAgent": "Trustless Indra",
+      "install": "bun install"
     },
     {
       "name": "onboarding",
@@ -1790,8 +1523,10 @@
         "write"
       ],
       "userInvocable": false,
+      "standalone": true,
       "author": "k9dreamermacmini-coder",
-      "authorAgent": "k9dreamermacmini-coder"
+      "authorAgent": "k9dreamermacmini-coder",
+      "install": "bun install"
     },
     {
       "name": "openrouter",
@@ -1807,12 +1542,14 @@
         "read-only"
       ],
       "userInvocable": false,
+      "standalone": true,
       "author": "tfibtcagent",
       "authorAgent": "Secret Dome",
       "mcpTools": [
         "openrouter_integration_guide",
         "openrouter_models"
-      ]
+      ],
+      "install": "bun install"
     },
     {
       "name": "ordinals",
@@ -1835,6 +1572,7 @@
         "requires-funds"
       ],
       "userInvocable": false,
+      "standalone": true,
       "author": "whoabuddy",
       "authorAgent": "Trustless Indra",
       "mcpTools": [
@@ -1843,7 +1581,8 @@
         "inscribe",
         "inscribe_reveal",
         "get_inscription"
-      ]
+      ],
+      "install": "bun install"
     },
     {
       "name": "ordinals-marketplace",
@@ -1866,6 +1605,7 @@
         "requires-funds"
       ],
       "userInvocable": false,
+      "standalone": true,
       "author": "whoabuddy",
       "authorAgent": "Trustless Indra",
       "mcpTools": [
@@ -1902,6 +1642,7 @@
         "defi"
       ],
       "userInvocable": false,
+      "standalone": true,
       "author": "secret-mars",
       "authorAgent": "Secret Mars",
       "mcpTools": [
@@ -1921,28 +1662,8 @@
         "taproot_get_pubkey",
         "taproot_verify_cosig",
         "taproot_multisig_guide"
-      ]
-    },
-    {
-      "name": "paperboy",
-      "description": "DEPRECATED: aibtc.news no longer has signals or correspondents to distribute or recruit for. Paid signal distribution for aibtc.news — deliver signals to the right audiences, recruit new correspondents, earn sats per verified placement.",
-      "entry": "paperboy/SKILL.md",
-      "arguments": [
-        "reference"
       ],
-      "requires": [
-        "wallet",
-        "signing",
-        "aibtc-news"
-      ],
-      "tags": [
-        "write",
-        "infrastructure"
-      ],
-      "userInvocable": false,
-      "author": "pbtc21",
-      "authorAgent": "Tiny Marten",
-      "deprecated": "It distributes aibtc.news signals and recruits correspondents; aibtc.news retired signals, beats and correspondents (#444)."
+      "install": "bun install"
     },
     {
       "name": "pillar",
@@ -2002,6 +1723,7 @@
         "mainnet-only"
       ],
       "userInvocable": false,
+      "standalone": true,
       "author": "whoabuddy",
       "authorAgent": "Trustless Indra",
       "mcpTools": [
@@ -2044,7 +1766,8 @@
         "pillar_direct_stack_stx",
         "pillar_direct_revoke_fast_pool",
         "pillar_direct_stacking_status"
-      ]
+      ],
+      "install": "bun install"
     },
     {
       "name": "psbt",
@@ -2064,6 +1787,7 @@
         "requires-funds"
       ],
       "userInvocable": false,
+      "standalone": true,
       "author": "tfibtcagent",
       "authorAgent": "Secret Dome",
       "mcpTools": [
@@ -2071,7 +1795,8 @@
         "psbt_sign",
         "psbt_broadcast",
         "psbt_decode"
-      ]
+      ],
+      "install": "bun install"
     },
     {
       "name": "query",
@@ -2094,6 +1819,7 @@
         "read-only"
       ],
       "userInvocable": false,
+      "standalone": true,
       "author": "whoabuddy",
       "authorAgent": "Trustless Indra",
       "mcpTools": [
@@ -2106,7 +1832,8 @@
         "get_contract_events",
         "get_network_status",
         "call_read_only_function"
-      ]
+      ],
+      "install": "bun install"
     },
     {
       "name": "relay-diagnostic",
@@ -2124,12 +1851,14 @@
         "infrastructure"
       ],
       "userInvocable": false,
+      "standalone": true,
       "author": "tfibtcagent",
       "authorAgent": "Secret Dome",
       "mcpTools": [
         "check_relay_health",
         "recover_sponsor_nonce"
-      ]
+      ],
+      "install": "bun install"
     },
     {
       "name": "reputation",
@@ -2156,6 +1885,7 @@
         "write"
       ],
       "userInvocable": false,
+      "standalone": true,
       "author": "whoabuddy",
       "authorAgent": "Trustless Indra",
       "mcpTools": [
@@ -2170,7 +1900,8 @@
         "reputation_read_all_feedback",
         "reputation_read_feedback",
         "reputation_revoke_feedback"
-      ]
+      ],
+      "install": "bun install"
     },
     {
       "name": "runes",
@@ -2190,6 +1921,7 @@
         "requires-funds"
       ],
       "userInvocable": false,
+      "standalone": true,
       "author": "whoabuddy",
       "authorAgent": "Trustless Indra",
       "mcpTools": [
@@ -2202,7 +1934,8 @@
         "get_rune_balances",
         "get_rune_utxos",
         "transfer_rune"
-      ]
+      ],
+      "install": "bun install"
     },
     {
       "name": "sbor",
@@ -2226,7 +1959,9 @@
         "l2"
       ],
       "userInvocable": false,
-      "author": "sborxyz"
+      "standalone": true,
+      "author": "sborxyz",
+      "install": "bun install"
     },
     {
       "name": "sbtc",
@@ -2249,6 +1984,7 @@
         "requires-funds"
       ],
       "userInvocable": false,
+      "standalone": true,
       "author": "whoabuddy",
       "authorAgent": "Trustless Indra",
       "mcpTools": [
@@ -2258,7 +1994,8 @@
         "sbtc_get_peg_info",
         "sbtc_deposit",
         "sbtc_deposit_status"
-      ]
+      ],
+      "install": "bun install"
     },
     {
       "name": "sbtc-auto-funnel",
@@ -2282,8 +2019,10 @@
         "l2"
       ],
       "userInvocable": false,
+      "standalone": true,
       "author": "secret-mars",
-      "authorAgent": "Secret Mars"
+      "authorAgent": "Secret Mars",
+      "install": "bun install"
     },
     {
       "name": "sbtc-yield-maximizer",
@@ -2310,8 +2049,10 @@
         "l2"
       ],
       "userInvocable": false,
+      "standalone": true,
       "author": "Ololadestephen",
-      "authorAgent": "Wide Eden"
+      "authorAgent": "Wide Eden",
+      "install": "bun install"
     },
     {
       "name": "settings",
@@ -2332,6 +2073,7 @@
         "infrastructure"
       ],
       "userInvocable": false,
+      "standalone": true,
       "author": "whoabuddy",
       "authorAgent": "Trustless Indra",
       "mcpTools": [
@@ -2346,7 +2088,8 @@
         "recover_sponsor_nonce",
         "nonce_health",
         "nonce_fill_gap"
-      ]
+      ],
+      "install": "bun install"
     },
     {
       "name": "signing",
@@ -2372,6 +2115,7 @@
         "l1"
       ],
       "userInvocable": false,
+      "standalone": true,
       "author": "whoabuddy",
       "authorAgent": "Trustless Indra",
       "mcpTools": [
@@ -2385,7 +2129,8 @@
         "sip018_hash",
         "sip018_sign",
         "sip018_verify"
-      ]
+      ],
+      "install": "bun install"
     },
     {
       "name": "souldinals",
@@ -2408,6 +2153,7 @@
         "requires-funds"
       ],
       "userInvocable": false,
+      "standalone": true,
       "author": "strange-lux-agent",
       "authorAgent": "Strange Lux",
       "mcpTools": [
@@ -2416,7 +2162,8 @@
         "souldinals_list_souls",
         "souldinals_load_soul",
         "souldinals_display_soul"
-      ]
+      ],
+      "install": "bun install"
     },
     {
       "name": "stacking",
@@ -2441,6 +2188,7 @@
         "requires-funds"
       ],
       "userInvocable": false,
+      "standalone": true,
       "author": "whoabuddy",
       "authorAgent": "Trustless Indra",
       "mcpTools": [
@@ -2452,7 +2200,8 @@
         "unstake_stx",
         "get_stacking_rewards",
         "claim_stacking_rewards"
-      ]
+      ],
+      "install": "bun install"
     },
     {
       "name": "stacking-delegation",
@@ -2473,8 +2222,10 @@
         "read-only"
       ],
       "userInvocable": false,
+      "standalone": true,
       "author": "secret-mars",
-      "authorAgent": "Secret Mars"
+      "authorAgent": "Secret Mars",
+      "install": "bun install"
     },
     {
       "name": "stacking-lottery",
@@ -2498,6 +2249,7 @@
         "requires-funds"
       ],
       "userInvocable": false,
+      "standalone": true,
       "author": "whoabuddy",
       "authorAgent": "Trustless Indra",
       "mcpTools": [
@@ -2507,7 +2259,8 @@
         "stacking_lottery_start_pot",
         "stacking_lottery_claim_rewards",
         "stacking_lottery_cancel_pot"
-      ]
+      ],
+      "install": "bun install"
     },
     {
       "name": "stacks-alpha-engine",
@@ -2538,8 +2291,10 @@
         "l2"
       ],
       "userInvocable": false,
+      "standalone": true,
       "author": "cliqueengagements",
-      "authorAgent": "Micro Basilisk (Agent 77) — SP219TWC8G12CSX5AB093127NC82KYQWEH8ADD1AY | bc1qzh2z92dlvccxq5w756qppzz8fymhgrt2dv8cf5"
+      "authorAgent": "Micro Basilisk (Agent 77) — SP219TWC8G12CSX5AB093127NC82KYQWEH8ADD1AY | bc1qzh2z92dlvccxq5w756qppzz8fymhgrt2dv8cf5",
+      "install": "bun install"
     },
     {
       "name": "stacks-market",
@@ -2569,6 +2324,7 @@
         "requires-funds"
       ],
       "userInvocable": false,
+      "standalone": true,
       "author": "whoabuddy",
       "authorAgent": "Trustless Indra",
       "mcpTools": [
@@ -2583,7 +2339,8 @@
         "stacks_market_search",
         "stacks_market_sell_no",
         "stacks_market_sell_yes"
-      ]
+      ],
+      "install": "bun install"
     },
     {
       "name": "stackspot",
@@ -2607,6 +2364,7 @@
         "requires-funds"
       ],
       "userInvocable": false,
+      "standalone": true,
       "author": "whoabuddy",
       "authorAgent": "Trustless Indra",
       "mcpTools": [
@@ -2616,7 +2374,8 @@
         "stackspot_start_pot",
         "stackspot_claim_rewards",
         "stackspot_cancel_pot"
-      ]
+      ],
+      "install": "bun install"
     },
     {
       "name": "stx",
@@ -2639,6 +2398,7 @@
         "requires-funds"
       ],
       "userInvocable": false,
+      "standalone": true,
       "author": "whoabuddy",
       "authorAgent": "Trustless Indra",
       "mcpTools": [
@@ -2648,7 +2408,8 @@
         "call_contract",
         "deploy_contract",
         "get_transaction_status"
-      ]
+      ],
+      "install": "bun install"
     },
     {
       "name": "styx",
@@ -2674,6 +2435,7 @@
         "defi"
       ],
       "userInvocable": false,
+      "standalone": true,
       "author": "arc0btc",
       "authorAgent": "Trustless Indra",
       "mcpTools": [
@@ -2684,7 +2446,8 @@
         "styx_deposit",
         "styx_status",
         "styx_history"
-      ]
+      ],
+      "install": "bun install"
     },
     {
       "name": "taproot-multisig",
@@ -2706,8 +2469,10 @@
         "sensitive"
       ],
       "userInvocable": false,
+      "standalone": true,
       "author": "arc0btc",
-      "authorAgent": "Trustless Indra"
+      "authorAgent": "Trustless Indra",
+      "install": "bun install"
     },
     {
       "name": "tenero",
@@ -2734,6 +2499,7 @@
         "read-only"
       ],
       "userInvocable": false,
+      "standalone": true,
       "author": "whoabuddy",
       "authorAgent": "Trustless Indra",
       "mcpTools": [
@@ -2748,7 +2514,8 @@
         "tenero_wallet_holdings",
         "tenero_wallet_trades",
         "tenero_whale_trades"
-      ]
+      ],
+      "install": "bun install"
     },
     {
       "name": "tokens",
@@ -2769,6 +2536,7 @@
         "write"
       ],
       "userInvocable": false,
+      "standalone": true,
       "author": "whoabuddy",
       "authorAgent": "Trustless Indra",
       "mcpTools": [
@@ -2777,7 +2545,8 @@
         "get_token_info",
         "list_user_tokens",
         "get_token_holders"
-      ]
+      ],
+      "install": "bun install"
     },
     {
       "name": "transfer",
@@ -2797,13 +2566,15 @@
         "requires-funds"
       ],
       "userInvocable": false,
+      "standalone": true,
       "author": "tfibtcagent",
       "authorAgent": "Secret Dome",
       "mcpTools": [
         "transfer_stx",
         "transfer_token",
         "transfer_nft"
-      ]
+      ],
+      "install": "bun install"
     },
     {
       "name": "validation",
@@ -2825,13 +2596,15 @@
         "write"
       ],
       "userInvocable": false,
+      "standalone": true,
       "author": "whoabuddy",
       "authorAgent": "Trustless Indra",
       "mcpTools": [
         "request_validation",
         "get_validation_status",
         "get_validation_summary"
-      ]
+      ],
+      "install": "bun install"
     },
     {
       "name": "vibewatch-sentiment",
@@ -2854,8 +2627,10 @@
         "requires-funds"
       ],
       "userInvocable": false,
+      "standalone": true,
       "author": "brandonjamesmarshall",
-      "authorAgent": "Sonic Mast"
+      "authorAgent": "Sonic Mast",
+      "install": "bun install"
     },
     {
       "name": "wallet",
@@ -2882,6 +2657,7 @@
         "sensitive"
       ],
       "userInvocable": false,
+      "standalone": true,
       "author": "whoabuddy",
       "authorAgent": "Trustless Indra",
       "mcpTools": [
@@ -2897,7 +2673,8 @@
         "wallet_set_timeout",
         "wallet_status",
         "get_wallet_info"
-      ]
+      ],
+      "install": "bun install"
     },
     {
       "name": "wot",
@@ -2920,6 +2697,7 @@
         "read-only"
       ],
       "userInvocable": false,
+      "standalone": true,
       "author": "arc0btc",
       "authorAgent": "Trustless Indra",
       "mcpTools": [
@@ -2935,6 +2713,8 @@
         "list-endpoints",
         "execute-endpoint",
         "probe-endpoint",
+        "dedup-status",
+        "clear-dedup",
         "send-inbox-message",
         "scaffold-endpoint",
         "scaffold-ai-endpoint",
@@ -2949,6 +2729,7 @@
         "write"
       ],
       "userInvocable": false,
+      "standalone": true,
       "author": "whoabuddy",
       "authorAgent": "Trustless Indra",
       "mcpTools": [
@@ -2959,7 +2740,8 @@
         "scaffold_x402_ai_endpoint",
         "openrouter_integration_guide",
         "openrouter_models"
-      ]
+      ],
+      "install": "bun install"
     },
     {
       "name": "yield-dashboard",
@@ -2981,6 +2763,7 @@
         "mainnet-only"
       ],
       "userInvocable": false,
+      "standalone": true,
       "author": "cocoa007",
       "authorAgent": "Fluid Briar",
       "mcpTools": [
@@ -2988,7 +2771,8 @@
         "yield_dashboard_positions",
         "yield_dashboard_apy_breakdown",
         "yield_dashboard_rebalance"
-      ]
+      ],
+      "install": "bun install"
     },
     {
       "name": "yield-hunter",
@@ -3011,6 +2795,7 @@
         "requires-funds"
       ],
       "userInvocable": false,
+      "standalone": true,
       "author": "whoabuddy",
       "authorAgent": "Trustless Indra",
       "mcpTools": [
@@ -3018,7 +2803,8 @@
         "yield_hunter_stop",
         "yield_hunter_status",
         "yield_hunter_configure"
-      ]
+      ],
+      "install": "bun install"
     },
     {
       "name": "zest-asset-deposit-primitive",
@@ -3044,8 +2830,10 @@
         "l2"
       ],
       "userInvocable": false,
+      "standalone": true,
       "author": "macbotmini-eng",
-      "authorAgent": "Hex Stallion"
+      "authorAgent": "Hex Stallion",
+      "install": "bun install"
     },
     {
       "name": "zest-auto-repay",
@@ -3071,8 +2859,10 @@
         "l2"
       ],
       "userInvocable": false,
+      "standalone": true,
       "author": "azagh72-creator",
-      "authorAgent": "Flying Whale"
+      "authorAgent": "Flying Whale",
+      "install": "bun install"
     },
     {
       "name": "zest-borrow-asset-primitive",
@@ -3098,8 +2888,10 @@
         "l2"
       ],
       "userInvocable": false,
+      "standalone": true,
       "author": "macbotmini-eng",
-      "authorAgent": "Hex Stallion"
+      "authorAgent": "Hex Stallion",
+      "install": "bun install"
     },
     {
       "name": "zest-yield-manager",
@@ -3123,8 +2915,10 @@
         "l2"
       ],
       "userInvocable": false,
+      "standalone": true,
       "author": "secret-mars",
-      "authorAgent": "Secret Mars"
+      "authorAgent": "Secret Mars",
+      "install": "bun install"
     }
   ]
 }

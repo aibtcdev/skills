@@ -12,7 +12,7 @@ This agent manages Pillar smart wallet operations across two distinct modes. Bro
 
 - For browser-handoff mode: user must be logged into pillarbtc.com; run `pillar.ts connect` before any operation
 - For direct mode: a signing key must exist; run `pillar-direct.ts direct-create-wallet` or `key-generate` first
-- For direct mode: `PILLAR_API_KEY` environment variable enables auto-unlock of the signing key on startup
+- For direct mode: signing keys auto-unlock on first use. The password is derived from `PILLAR_API_KEY` when set, otherwise from a random per-machine secret in `~/.aibtc/pillar-signing-secret` (created on first use; keep it with `~/.aibtc/signing-keys` — without it those keys can't be unlocked). Keys from older releases, encrypted under a public default, are re-encrypted under the current password the first time they unlock.
 - Session file stored at `~/.aibtc/pillar-session.json`; signing keys at `~/.aibtc/signing-keys/`
 - All direct-mode financial operations require mainnet (`NETWORK=mainnet`)
 
@@ -53,7 +53,7 @@ This agent manages Pillar smart wallet operations across two distinct modes. Bro
 |--------------|-------|-----|
 | "Not connected to Pillar. Please use 'connect' first." | No session file found | Run `pillar.ts connect` and complete browser flow |
 | "No signing key found. Use 'direct-create-wallet' to create one." | No key at `~/.aibtc/signing-keys/` | Run `direct-create-wallet` or `key-generate` |
-| "Signing key locked and auto-unlock failed." | No PILLAR_API_KEY set | Set `PILLAR_API_KEY` env var or run `key-unlock` |
+| "Signing key locked and auto-unlock failed." | The key was stored under a different secret (another `PILLAR_API_KEY`, or a missing `~/.aibtc/pillar-signing-secret`) | Set the `PILLAR_API_KEY` the key was created with, or restore `~/.aibtc/pillar-signing-secret` |
 | "Pillar Direct tools are only available on mainnet" | Running on testnet | Set `NETWORK=mainnet` env var |
 | "Wallet name ... is not available." | Name already taken or invalid format | Choose a unique name (3-20 chars, lowercase, numbers, hyphens) |
 | "Timed out waiting for ..." | Browser flow not completed within timeout | Retry or extend timeout with `PILLAR_POLL_TIMEOUT_MS` |

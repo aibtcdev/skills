@@ -46,6 +46,7 @@ bun run lunarcrush/lunarcrush.ts oracle --symbol ETH --network testnet
 Options:
 - `--symbol` (required) — Crypto ticker symbol (e.g. `BTC`, `ETH`, `STX`).
 - `--network` (optional, default `mainnet`) — `mainnet` or `testnet`.
+- `--force` (optional) — Pay even if the empty-answer guard would refuse (see [Paid calls that return no data](#paid-calls-that-return-no-data)).
 
 Output:
 ```json
@@ -92,6 +93,7 @@ bun run lunarcrush/lunarcrush.ts score --symbol ETH --network testnet
 Options:
 - `--symbol` (required) — Crypto ticker symbol (e.g. `BTC`, `ETH`, `STX`).
 - `--network` (optional, default `mainnet`) — `mainnet` or `testnet`. Mainnet uses real STX, testnet uses Hiro testnet faucet STX.
+- `--force` (optional) — Pay even if the empty-answer guard would refuse.
 
 Output (fields surfaced by the worker; `payment_receipt` is decoded from the `payment-response` header when present):
 ```json
@@ -117,7 +119,7 @@ Output (fields surfaced by the worker; `payment_receipt` is decoded from the `pa
 
 ### health
 
-Liveness probe (free). Returns `{ ok: true, ts: ... }`.
+Liveness probe (free). Returns `{ ok: true, ts: ..., guard: { breaker: { open, consecutiveEmpty, symbols }, coolingDown: [...] } }`. `guard` is local: which paid calls the empty-answer guard would refuse right now.
 
 ```
 bun run lunarcrush/lunarcrush.ts health
@@ -149,6 +151,25 @@ Output:
   }
 }
 ```
+
+## Paid calls that return no data
+
+The worker charges for a call even when LunarCrush has no data for the symbol. A refund or a pre-check would have to live in the worker or the payment relay (see issue #393), so the skill protects the caller instead:
+
+- **Flagged output.** When a paid `score` or `oracle` comes back with `galaxy_score: null`, a `warning`, or an `UNKNOWN` verdict, the output gets a `degraded` object:
+  ```json
+  "degraded": {
+    "paid": true,
+    "reason": "galaxy_score is null (upstream failed)",
+    "claim": { "txid": "0x...", "symbol": "xyz", "endpoint": "https://.../galaxy-score/xyz", "network": "mainnet", "paid_at": "2026-11-11T12:00:00.000Z" },
+    "next_step": "..."
+  }
+  ```
+  The provider has said they will re-serve such calls by hand given the txid and symbol; `claim` is that evidence.
+- **Per-symbol cooldown.** After an empty answer, the same endpoint + symbol is refused for an hour, before any request is made, because paying again usually buys the same gap.
+- **Breaker.** After 3 consecutive empty answers for different symbols (within 10 minutes of each other), every paid call is refused for 10 minutes, so a scan cannot drain its budget against a degraded upstream. A good answer resets the count.
+
+Refusals print `{ "error": ..., "code": "LUNARCRUSH_GUARD", "kind": "symbol-cooldown" | "breaker-open", "retry_after_seconds": N, "paid": false }` and exit 1. `--force` bypasses both. State lives in `~/.aibtc/lunarcrush-guard.json` (override with `LUNARCRUSH_GUARD_STATE_FILE`).
 
 ## Pricing strategy
 

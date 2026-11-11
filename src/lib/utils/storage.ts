@@ -84,12 +84,11 @@ export interface InboxAutoReplyConfig {
   /** Inference marketplace model id. */
   model: string;
   systemPrompt: string;
-  /** Most sats spent on reply inference per UTC day. */
-  dailyCapSats: number;
   /**
-   * Most sats paid for one reply. Optional: the MCP server does not write it,
-   * and runs fall back to DEFAULT_MAX_SATS_PER_REPLY.
+   * Written as the fixed constants for older aibtc-mcp-server builds that read
+   * them from this file (1.78.0 has no default). Never read by this repo.
    */
+  dailyCapSats?: number;
   maxSatsPerReply?: number;
 }
 

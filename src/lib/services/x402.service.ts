@@ -19,11 +19,14 @@ import {
 } from "@stacks/transactions";
 import { createFungiblePostCondition } from "../transactions/post-conditions.js";
 import {
-  checkDedup,
   checkSpend,
   clearDedup,
   DuplicatePaymentError,
   generateDedupKey as generatePaymentRequestKey,
+  markDedupPaid,
+  normalizeObligationId,
+  PAYMENT_OBLIGATION_HEADER,
+  readDedupEntry,
   recordDedup,
   recordSpend,
   releaseSpend,
@@ -53,7 +56,13 @@ import type { Account } from "../transactions/builder.js";
 import { getWalletManager } from "./wallet-manager.js";
 import { formatStx, formatSbtc } from "../utils/formatting.js";
 import { getSbtcService } from "./sbtc.service.js";
-import { getHiroApi } from "./hiro-api.js";
+import { getHiroApi, getStacksClient, HiroApiError } from "./hiro-api.js";
+import {
+  reconcileDedupEntry,
+  type ChainTx,
+  type DedupChainReader,
+  type PaymentIntent,
+} from "./x402-dedup-reconcile.js";
 import { createHash } from "node:crypto";
 import { InsufficientBalanceError } from "../utils/errors.js";
 import { getContracts, parseContractId } from "../config/contracts.js";
@@ -124,6 +133,9 @@ export type X402PaymentAsset = "sBTC" | "STX";
 
 const PAYMENT_ASSETS: ReadonlySet<string> = new Set(["sBTC", "STX"]);
 
+/** Request config plus the obligation id lifted off the headers (see createApiClient). */
+type X402RequestConfig = { x402ObligationId?: string };
+
 export interface CreateApiClientOptions {
   /** Pay with this asset when the challenge offers it; unset = first Stacks option. */
   preferredAsset?: X402PaymentAsset;
@@ -140,26 +152,74 @@ export function resolvePreferredAsset(raw: string | undefined): X402PaymentAsset
 }
 
 /**
- * Pick the challenge option to pay. Without a preference: the first
- * `stacks:` option (the rule every earlier release used). With one: the first
- * `stacks:` option whose asset is that token — native `STX` literally, sBTC
- * by the same contract-id test the transaction builders use. Returns null
- * when no Stacks option exists, or none carries the preferred asset; the
- * caller reports what was offered.
+ * Pick the challenge option to pay: the first `stacks:` option this client
+ * would actually sign for in `payable.mode` on `payable.network`, using the
+ * same allowlist as the builder for that mode (resolveDirectPaymentAsset or
+ * resolveSponsoredPaymentTokenType). With a preference, the asset must also
+ * be that token. Options the builder would refuse (a lookalike
+ * `*.sbtc-token`, padding, any other contract) are skipped, so a payable
+ * option later in `accepts` is not lost behind one that would be refused
+ * (#464). Wire order is kept among payable options. Returns null when none
+ * qualifies; the caller reports what was offered (see
+ * findStacksNetworkMismatch). Offers on the other Stacks network are skipped
+ * too (#469). The builders still check the chosen asset again before signing.
  */
 export function selectStacksPaymentOption(
   accepts: readonly PaymentRequirementsV2[],
-  preferredAsset?: X402PaymentAsset
+  preferredAsset: X402PaymentAsset | undefined,
+  payable: { network: Network; mode: X402PaymentMode }
 ): PaymentRequirementsV2 | null {
-  const stacksOptions = accepts.filter((opt) => typeof opt.network === "string" && opt.network.startsWith("stacks:"));
-  if (!preferredAsset) return stacksOptions[0] ?? null;
-  const matches = (opt: PaymentRequirementsV2) => {
-    if (typeof opt.asset !== "string") return false;
-    return preferredAsset === "STX"
-      ? /^stx$/i.test(opt.asset)
-      : detectTokenType(opt.asset) === "sBTC";
+  const payableAs = (opt: PaymentRequirementsV2): X402PaymentAsset | null => {
+    if (typeof opt.network !== "string" || !opt.network.startsWith("stacks:")) return null;
+    // An offer on the other Stacks network is never payable from this wallet;
+    // skipping it keeps it from masking a later offer on the wallet's network
+    // (#469). An unparseable chain id stays eligible: the callers' network
+    // guards decide it, as before.
+    const chainNetwork = getNetworkFromStacksChainId(opt.network);
+    if (chainNetwork !== null && chainNetwork !== payable.network) return null;
+    if (typeof opt.asset !== "string") return null;
+    try {
+      return payable.mode === "direct"
+        ? resolveDirectPaymentAsset(opt.asset, payable.network).kind
+        : resolveSponsoredPaymentTokenType(opt.asset, payable.network);
+    } catch {
+      return null;
+    }
   };
-  return stacksOptions.find(matches) ?? null;
+  return (
+    accepts.find((opt) => {
+      const kind = payableAs(opt);
+      return kind !== null && (!preferredAsset || kind === preferredAsset);
+    }) ?? null
+  );
+}
+
+/**
+ * When selectStacksPaymentOption found nothing, the Stacks network the
+ * challenge does offer, if it names only networks other than the wallet's.
+ * Lets the caller report a network mismatch instead of an asset refusal.
+ * Returns null when any Stacks option is on the wallet's network (or has an
+ * unparseable chain id): the refusal is then about the asset.
+ */
+export function findStacksNetworkMismatch(
+  accepts: readonly PaymentRequirementsV2[],
+  network: Network
+): Network | null {
+  let other: Network | null = null;
+  for (const opt of accepts) {
+    if (typeof opt.network !== "string" || !opt.network.startsWith("stacks:")) continue;
+    const chainNetwork = getNetworkFromStacksChainId(opt.network);
+    if (chainNetwork === null || chainNetwork === network) return null;
+    other ??= chainNetwork;
+  }
+  return other;
+}
+
+function networkMismatchMessage(endpointNetwork: Network, walletNetwork: Network): string {
+  return (
+    `Network mismatch: endpoint requires ${endpointNetwork} but wallet is configured for ${walletNetwork}. ` +
+    `Switch to a ${endpointNetwork} wallet or use a ${walletNetwork} endpoint.`
+  );
 }
 
 /** Fee clamps by transaction type (micro-STX), mirrored from utils/fee.ts. */
@@ -401,7 +461,115 @@ export async function buildSponsoredSbtcTransfer(
     ],
     sponsored: true,
     fee: 0n,
+    // The builder looks up the sender nonce itself; use the configured Stacks API.
+    client: await getStacksClient(account.network),
   });
+}
+
+/**
+ * Chain reads for duplicate-guard reconciliation, from the configured Stacks
+ * API. A 404 for a txid means "never seen"; any other failure throws, and the
+ * reconcile rule turns that into a refusal.
+ */
+export function createDedupChainReader(network: Network): DedupChainReader {
+  const hiro = getHiroApi(network);
+  const PAGE = 50;
+  const MAX_PAGES = 4;
+  return {
+    async getTransaction(txid) {
+      try {
+        return (await hiro.getTransaction(`0x${txid.replace(/^0x/, "")}`)) as unknown as ChainTx;
+      } catch (error) {
+        if (error instanceof HiroApiError && error.status === 404) return null;
+        throw error;
+      }
+    },
+    async getNonceInfo(address) {
+      return hiro.getNonceInfo(address);
+    },
+    async findTransactionByNonce(address, nonce) {
+      // Hiro has no "transaction by sender and nonce" route: look in the
+      // sender's mempool, then walk its recent history (newest first) until
+      // the nonce is found or the walk passes below it.
+      const mempool = await hiro.getMempoolTransactions({ sender_address: address, limit: PAGE });
+      const pending = mempool.results.find((tx) => tx.sender_address === address && tx.nonce === nonce);
+      if (pending) return pending as unknown as ChainTx;
+      for (let page = 0; page < MAX_PAGES; page++) {
+        const history = await hiro.getAccountTransactions(address, { limit: PAGE, offset: page * PAGE });
+        let passedBelow = false;
+        for (const tx of history.results as unknown as ChainTx[]) {
+          if (tx.sender_address !== address || typeof tx.nonce !== "number") continue;
+          if (tx.nonce === nonce) return tx;
+          if (tx.nonce < nonce) passedBelow = true;
+        }
+        if (passedBelow || history.results.length < PAGE) return null;
+      }
+      return null;
+    },
+  };
+}
+
+/**
+ * The duplicate rail. No record: returns. A record inside the TTL, or one
+ * already reconciled as paid: refuses. A record past the TTL: reconciles it
+ * against the chain and refuses unless the earlier payment provably can never
+ * settle. Returns the nonce the new payment must use, when the verdict
+ * depends on it. Runs inside the guard lock.
+ */
+async function checkPriorPayment(
+  account: Account,
+  requestKey: string,
+  terms: { asset: DirectPaymentAsset; amount: bigint; payTo: string },
+  policy: DirectPaymentPolicy,
+  chainReader: DedupChainReader
+): Promise<bigint | undefined> {
+  const prior = await readDedupEntry(requestKey, policy);
+  if (!prior) return undefined;
+  const ageMs = Date.now() - prior.timestamp;
+  const ageSeconds = Math.round(ageMs / 1000);
+  const clearHint = `bun run x402/x402.ts clear-dedup --txid ${prior.txid}`;
+  const paidRefusal = (paidTxid: string) =>
+    new DuplicatePaymentError(
+      `Direct x402 payment refused: the earlier payment for this identical request (${ageSeconds}s ago) ` +
+        `confirmed on chain (txid ${paidTxid}), so paying again would pay twice. If the server did not ` +
+        `deliver, ask the provider to re-serve against that txid. To buy the same thing again on purpose, ` +
+        `send a new ${PAYMENT_OBLIGATION_HEADER} header, or clear the record: ${clearHint}`,
+      paidTxid,
+      ageMs,
+      "paid"
+    );
+
+  if (prior.paidTxid) throw paidRefusal(prior.paidTxid);
+  if (ageMs <= policy.dedupTtlMs) {
+    const ttlSeconds = Math.round(policy.dedupTtlMs / 1000);
+    throw new DuplicatePaymentError(
+      `Direct x402 payment refused: an identical request was already paid ${ageSeconds}s ago ` +
+        `(txid ${prior.txid}) and its outcome is not known. Check that transaction before paying again. ` +
+        `After ${ttlSeconds}s (X402_DEDUP_TTL_SECONDS) a retry checks it on chain and pays only if the ` +
+        `earlier payment provably cannot settle.`,
+      prior.txid,
+      ageMs
+    );
+  }
+
+  const intent: PaymentIntent = {
+    payer: account.address,
+    payTo: terms.payTo,
+    amount: terms.amount,
+    asset: terms.asset.kind === "STX" ? "STX" : terms.asset.contractId,
+  };
+  const verdict = await reconcileDedupEntry(prior, intent, chainReader);
+  if (verdict.action === "clear") return verdict.requireNonce;
+  if (verdict.action === "paid") {
+    await markDedupPaid(requestKey, prior.txid, verdict.paidTxid, policy);
+    throw paidRefusal(verdict.paidTxid);
+  }
+  throw new DuplicatePaymentError(
+    `Direct x402 payment refused: an identical request was paid ${ageSeconds}s ago (txid ${prior.txid}) ` +
+      `and it cannot yet be shown that the payment will never settle: ${verdict.reason}.`,
+    prior.txid,
+    ageMs
+  );
 }
 
 /**
@@ -415,7 +583,9 @@ export async function buildDirectPaymentTransaction(
   option: { asset: string; amount: string; payTo: string; maxTimeoutSeconds?: number },
   policy: DirectPaymentPolicy,
   /** Request identity for the cross-process duplicate guard; omit to skip it (unit tests only). */
-  requestKey?: string
+  requestKey?: string,
+  /** Chain reads for reconciling an expired duplicate record; defaults to the configured Stacks API. */
+  chainReader: DedupChainReader = createDedupChainReader(account.network)
 ): Promise<DirectPaymentBuild> {
   const asset = resolveDirectPaymentAsset(option.asset, account.network);
   const amount = parseDirectPaymentAmount(option.amount, asset, policy);
@@ -440,18 +610,11 @@ export async function buildDirectPaymentTransaction(
   // the earlier txid. This is what stops "retry after an ambiguous failure"
   // from paying twice — the per-instance guard cannot, since callers build a
   // client per invocation.
+  // Past the TTL the record is reconciled against the chain instead of
+  // forgotten (#460); a "clear" verdict may pin the new payment's nonce.
+  let requiredNonce: bigint | undefined;
   if (requestKey) {
-    const prior = await checkDedup(requestKey, policy);
-    if (prior) {
-      const ageSeconds = Math.round((Date.now() - prior.timestamp) / 1000);
-      throw new DuplicatePaymentError(
-        `Direct x402 payment refused: an identical request was already paid ${ageSeconds}s ago ` +
-          `(txid ${prior.txid}). Check that transaction before paying again; the guard clears after ` +
-          `${Math.round(policy.dedupTtlMs / 1000)}s (X402_DEDUP_TTL_SECONDS).`,
-        prior.txid,
-        Date.now() - prior.timestamp
-      );
-    }
+    requiredNonce = await checkPriorPayment(account, requestKey, { asset, amount, payTo }, policy, chainReader);
   }
 
   const txType = asset.kind === "sBTC" ? "contract_call" : "token_transfer";
@@ -521,6 +684,16 @@ export async function buildDirectPaymentTransaction(
         `(${error instanceof Error ? error.message : String(error)}).`
     );
   }
+  if (requiredNonce !== undefined && nonce !== requiredNonce) {
+    // The earlier payment was cleared on the promise that this one takes its
+    // nonce, so at most one of the two can be mined. The nonce moved between
+    // the check and now; the record still stands, and a retry re-checks it.
+    throw new Error(
+      `Direct x402 payment refused: the earlier payment for this request was signed at nonce ` +
+        `${requiredNonce}, which was unused a moment ago, but the next nonce is now ${nonce}. ` +
+        `Retry so the earlier payment is checked again.`
+    );
+  }
 
   const networkName = getStacksNetwork(account.network);
   let transaction: StacksTransactionWire;
@@ -555,7 +728,15 @@ export async function buildDirectPaymentTransaction(
   // Record BEFORE the bytes leave the process: a crash between signing and the
   // paid request must still leave a trace, because the server may broadcast.
   const txid = transaction.txid();
-  if (requestKey) await recordDedup(requestKey, txid, policy);
+  if (requestKey) {
+    await recordDedup(requestKey, txid, policy, {
+      nonce: nonce.toString(),
+      payer: account.address,
+      payTo,
+      amount: amount.toString(),
+      asset: asset.kind === "STX" ? "STX" : asset.contractId,
+    });
+  }
   const spendDay = await recordSpend(account.address, spends, policy);
 
   return { transaction, txid, fee, nonce, asset, amount, spends, spendDay };
@@ -1117,6 +1298,32 @@ export async function createApiClient(
   const account = await getAccount();
   const axiosInstance = createBaseAxiosInstance(url);
 
+  // Interceptor 0 (request): lift a caller's X-Payment-Obligation-Id off the
+  // outgoing headers, so no endpoint ever sees it (not even the unpaid first
+  // request), and keep it on the config for the duplicate guard's key (#460).
+  axiosInstance.interceptors.request.use((config) => {
+    const headers = config.headers as unknown as
+      | { get?: (name: string) => unknown; delete?: (name: string) => boolean }
+      | Record<string, unknown>
+      | undefined;
+    if (!headers) return config;
+    let raw: unknown;
+    if (typeof (headers as { get?: unknown }).get === "function") {
+      const axiosHeaders = headers as { get: (name: string) => unknown; delete: (name: string) => boolean };
+      raw = axiosHeaders.get(PAYMENT_OBLIGATION_HEADER);
+      axiosHeaders.delete(PAYMENT_OBLIGATION_HEADER);
+    } else {
+      for (const name of Object.keys(headers)) {
+        if (name.toLowerCase() !== PAYMENT_OBLIGATION_HEADER) continue;
+        raw = (headers as Record<string, unknown>)[name];
+        delete (headers as Record<string, unknown>)[name];
+      }
+    }
+    const obligationId = normalizeObligationId(raw);
+    if (obligationId !== undefined) (config as X402RequestConfig).x402ObligationId = obligationId;
+    return config;
+  });
+
   // Interceptor 1 (FIFO): max-1-payment-attempt guard.
   // On the first 402, increments the counter and re-rejects so Interceptor 2 can handle it.
   // On a second 402 (would-be retry loop), rejects with a user-facing error.
@@ -1230,20 +1437,32 @@ export async function createApiClient(
           );
         }
 
-        // Select the Stacks payment option: the first one by default, or the
-        // first carrying the caller's preferred asset.
-        const selectedOption = selectStacksPaymentOption(paymentRequired.accepts, preferredAsset);
+        // Select the first Stacks option this mode's builder would pay (and,
+        // with a preference, in the caller's preferred asset).
+        const selectedOption = selectStacksPaymentOption(paymentRequired.accepts, preferredAsset, {
+          network: account.network,
+          mode: paymentMode,
+        });
 
         if (!selectedOption) {
-          if (preferredAsset && paymentRequired.accepts.some((opt) => opt.network?.startsWith("stacks:"))) {
-            const assets = paymentRequired.accepts
-              .filter((opt) => opt.network?.startsWith("stacks:"))
-              .map((opt) => opt.asset)
-              .join(", ");
+          // Only the other Stacks network is offered: say so, not "no asset" (#469).
+          const otherNetwork = findStacksNetworkMismatch(paymentRequired.accepts, account.network);
+          if (otherNetwork) {
+            return Promise.reject(new Error(networkMismatchMessage(otherNetwork, account.network)));
+          }
+          const stacksAssets = paymentRequired.accepts
+            .filter((opt) => typeof opt.network === "string" && opt.network.startsWith("stacks:"))
+            .map((opt) => opt.asset);
+          if (stacksAssets.length > 0) {
+            const canonical = getContracts(account.network).SBTC_TOKEN;
             return Promise.reject(
               new Error(
-                `The endpoint does not accept ${preferredAsset} on Stacks. Offered assets: ${assets}. ` +
-                  `Pay with one of those or drop the asset preference.`
+                (preferredAsset
+                  ? `The endpoint does not accept ${preferredAsset} on Stacks in a form this client pays. `
+                  : "The endpoint offers no Stacks option this client pays. ") +
+                  `Offered assets: ${stacksAssets.join(", ")}. This client pays only native STX or the canonical ` +
+                  `sBTC token ${canonical} on ${account.network}` +
+                  (preferredAsset ? "; pay with another offered asset or drop the asset preference." : ".")
               )
             );
           }
@@ -1257,10 +1476,7 @@ export async function createApiClient(
         const paymentNetwork = getNetworkFromStacksChainId(selectedOption.network);
         if (paymentNetwork && paymentNetwork !== account.network) {
           return Promise.reject(
-            new Error(
-              `Network mismatch: endpoint requires ${paymentNetwork} but wallet is configured for ${account.network}. ` +
-              `Switch to a ${paymentNetwork} wallet or use a ${account.network} endpoint.`
-            )
+            new Error(networkMismatchMessage(paymentNetwork, account.network))
           );
         }
 
@@ -1296,6 +1512,7 @@ export async function createApiClient(
             payTo: selectedOption.payTo,
             amount: selectedOption.amount,
             asset: selectedOption.asset,
+            obligationId: (requestConfig as X402RequestConfig).x402ObligationId,
           });
           directBuild = await buildDirectPaymentTransaction(
             account,
@@ -1324,6 +1541,7 @@ export async function createApiClient(
             memo: "",
             sponsored: true,
             fee: 0n,
+            client: await getStacksClient(account.network),
           });
         }
         }
@@ -1427,7 +1645,8 @@ export async function createApiClient(
           try {
             await clearDedup(directRequestKey, directBuild.txid, directPolicy as DirectPaymentPolicy);
           } catch {
-            // Leaving the record only makes the guard stricter for its TTL.
+            // Leaving the record only makes the guard stricter: past the TTL a
+            // retry reconciles it against the chain instead of paying blind.
           }
         };
         const paymentStatusBaseUrl = resolvePaymentStatusBaseUrl(
