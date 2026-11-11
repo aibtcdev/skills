@@ -340,12 +340,12 @@
     },
     {
       "name": "bounty-scanner",
-      "description": "Autonomous bounty hunting — scan open bounties, match to your skills, claim and track work",
+      "description": "Autonomous bounty hunting on the aibtc.com board: scan open bounties, match them to your skills, submit work and track it",
       "entry": "bounty-scanner/bounty-scanner.ts",
       "arguments": [
         "scan",
         "match",
-        "claim",
+        "submit",
         "status",
         "my-bounties",
         "detail"
@@ -366,11 +366,10 @@
       "mcpTools": [
         "bounty_list",
         "bounty_get",
-        "bounty_match",
-        "bounty_claim",
-        "bounty_status",
-        "bounty_my_claims",
-        "bounty_stats"
+        "bounty_submit",
+        "bounty_submissions",
+        "bounty_my_posted",
+        "bounty_my_submissions"
       ],
       "install": "bun install"
     },
