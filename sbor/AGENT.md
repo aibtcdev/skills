@@ -34,8 +34,18 @@ than proceeding. Route around the offer, do not override the check.
 on-chain. Either way, do not infer a rate from an absence.
 
 **A withdrawn fixing is not a reading, and a gap is not a value.** `rate --date`
-returns `withdrawn: true` and the reason instead of the figure. `history` lists
-the days an index was not published in `notPublished`: the series has gaps there.
+returns `withdrawn: true` and the reason instead of the figure, and so do
+`markets` and `chains` for the current fixing. If a response says
+`withdrawalCheck: "unconfirmed"`, the record of withdrawals has not caught up
+with the fixing yet: read it again before acting. `history` lists the days an
+index was not published in `notPublished`, each with SBOR's reason: the series
+has gaps there.
+
+**A market with `excluded: true` is not part of the rate.** It carries weight 0
+today. Never route to it because its rate is the lowest listed.
+
+**A stale inversion is not live.** If `inversions` returns `stale: true`, the
+check ran on an old fixing, whatever its `status` says.
 
 **Read `venueCount` before quoting, not the weight.** An index covering one venue
 is a reading of that venue, not a market average, whatever the constituent
