@@ -71,8 +71,11 @@ const die = (msg: string): never => handleError(new Error(msg));
    The 10 second limit covers the whole request, body included, and a body
    that stalls or does not parse is reported with its URL like any other
    failure. */
-async function fetchSbor(path: string, accept: string, as: "json" | "text"): Promise<unknown> {
+async function fetchSbor(path: string, accept: string, as: "json" | "text", soft = false): Promise<unknown> {
   const url = `${BASE}${path}`;
+  /* soft: a supporting file whose absence the caller reports as a caveat,
+     rather than failing the whole command. */
+  const fail = (msg: string) => soft ? null : die(msg);
   let r: Response;
   try {
     r = await fetch(url, {
@@ -80,13 +83,13 @@ async function fetchSbor(path: string, accept: string, as: "json" | "text"): Pro
       signal: AbortSignal.timeout(TIMEOUT_MS)
     });
   } catch (e) {
-    return die(`${timeoutOr(e, url, "did not respond")}. Do not substitute an estimate.`);
+    return fail(`${timeoutOr(e, url, "did not respond")}. Do not substitute an estimate.`);
   }
-  if (!r.ok) return die(`SBOR responded ${r.status} for ${url}. Do not substitute an estimate.`);
+  if (!r.ok) return fail(`SBOR responded ${r.status} for ${url}. Do not substitute an estimate.`);
   try {
     return as === "json" ? await r.json() : await r.text();
   } catch (e) {
-    return die(`${timeoutOr(e, url, "did not finish sending")}. Do not substitute an estimate.`);
+    return fail(`${timeoutOr(e, url, "did not finish sending")}. Do not substitute an estimate.`);
   }
 }
 const timeoutOr = (e: unknown, url: string, what: string) =>
@@ -98,6 +101,8 @@ const timeoutOr = (e: unknown, url: string, what: string) =>
 async function get<T>(path: string): Promise<T> {
   return (await fetchSbor(path, "application/json", "json")) as T;
 }
+/* history.json for the withdrawal check: null when it cannot be read. */
+const getHistory = () => fetchSbor(HISTORY, "application/json", "json", true);
 async function getText(path: string): Promise<string> {
   return (await fetchSbor(path, "text/plain", "text")) as string;
 }
@@ -145,6 +150,8 @@ const ON_CHAIN = {
 const bps = (a: number, b: number) => Math.round((a - b) * 100);
 
 const STALE_AFTER_HOURS = 48;
+/* The inversion monitor runs every three hours: two missed runs is stale. */
+const MONITOR_STALE_HOURS = 6;
 /* A fixing dated more than this far ahead of the local clock is treated as
    unusable: either the timestamp is wrong or this host's clock is, and in both
    cases the age of the data is unknown. A small allowance covers ordinary
@@ -273,8 +280,9 @@ const HISTORY_KEYS: Record<string, string> = { btcUsdc: BTC_REF };
    withdrawal then cannot be ruled out, which is never read as "none". */
 type Withdrawals = { byLabel: Record<string, string>; checked: boolean };
 function withdrawalsOn(h: unknown, date: string): Withdrawals {
-  if (!Array.isArray(h))
-    die(`The history at ${BASE}${HISTORY} could not be read as a list, so a withdrawal cannot be ruled out. Do not substitute an estimate.`);
+  /* history.json down or not a list: the check cannot be made, which is
+     reported the same way as a missing row. */
+  if (!Array.isArray(h)) return { byLabel: {}, checked: false };
   const row = (h as Record<string, any>[]).find(r => r?.date === date);
   const byLabel: Record<string, string> = {};
   for (const [key, v] of Object.entries(row ?? {}))
@@ -286,7 +294,7 @@ function withdrawalsOn(h: unknown, date: string): Withdrawals {
    so; compare, which returns a verdict, refuses instead. */
 const withdrawalCaveat = (w: Withdrawals, date: string) => w.checked ? {} : {
   withdrawalCheck: "unconfirmed",
-  withdrawalNote: `history.json has no row for ${date} yet, so a withdrawal of this fixing cannot be ruled out. Read it again in a few minutes before acting on it.`
+  withdrawalNote: `The record of withdrawals (history.json) has no row for ${date} yet, or could not be read, so a withdrawal of this fixing cannot be ruled out. Read it again in a few minutes before acting on it.`
 };
 const withdrawnEntry = (label: string, date: string, reason: string) => ({
   index: label, date, withdrawn: true, reason,
@@ -320,7 +328,7 @@ program.command("rate")
     }
     const path = o.date ? `/api/v1/archive/${o.date}.json` : LATEST;
     /* The fixing and the record of withdrawals are fetched together. */
-    const [d, h] = await Promise.all([get<Latest>(path), get<unknown>(HISTORY)]);
+    const [d, h] = await Promise.all([get<Latest>(path), getHistory()]);
     /* Withdrawals are checked for the current fixing too, not only past dates:
        a fixing can be withdrawn on the day it was published. */
     const day = o.date ?? fixingDate(d);
@@ -379,7 +387,7 @@ program.command("compare")
        reading either the verdict or the plain sentence cannot miss it. */
     const looksLikeFraction = rate > 0 && rate < 0.5;
 
-    const [d, h] = await Promise.all([get<Latest>(LATEST), get<unknown>(HISTORY)]);
+    const [d, h] = await Promise.all([get<Latest>(LATEST), getHistory()]);
     requireFresh(d);
 
     const ix = lookup(d, o.index);
@@ -391,7 +399,7 @@ program.command("compare")
        whose withdrawal cannot be ruled out yet does not get a verdict either. */
     const w = withdrawalsOn(h, fixingDate(d));
     if (!w.checked)
-      die(`history.json has no row for the ${fixingDate(d)} fixing yet, so a withdrawal cannot be ruled out. Refusing to return a verdict. Try again in a few minutes.`);
+      die(`The record of withdrawals (history.json) has no row for the ${fixingDate(d)} fixing yet, or could not be read, so a withdrawal cannot be ruled out. Refusing to return a verdict. Try again in a few minutes.`);
     if (w.byLabel[o.index])
       die(`Today's ${o.index} fixing was withdrawn after publication, so there is no valid benchmark to compare against. SBOR's reason: ${w.byLabel[o.index]} Refusing to return a verdict.`);
 
@@ -466,7 +474,7 @@ program.command("markets")
   .option("--index <index>", "SBOR-USD | SBOR-BTC | SBOR-STX | BTC-COLLATERAL-USDC")
   .action(async o => {
     checkIndex(o.index);
-    const [d, h] = await Promise.all([get<Latest>(LATEST), get<unknown>(HISTORY)]);
+    const [d, h] = await Promise.all([get<Latest>(LATEST), getHistory()]);
     const day = fixingDate(d);
     const w = withdrawalsOn(h, day);
     if (o.index && w.byLabel[o.index]) return out({ ...withdrawnEntry(o.index, day, w.byLabel[o.index]), ...meta(d) });
@@ -583,7 +591,7 @@ program.command("chains")
   .option("--index <index>", "only markets comparable to this index")
   .action(async o => {
     checkIndex(o.index);
-    const [d, h] = await Promise.all([get<Latest>(LATEST), get<unknown>(HISTORY)]);
+    const [d, h] = await Promise.all([get<Latest>(LATEST), getHistory()]);
     const day = fixingDate(d);
     const w = withdrawalsOn(h, day);
     if (o.index && w.byLabel[o.index]) return out({ ...withdrawnEntry(o.index, day, w.byLabel[o.index]), ...meta(d) });
@@ -628,7 +636,7 @@ program.command("chains")
         average90day: sofr.average90day ?? null,
         average180day: sofr.average180day ?? null,
         what: "The overnight cost of a dollar in the US repo market, secured by US government debt. Published by the Federal Reserve Bank of New York for the previous business day, so it does not move at weekends.",
-        howToRead: d.indices["SBOR-USD"] && !w.byLabel["SBOR-USD"]
+        howToRead: typeof d.indices["SBOR-USD"]?.borrow === "number" && typeof sofr.rate === "number" && !w.byLabel["SBOR-USD"]
           ? `A dollar on Stacks, borrowed against crypto collateral, costs ${d.indices["SBOR-USD"].borrow.toFixed(2)}%, against ${sofr.rate.toFixed(2)}% secured by Treasuries. A cheaper rate on Stacks reflects lower utilisation, not lower risk.`
           : null
       } : undefined,
@@ -643,6 +651,9 @@ program.command("inversions")
   .description("Cross-venue inversions, checked every three hours")
   .action(async () => {
     const v = await get<any>("/api/v1/inversions.json");
+    const checkedAt = Date.parse(String(v.checked ?? ""));
+    const monitorAge = Number.isFinite(checkedAt) && checkedAt <= Date.now() + 5 * 60e3
+      ? Number(((Date.now() - checkedAt) / 3600e3).toFixed(1)) : null;
     out({
       status: v.status,
       statusNote: v.statusNote,
@@ -652,8 +663,17 @@ program.command("inversions")
          whatever its status: a live-looking inversion may already be gone. */
       basedOnFixing: v.basedOnFixing ?? null,
       basedOnFixingAgeHours: typeof v.basedOnFixingAgeHours === "number" ? v.basedOnFixingAgeHours : null,
-      stale: Boolean(v.staleWarning) || (typeof v.basedOnFixingAgeHours === "number" && v.basedOnFixingAgeHours > STALE_AFTER_HOURS),
-      staleWarning: v.staleWarning ?? undefined,
+      /* The fixing's age is computed when the monitor runs, so a monitor that
+         has stopped leaves a fresh-looking number behind. The age of the
+         check itself is measured here: more than two three-hour runs old is
+         stale. */
+      checkedAgeHours: monitorAge,
+      stale: Boolean(v.staleWarning)
+        || (typeof v.basedOnFixingAgeHours === "number" && v.basedOnFixingAgeHours > STALE_AFTER_HOURS)
+        || monitorAge === null || monitorAge > MONITOR_STALE_HOURS,
+      staleWarning: v.staleWarning
+        ?? (monitorAge === null ? "The time of the last check could not be read, so this result may be out of date."
+          : monitorAge > MONITOR_STALE_HOURS ? `The monitor last ran ${monitorAge.toFixed(1)} hours ago, more than two of its three-hour runs. Treat this result as stale.` : undefined),
       count: (v.inversions || []).length,
       inversions: v.inversions,
       minimumEdgeBps: v.minimumEdgeBps,
