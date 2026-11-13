@@ -138,10 +138,18 @@ function isPaletteColor(value: string): boolean {
 
 function validatePalette(raw: string | undefined): string[] | undefined {
   if (raw === undefined || raw.trim() === "") return undefined;
-  const items = raw
-    .split("|")
-    .map((s) => s.trim())
-    .filter((s) => s.length > 0);
+  const items: string[] = [];
+  for (const segment of raw.split("|")) {
+    if (segment !== segment.trim()) {
+      throw new Error(
+        "--palette segments must not have leading or trailing whitespace (nothing was signed or paid)."
+      );
+    }
+    if (segment.length === 0) {
+      throw new Error("--palette must not contain empty segments between pipes (nothing was signed or paid).");
+    }
+    items.push(segment);
+  }
   if (items.length === 0 || items.length > 16) {
     throw new Error("--palette must contain between 1 and 16 pipe-separated colors (nothing was signed or paid).");
   }
@@ -195,10 +203,13 @@ async function paidPost(
     headers: { "Content-Type": "application/json" },
   });
 
-  const output: Record<string, unknown> = {
-    ...(typeof response.data === "object" && response.data !== null
+  const workerBody =
+    typeof response.data === "object" && response.data !== null
       ? (response.data as Record<string, unknown>)
-      : { data: response.data }),
+      : { data: response.data };
+
+  const output: Record<string, unknown> = {
+    result: workerBody,
     endpoint: `${baseUrl}${path}`,
     network: "mainnet",
     ...getDirectPaymentMetadata(response),
