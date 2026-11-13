@@ -124,16 +124,17 @@ Returns `seedPack`, `svg`, and `motionTimeline` for the same prompt in a single
 
 Every paid subcommand returns:
 
-- `success: true`
-- `data` — the generated artifact (`SeedPack`, `{ hash, svg, contentType }`,
+- `result` — the worker JSON body (`success`, `data`, `payment`, …) without
+  CLI fields overwriting worker keys
+- `result.data` — the generated artifact (`SeedPack`, `{ hash, svg, contentType }`,
   `MotionTimeline`, or `FullArtBundle`)
-- `payment` — `{ txId, sender }` reported by the worker after facilitator
+- `result.payment` — `{ txId, sender }` reported by the worker after facilitator
   settlement
 - `payment_receipt` — decoded `payment-response` header (`{ success, payer, transaction, network }`)
 - `mode`, `txid`, `txStatus`, `settlementState` — direct-mode metadata for the
   transfer that was signed. `settlementState` stays `submitted` while that
   transfer is still pending, even if the HTTP body is already 2xx
-- `endpoint` and `network`
+- `endpoint` and `network` (CLI context for the call that was made)
 
 ## Payment & Network
 

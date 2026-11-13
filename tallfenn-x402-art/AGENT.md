@@ -94,11 +94,11 @@ description: Deterministic generative-art seed packs, 512x512 SVG previews, and 
 
 ## Output handling
 
-- Extract `data.hash` from `seed-pack` or `full-bundle` as the canonical seed
+- Extract `result.data.hash` from `seed-pack` or `full-bundle` as the canonical seed
   identifier.
-- Extract `data.svg` (or `data.seedPack`, `data.motionTimeline` in
+- Extract `result.data.svg` (or `result.data.seedPack`, `result.data.motionTimeline` in
   `full-bundle`) for rendering or inscription.
-- Cite `txid` (direct-mode metadata) or `payment.txId` as the on-chain sBTC
+- Cite `txid` (direct-mode metadata) or `result.payment.txId` as the on-chain sBTC
   transfer. `settlementState` is `submitted` while the transfer is still
   pending, `confirmed` after it lands, and `failed` if it aborts. A 2xx body
   can arrive before the transfer confirms.
