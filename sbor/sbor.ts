@@ -240,6 +240,15 @@ const absentReason = (d: Latest, label: string) => {
   const w = d.withheld?.[label]?.reason;
   return typeof w === "string" && w.trim() ? w : ABSENT_REASON;
 };
+/* Every benchmark missing from a fixing, with SBOR's reason. Used by rate and
+   markets so an absence is never silent. Before its first fixing the
+   bitcoin-collateral reference did not exist yet, which is said as such. */
+const notPublishedIn = (d: Latest, date: string) => {
+  const missing = [...INDICES.filter(l => !d.indices[l]), ...(refIndex(d) ? [] : [BTC_REF])];
+  return missing.length ? missing.map(l => l === BTC_REF && date < REF_FIRST_FIXING
+    ? { index: l, withheld: false, reason: `${BTC_REF} did not exist yet. It was first published with the fixing of ${REF_FIRST_FIXING}.` }
+    : { index: l, withheld: Boolean(d.withheld?.[l]), reason: absentReason(d, l) }) : undefined;
+};
 const absent = (label: string, d: Latest, path: string = LATEST, reason: string = absentReason(d, label)) => ({
   index: label,
   published: false,
@@ -340,14 +349,9 @@ program.command("rate")
       return out(ix ? { ...summarise(ix), ...(o.index === BTC_REF && { note: REF_NOTE }), ...withdrawalCaveat(w, day), ...meta(d, path) } : absent(o.index, d, path));
     }
     const ref = refIndex(d);
-    const missing = [...INDICES.filter(l => !d.indices[l]), ...(ref ? [] : [BTC_REF])];
     out({
       indices: Object.values(d.indices).map(ix => w.byLabel[ix.label] ? wd(ix.label) : summarise(ix)),
-      notPublished: missing.length ? missing.map(l => ({
-        index: l,
-        withheld: Boolean(d.withheld?.[l]),
-        reason: absentReason(d, l)
-      })) : undefined,
+      notPublished: notPublishedIn(d, day),
       bitcoinCollateralUsdc: ref ? (w.byLabel[ref.label] ? wd(ref.label) : { ...summarise(ref), note: REF_NOTE }) : undefined,
       onChain: ON_CHAIN,
       poxReference: d.poxReference ? {
@@ -501,6 +505,10 @@ program.command("markets")
         ...(m.weight === 0 && { excluded: true, excludedNote: "Weight 0: listed, but not part of the rate today. Do not treat it as one of the venues behind the rate." })
       }))),
       withdrawn: withdrawn.length ? withdrawn : undefined,
+      /* Without --index, an index or the reference missing from the fixing is
+         named with SBOR's reason, as rate does: no sBTC markets listed is not
+         the same as no sBTC market. */
+      notPublished: o.index ? undefined : notPublishedIn(d, day),
       ...withdrawalCaveat(w, day),
       note: "Utilization is the share of supplied capital currently borrowed. It is why a rate sits where it does. Protocol yield comes from the asset, not the loan, and is not part of the lending rate.",
       ...meta(d)
@@ -642,7 +650,7 @@ program.command("chains")
       } : undefined,
       note: d.externalReference?.note,
       ...withdrawalCaveat(w, day),
-      warning: "Context only. On-chain comparisons are never constituents of an SBOR index. Aave on Ethereum and Base is read from contract state; the other venues come from DefiLlama, and each market's source field says which. Depth is total supplied, labelled by depthBasis. One market is selected per chain: a venue publishing a borrow rate and utilisation is preferred over one that does not, and depth decides between those that publish both.",
+      warning: "Context only. On-chain comparisons are never constituents of an SBOR index. Each market's source field says where it was read: from contract state, or from DefiLlama. Depth is total supplied, labelled by depthBasis. One market is selected per chain: a venue publishing a borrow rate and utilisation is preferred over one that does not, and depth decides between those that publish both.",
       ...meta(d)
     });
   });
