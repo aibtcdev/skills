@@ -1,0 +1,113 @@
+---
+name: tallfenn-x402-art-agent
+skill: tallfenn-x402-art
+description: Deterministic generative-art seed packs, 512x512 SVG previews, and keyframed motion timelines via x402 v2 on Stacks — free teaser/samples reads plus sBTC pay-per-call generation.
+---
+
+# tallfenn-x402-art agent guide
+
+## Prerequisites
+
+- Free subcommands (`meta`, `health`, `teaser`, `samples`): none. No wallet, no
+  funds, no API keys.
+- Paid subcommands (`seed-pack`, `svg-preview`, `motion-timeline`,
+  `full-bundle`): an unlocked wallet (`wallet` skill) holding at least 100 sats
+  sBTC (150 sats for `full-bundle`) plus enough STX for the transaction fee,
+  with `NETWORK=mainnet` set. The CLI signs a self-paid transfer. The relay
+  does not pay the gas. `TALLFENN_ART_URL`, if set, sends every request —
+  including the signed transfer — to that host instead of the production
+  worker. `payTo` stays pinned to `SP3F9T1HAHTMK5AV29Q9DK1VNHCQFH3F5T5FXKQAC`.
+
+## When to invoke
+
+- When an agent needs deterministic generative-art parameters (HSL palette,
+  noise seed, symmetry/density/grain traits, Art Blocks-style metadata) from a
+  text prompt (`seed-pack`).
+- When an agent needs a shareable 512x512 SVG artwork preview for an ordinal,
+  NFT prototype, or bounty deliverable (`svg-preview`).
+- When an agent needs keyframed 24 fps movement coordinates (`t`, `x`, `y`,
+  `phase`) to drive generative video or canvas animations (`motion-timeline`).
+- When an agent needs two or more of the above for the same prompt — use
+  `full-bundle` (150 sats) instead of separate 100-sat calls.
+
+## Decision logic
+
+1. **Inspect free first:** Run `teaser` or `samples` if you only need to inspect
+   the JSON structure or test a downstream parser. Never pay 100 sats just to
+   see the schema.
+2. **Pick the right paid endpoint:**
+   - Need only parameters/palette? → `seed-pack` (100 sats)
+   - Already have a `hash` and need the SVG? → `svg-preview --hash <hash>` (100 sats)
+   - Need only keyframe coordinates? → `motion-timeline` (100 sats)
+   - Need parameters + SVG (or all three)? → `full-bundle` (150 sats, saves
+     50–150 sats).
+3. **Cache by `(prompt, pieceVersion)`:** Output is strictly deterministic.
+   Never pay twice for the same prompt and version; store the JSON output and
+   reuse it locally.
+
+## Cost guardrails
+
+- Validate inputs locally before calling. `--prompt` is 1–500 characters with
+  no leading or trailing whitespace (the CLI does not trim it). `--piece-version`
+  is an integer from 1 to 1000000. `--hash` is exactly 64 lowercase hex
+  characters with no surrounding whitespace (the SHA-256 that `seed-pack` and
+  `teaser` return; the CLI does not lowercase it). `--palette` entries must be
+  `#RGB`, `#RRGGBB`, or `hsl(h, s%, l%)` (the worker
+  accepts any string that becomes a valid SVG fill, but discovery docs show HSL
+  examples). `svg-preview` returns 402 before it checks the body, so anything
+  the CLI lets through would be paid for. These checks run before the wallet,
+  so bad flags cost 0 sats.
+- Confirm sBTC balance before running a batch of prompts.
+- The CLI signs a self-paid sBTC transfer in direct mode. The relay does not
+  co-sign a fee-0 transaction, so sponsored mode is not used. `beforePay` checks
+  the same 402 that is signed: `payTo` must be
+  `SP3F9T1HAHTMK5AV29Q9DK1VNHCQFH3F5T5FXKQAC`, the asset must be mainnet sBTC
+  (the canonical contract id), the network must be `stacks:1`, and the amount must not exceed the route's
+  price (100 sats for `seed-pack`, `svg-preview`, `motion-timeline`; 150 sats
+  for `full-bundle`). A higher quote throws before anything is signed. There is
+  no earlier probe.
+- Cache successful outputs locally; do not assume a re-run is free.
+- A successful paid call clears the duplicate record, so running the same
+  command again is a new payment. After a failure or timeout where the
+  transfer may have been sent, a re-run inside `X402_DEDUP_TTL_SECONDS`
+  (default 900 seconds) is refused with `DuplicatePaymentError` and the earlier
+  txid — check that txid on Hiro before paying again. After the TTL, or when
+  no ambiguous record exists, a new run signs a new transfer. The worker may
+  cache a settled response by `(signedTx, resourceUrl)`, but the CLI never
+  reuses a signed transaction across runs.
+
+## Error handling
+
+| Error | Meaning | Action |
+| --- | --- | --- |
+| `--prompt is required` / `--hash must be exactly 64 lowercase hex characters` / `--palette entry` | Local input validation failed before wallet access | Fix CLI arguments; nothing was signed or spent |
+| `Refusing payment:` … `Nothing was signed or paid` | The 402 quote failed the route price, payTo, asset, or network check | Do not retry until the quote matches the published price and recipient. Nothing was signed |
+| `DuplicatePaymentError` | A prior attempt may have sent a transfer within `X402_DEDUP_TTL_SECONDS` (default 900s) | Read the earlier txid in the error and check Hiro before paying again |
+| `SpendLimitError` | The quote would pass the wallet's daily sBTC or STX cap | Wait for the next day or raise the cap. Nothing was signed |
+| `x402 paid request failed after the signed transfer was sent` | The signed transfer left the process and settlement is ambiguous | Read the txid in the error and check Hiro before paying again |
+| `Network mismatch: endpoint requires mainnet...` | Wallet is on testnet (`NETWORK` not set to `mainnet`) | Re-run with `NETWORK=mainnet` |
+| `Insufficient sBTC...` | Wallet has < 100 sats (or < 150 sats for `full-bundle`) | Check balance via `sbtc/sbtc.ts get-balance` and fund wallet before retrying |
+| `Insufficient STX for a direct x402 payment` | Direct mode pays STX gas for the signed sBTC transfer; sBTC alone is not enough | Fund STX on the same wallet (`stx/stx.ts get-balance`) before retrying paid subcommands |
+| `402 AMOUNT_TOO_LOW` | Payment amount below endpoint requirement | Let `createApiClient` read the advertised amount from the 402 header |
+| `400 PAYMENT_INVALID` (`recipient_mismatch`, `invalid_payload`, `transaction_failed`) | Facilitator rejected the signed transaction | Check wallet nonce/network status; do not replay the rejected tx |
+| `409 payment_identifier_conflict` | Duplicate payment identifier on facilitator | Rebuild with a fresh transaction if the prior one was not settled |
+| `502 NETWORK_ERROR` / `503 RELAY_UNAVAILABLE` | Transient facilitator or broadcast failure | Wait `retryAfter` seconds (5–30s), verify whether prior tx settled on Hiro before re-running |
+
+## Output handling
+
+- Extract `result.data.hash` from `seed-pack` or `full-bundle` as the canonical seed
+  identifier.
+- Extract `result.data.svg` (or `result.data.seedPack`, `result.data.motionTimeline` in
+  `full-bundle`) for rendering or inscription.
+- Cite `txid` (direct-mode metadata) or `result.payment.txId` as the on-chain sBTC
+  transfer. `settlementState` is `submitted` while the transfer is still
+  pending, `confirmed` after it lands, and `failed` if it aborts. A 2xx body
+  can arrive before the transfer confirms.
+
+## Safety checks
+
+- Read-only generation: the worker performs no on-chain writes beyond settling
+  the x402 payment transfer via the facilitator.
+- `beforePay` verifies `payTo` on the 402 that is signed, against
+  `SP3F9T1HAHTMK5AV29Q9DK1VNHCQFH3F5T5FXKQAC`. A mismatch fails the command
+  before any sats are spent.
