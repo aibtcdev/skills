@@ -21,8 +21,25 @@ import { printJson, handleError } from "../src/lib/utils/cli.js";
 const DEFAULT_BASE_URL = "https://tallfenn-x402-art.petrasynthetic.workers.dev";
 
 function resolveBaseUrl(): string {
-  const custom = process.env.TALLFENN_ART_URL?.trim();
-  return (custom && custom.length > 0 ? custom : DEFAULT_BASE_URL).replace(/\/+$/, "");
+  const raw = process.env.TALLFENN_ART_URL;
+  if (raw === undefined || raw.trim() === "") {
+    return DEFAULT_BASE_URL.replace(/\/+$/, "");
+  }
+  const custom = raw.trim().replace(/\/+$/, "");
+  let parsed: URL;
+  try {
+    parsed = new URL(custom);
+  } catch {
+    throw new Error(
+      `TALLFENN_ART_URL must be a valid absolute URL (e.g. https://your-worker.workers.dev). Nothing was signed or paid.`
+    );
+  }
+  if (parsed.protocol !== "https:") {
+    throw new Error(
+      `TALLFENN_ART_URL must use https (got ${parsed.protocol}). Nothing was signed or paid.`
+    );
+  }
+  return custom;
 }
 
 // ---------------------------------------------------------------------------
@@ -137,7 +154,12 @@ function isPaletteColor(value: string): boolean {
 }
 
 function validatePalette(raw: string | undefined): string[] | undefined {
-  if (raw === undefined || raw.trim() === "") return undefined;
+  if (raw === undefined) return undefined;
+  if (raw.trim() === "") {
+    throw new Error(
+      "--palette was provided but is empty or whitespace-only (nothing was signed or paid). Omit the flag for the default palette."
+    );
+  }
   const items: string[] = [];
   for (const segment of raw.split("|")) {
     if (segment !== segment.trim()) {

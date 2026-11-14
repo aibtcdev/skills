@@ -87,6 +87,7 @@ description: Deterministic generative-art seed packs, 512x512 SVG previews, and 
 | `x402 paid request failed after the signed transfer was sent` | The signed transfer left the process and settlement is ambiguous | Read the txid in the error and check Hiro before paying again |
 | `Network mismatch: endpoint requires mainnet...` | Wallet is on testnet (`NETWORK` not set to `mainnet`) | Re-run with `NETWORK=mainnet` |
 | `Insufficient sBTC...` | Wallet has < 100 sats (or < 150 sats for `full-bundle`) | Check balance via `sbtc/sbtc.ts get-balance` and fund wallet before retrying |
+| `Insufficient STX for a direct x402 payment` | Direct mode pays STX gas for the signed sBTC transfer; sBTC alone is not enough | Fund STX on the same wallet (`stx/stx.ts get-balance`) before retrying paid subcommands |
 | `402 AMOUNT_TOO_LOW` | Payment amount below endpoint requirement | Let `createApiClient` read the advertised amount from the 402 header |
 | `400 PAYMENT_INVALID` (`recipient_mismatch`, `invalid_payload`, `transaction_failed`) | Facilitator rejected the signed transaction | Check wallet nonce/network status; do not replay the rejected tx |
 | `409 payment_identifier_conflict` | Duplicate payment identifier on facilitator | Rebuild with a fresh transaction if the prior one was not settled |
