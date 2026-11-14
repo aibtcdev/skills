@@ -95,8 +95,10 @@ NETWORK=mainnet bun run tallfenn-x402-art/tallfenn-x402-art.ts svg-preview --has
 Renders a deterministic 512x512 SVG preview (`image/svg+xml` string inside JSON)
 from a seed hash (`--hash`, exactly 64 lowercase hex characters, no surrounding
 whitespace — the SHA-256 that `seed-pack` and `teaser` return) and an optional
-pipe-separated `--palette`. Each entry must be `#RGB`, `#RRGGBB`, or
-`hsl(h, s%, l%)` (for example `hsl(120, 72%, 58%)|hsl(240, 72%, 58%)`; the
+pipe-separated `--palette`. Omit the flag for the default palette; an empty or
+whitespace-only `--palette` is refused before payment. Each segment must be
+`#RGB`, `#RRGGBB`, or `hsl(h, s%, l%)` (for example
+`hsl(120, 72%, 58%)|hsl(240, 72%, 58%)`; the
 worker's discovery text shows HSL, and those strings are used as SVG fill
 colors). The worker answers 402 before it inspects the body, so a short hash or
 a non-color is refused here and costs 0 sats.
@@ -154,8 +156,9 @@ with `paymentMode: "direct"`, so `X402_PAYMENT_MODE` does not choose the mode.
 The shared per-payment cap (`X402_MAX_SATS_PER_PAYMENT`) still applies on top
 of the route price table.
 
-`TALLFENN_ART_URL`, when set, replaces the worker host for every request,
-including the POST that carries the signed transfer. `payTo` is still pinned
+`TALLFENN_ART_URL`, when set, must be an absolute `https://` URL. It replaces
+the worker host for every request, including the POST that carries the signed
+transfer. `payTo` is still pinned
 to the address above: a host that names a different recipient is refused
 before anything is signed. Leave the variable unset to use the production worker.
 
