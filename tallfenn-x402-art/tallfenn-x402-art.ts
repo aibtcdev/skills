@@ -20,26 +20,46 @@ import { printJson, handleError } from "../src/lib/utils/cli.js";
 
 const DEFAULT_BASE_URL = "https://tallfenn-x402-art.petrasynthetic.workers.dev";
 
+function isLocalDevHost(hostname: string): boolean {
+  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]";
+}
+
+/** Origin + pathname only (no query, hash, or credentials) for safe path concatenation. */
 function resolveBaseUrl(): string {
   const raw = process.env.TALLFENN_ART_URL;
   if (raw === undefined || raw.trim() === "") {
     return DEFAULT_BASE_URL.replace(/\/+$/, "");
   }
-  const custom = raw.trim().replace(/\/+$/, "");
+  if (raw !== raw.trim()) {
+    throw new Error(
+      "TALLFENN_ART_URL must not have leading or trailing whitespace (nothing was signed or paid)."
+    );
+  }
   let parsed: URL;
   try {
-    parsed = new URL(custom);
+    parsed = new URL(raw.trim());
   } catch {
     throw new Error(
-      `TALLFENN_ART_URL must be a valid absolute URL (e.g. https://your-worker.workers.dev). Nothing was signed or paid.`
+      "TALLFENN_ART_URL must be a valid absolute URL (e.g. https://your-worker.workers.dev). Nothing was signed or paid."
     );
   }
-  if (parsed.protocol !== "https:") {
+  const httpsOk = parsed.protocol === "https:";
+  const httpLocal = parsed.protocol === "http:" && isLocalDevHost(parsed.hostname);
+  if (!httpsOk && !httpLocal) {
     throw new Error(
-      `TALLFENN_ART_URL must use https (got ${parsed.protocol}). Nothing was signed or paid.`
+      `TALLFENN_ART_URL must use https (or http://localhost / http://127.0.0.1 for local wrangler dev). Got ${parsed.protocol}//${parsed.hostname}. Nothing was signed or paid.`
     );
   }
-  return custom;
+  if (parsed.username || parsed.password) {
+    throw new Error("TALLFENN_ART_URL must not include credentials in the URL (nothing was signed or paid).");
+  }
+  if (parsed.search || parsed.hash) {
+    throw new Error(
+      "TALLFENN_ART_URL must not include query or fragment (nothing was signed or paid)."
+    );
+  }
+  const path = parsed.pathname.replace(/\/+$/, "");
+  return path.length > 0 ? `${parsed.origin}${path}` : parsed.origin;
 }
 
 // ---------------------------------------------------------------------------
@@ -172,8 +192,8 @@ function validatePalette(raw: string | undefined): string[] | undefined {
     }
     items.push(segment);
   }
-  if (items.length === 0 || items.length > 16) {
-    throw new Error("--palette must contain between 1 and 16 pipe-separated colors (nothing was signed or paid).");
+  if (items.length > 16) {
+    throw new Error("--palette must contain at most 16 pipe-separated colors (nothing was signed or paid).");
   }
   for (const color of items) {
     if (!isPaletteColor(color)) {
