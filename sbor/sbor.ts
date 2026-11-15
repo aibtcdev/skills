@@ -113,6 +113,8 @@ const INDICES = ["SBOR-USD", "SBOR-BTC", "SBOR-STX"];
    a benchmark an agent can compare a loan against, so the commands that take a
    benchmark accept it too. History covers the three indices only. */
 const BTC_REF = "BTC-COLLATERAL-USDC";
+/* BTC-COLLATERAL-USDC was first published with the fixing of this date. */
+const REF_FIRST_FIXING = "2026-09-25";
 const BENCHMARKS = [...INDICES, BTC_REF];
 const checkIndex = (i?: string, allowRef = true) => {
   const ok = allowRef ? BENCHMARKS : INDICES;
@@ -234,12 +236,18 @@ const summarise = (ix: Index) => ({
 });
 
 const ABSENT_REASON = "The market could not be read, so SBOR omits the index rather than publishing a figure it cannot stand behind. Treat this as unknown, not as zero.";
+/* SBOR's own reason for withholding an index, from any record that carries
+   one: latest.json and the archive store { reason }, history.json stores the
+   text. One helper, so the two shapes cannot drift apart. null when SBOR gave
+   no reason, which means the market could not be read. */
+const withheldReason = (withheld: unknown, label: string): string | null => {
+  const v = (withheld as Record<string, unknown> | undefined)?.[label];
+  const r = typeof v === "string" ? v : (v as { reason?: unknown } | undefined)?.reason;
+  return typeof r === "string" && r.trim() ? r : null;
+};
 /* SBOR's own reason comes first: an index it withheld (a rate at or near zero
    on-chain, say) is not the same as one it could not read. */
-const absentReason = (d: Latest, label: string) => {
-  const w = d.withheld?.[label]?.reason;
-  return typeof w === "string" && w.trim() ? w : ABSENT_REASON;
-};
+const absentReason = (d: Latest, label: string) => withheldReason(d.withheld, label) ?? ABSENT_REASON;
 /* Every benchmark missing from a fixing, with SBOR's reason. Used by rate and
    markets so an absence is never silent. Before its first fixing the
    bitcoin-collateral reference did not exist yet, which is said as such. */
@@ -247,19 +255,17 @@ const notPublishedIn = (d: Latest, date: string) => {
   const missing = [...INDICES.filter(l => !d.indices[l]), ...(refIndex(d) ? [] : [BTC_REF])];
   return missing.length ? missing.map(l => l === BTC_REF && date < REF_FIRST_FIXING
     ? { index: l, withheld: false, reason: `${BTC_REF} did not exist yet. It was first published with the fixing of ${REF_FIRST_FIXING}.` }
-    : { index: l, withheld: Boolean(d.withheld?.[l]), reason: absentReason(d, l) }) : undefined;
+    : { index: l, withheld: withheldReason(d.withheld, l) !== null, reason: absentReason(d, l) }) : undefined;
 };
 const absent = (label: string, d: Latest, path: string = LATEST, reason: string = absentReason(d, label)) => ({
   index: label,
   published: false,
-  withheld: Boolean(d.withheld?.[label]),
+  withheld: withheldReason(d.withheld, label) !== null,
   reason,
   publishedThatDay: Object.keys(d.indices),
   ...meta(d, path)
 });
 
-/* BTC-COLLATERAL-USDC was first published with the fixing of this date. */
-const REF_FIRST_FIXING = "2026-09-25";
 /* The archive publishes the dates it holds. --date is checked against that
    list, not against a hard-coded first day or this host's clock, so today's
    date before the day's fixing, a gap, or a date after the last fixing all get
@@ -489,7 +495,9 @@ program.command("markets")
     const all = o.index ? (one ? [one] : []) : [...Object.values(d.indices), ...(ref ? [ref] : [])];
     const entries = all.filter(ix => !w.byLabel[ix.label]);
     const withdrawn = all.filter(ix => w.byLabel[ix.label]).map(ix => withdrawnEntry(ix.label, day, w.byLabel[ix.label]));
-    if (!all.length) return out(absent(o.index, d));
+    if (!all.length)
+      return out(o.index ? absent(o.index, d)
+        : { markets: [], notPublished: notPublishedIn(d, day), ...withdrawalCaveat(w, day), ...meta(d) });
     out({
       markets: entries.flatMap(ix => ix.markets.map(m => ({
         index: ix.label, venue: m.venue, asset: m.asset,
@@ -540,10 +548,8 @@ program.command("history")
     const notPublished = inWindow.filter(r => !r[o.index])
       .sort((a, b) => a.date.localeCompare(b.date))
       .map(r => {
-        /* history.json stores the reason as text; latest.json as { reason }. */
-        const v = r.withheld?.[o.index];
-        const reason = typeof v === "string" ? v : v?.reason;
-        return typeof reason === "string" && reason.trim()
+        const reason = withheldReason(r.withheld, o.index);
+        return reason !== null
           ? { date: r.date, withheld: true, reason }
           : { date: r.date, withheld: false, reason: ABSENT_REASON };
       });

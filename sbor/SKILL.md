@@ -68,7 +68,10 @@ the venues covered and the weight of the largest one. With `--date` it reads the
 immutable archive for that day, which is never rewritten. **The archive starts
 2026-09-03**; `--date` is checked against `/api/v1/archive-index.json`, which
 lists every date available, so a date with no fixing yet (today, before the
-day's fixing) gets a clear error rather than a 404.
+day's fixing) gets a clear error rather than a 404. An index missing from the
+fixing is listed in `notPublished` with SBOR's reason (`withheld: true` when SBOR
+chose not to publish it), never left out silently. A fixing withdrawn after
+publication comes back as `withdrawn: true` with the reason.
 
 ### compare
 
@@ -97,8 +100,10 @@ bun run sbor/sbor.ts compare --rate 4.2 --side borrow --index SBOR-USD
 
 ### markets
 
-Every venue and asset behind an index, with borrow, supply, utilisation, depth
-and weight.
+Every venue and asset behind an index, with borrow, supply, utilization, depth
+and weight. Without `--index`, indices missing from the fixing are listed in
+`notPublished` with SBOR's reason, as in `rate`. A market with `excluded: true`
+carries weight 0 and is not part of the rate.
 
 ### history
 

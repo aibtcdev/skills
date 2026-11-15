@@ -37,9 +37,12 @@ on-chain. Either way, do not infer a rate from an absence.
 returns `withdrawn: true` and the reason instead of the figure, and so do
 `markets` and `chains` for the current fixing. If a response says
 `withdrawalCheck: "unconfirmed"`, the record of withdrawals has not caught up
-with the fixing yet: read it again before acting. `history` lists the days an
-index was not published in `notPublished`, each with SBOR's reason: the series
-has gaps there.
+with the fixing yet: read it again before acting. When fewer indices come back
+than expected, read `notPublished`: `rate` and `markets` list every index (and
+the bitcoin-collateral reference) missing from the fixing, `history` every day
+an index was missing, each with SBOR's reason. `withheld: true` means SBOR chose
+not to publish it and says why; before 2026-09-25 the reference "did not exist
+yet". The series has gaps there.
 
 **A market with `excluded: true` is not part of the rate.** It carries weight 0
 today. Never route to it because its rate is the lowest listed.
