@@ -309,11 +309,13 @@ is `BOLT_TEMPORARILY_UNAVAILABLE`, and so is a 4xx that is not Bolt's own answer
 (a proxy or firewall: nothing reached Bolt, nothing is resent) or a success reply
 that is not a JSON object.
 
-Nonces: a nonce refusal that names a `txid` is never signed over
-(`BOLT_SENT_UNCONFIRMED`). Without a `txid`, `sponsor-call` and `call` sign
-again once at the nonce Bolt names; `transfer` and `credit-deposit` never do
-and fail with `BOLT_INVALID_NONCE`, because the pending transaction may be an
-earlier attempt of the same payment.
+Nonces: a nonce refusal that names a `txid` or a `feeTxid` is never signed over
+(`BOLT_SENT_UNCONFIRMED`). A pending nonce is never signed over either: the
+command fails with `BOLT_INVALID_NONCE`, because the pending transaction may be
+an earlier attempt of the same operation. Only when Bolt says the signed nonce
+is behind the account's next one (`NONCE_MISMATCH`) do `sponsor-call` and `call`
+sign again, once, at the nonce Bolt names; `transfer` and `credit-deposit`
+never sign again on their own.
 
 ## Errors
 
@@ -327,7 +329,7 @@ refusal code), `txid`, `feeTxid`, `credit`, `withdrawal` and `minimumFee`.
 | `BOLT_MAINNET_ONLY` | `NETWORK` is not `mainnet` | no |
 | `BOLT_INVALID_ARGUMENT` | a flag is missing or malformed, or `--serialized-tx` was signed by another wallet | no |
 | `BOLT_INVALID_TRANSACTION` | the transaction as built was refused | no |
-| `BOLT_INVALID_NONCE` | a transaction with this nonce from this address is pending or already used; check the address's recent transactions and run again only if the operation is not there. `transfer` and `credit-deposit` never sign again on their own | no |
+| `BOLT_INVALID_NONCE` | a transaction with this nonce from this address is pending or already used, possibly an earlier attempt of this same operation; wait for the address's pending transactions to confirm, then check its recent transactions (and `credit-ledger --nonce <n>` for `call` and `sponsor-call`) and run again only if the operation is not there (with `--serialized-tx`, sign a new transaction at the next nonce). A pending nonce is never signed over | no |
 | `BOLT_INSUFFICIENT_CREDIT` | credit below `--fee` | no |
 | `BOLT_INSUFFICIENT_BALANCE` | wallet below `amount + fee`, or below the `--fee` of a `call` | no |
 | `BOLT_FEE_TOO_LOW` | fee under the minimum; `details.minimumFee` names it. With `call`/`sponsor-call` and no `--fee`, also when the minimum is above `--max-fee` (`details.maxFee`): run again with `--fee <minimum>` or a higher `--max-fee` | no |

@@ -86,7 +86,7 @@ description: Gasless Stacks transactions via Bolt Protocol — sBTC/USDCx transf
 
 | `code` | What to do |
 |---|---|
-| `BOLT_INVALID_NONCE` | A transaction with this nonce from this address is pending or already used. `transfer` and `credit-deposit` never sign again on their own: it may be an earlier attempt of the same payment, so check the address's recent transactions and run again only if it is not there. Do not retry in a loop. |
+| `BOLT_INVALID_NONCE` | A transaction with this nonce from this address is pending or already used. No command signs over a pending nonce: it may be an earlier attempt of the same operation, so wait for the address's pending transactions to confirm, check its recent transactions (`credit-ledger --nonce <n>` for `call` and `sponsor-call`) and run again only if it is not there. Do not retry in a loop. |
 | `BOLT_INSUFFICIENT_CREDIT` | For `sponsor-call`: `credit-deposit`, wait for confirmation, `credit-balance`, then retry. For `credit-withdraw`: lower `--amount`. |
 | `BOLT_INSUFFICIENT_BALANCE` | Fund the wallet or lower `--amount`; the wallet needs `amount + fee`. For `call`: it needs the `--fee` in sBTC. |
 | `BOLT_CONTRACT_NOT_ON_CREDIT` | The target is one of Bolt's own contracts. Use `transfer`. |

@@ -4,15 +4,15 @@ import { AibtcError } from "@aibtc/skills/src/lib/utils/errors.js";
 
 // The nonce tracker writes under ~/.aibtc: replace the call the skill makes with a recorder.
 const tracked: Array<[string, number, string]> = [];
-const realTracker = await import("../src/lib/services/nonce-tracker.js");
-mock.module("../src/lib/services/nonce-tracker.js", () => ({
+const realTracker = await import("@aibtc/skills/src/lib/services/nonce-tracker.js");
+mock.module("@aibtc/skills/src/lib/services/nonce-tracker.js", () => ({
   ...realTracker,
   advanceNonce: async (address: string, nonce: number, txid?: string) => {
     tracked.push([address, nonce, txid ?? ""]);
   },
 }));
 const bolt = await import("./bolt.js");
-import type { WriteContext } from "./bolt.js";
+import type { CallFlags, WriteContext } from "./bolt.js";
 
 const SENDER = "SP3QZNX3CGT6V7PE1PBK17FCRK1TP1AT02ZHQCMVJ";
 const realFetch = globalThis.fetch;
@@ -76,6 +76,10 @@ describe("boltError", () => {
     ["insufficient balance + Nothing was charged", 400, "Insufficient sBTC balance. Nothing was charged.", {}, "BOLT_INSUFFICIENT_BALANCE"],
     ["bare Try again", 503, "Try again later", {}, "BOLT_TEMPORARILY_UNAVAILABLE"],
     ["rejected by the network", 400, "Transaction rejected by the network", {}, "BOLT_REJECTED"],
+    // STATUS_UNKNOWN is decided by the code: no wording may turn "may have gone out" into "try again".
+    ["STATUS_UNKNOWN with a Try again message", 400, "Broadcast could not be confirmed. Try again later.", { code: "STATUS_UNKNOWN" }, "BOLT_CALL_UNKNOWN"],
+    ["STATUS_UNKNOWN on a paid call", 400, "Payment status unknown; the call was not sent. Do not send again or rebuild", { code: "STATUS_UNKNOWN" }, "BOLT_CALL_UNKNOWN"],
+    ["STATUS_UNKNOWN on a withdrawal", 400, "Withdrawal status unknown; Bolt was notified. Do not send again.", { code: "STATUS_UNKNOWN" }, "BOLT_WITHDRAWAL_UNKNOWN"],
   ];
   for (const [name, status, message, body, code] of cases) {
     test(name, () => expect(bolt.boltError(status, message, body).code).toBe(code));
@@ -88,6 +92,14 @@ describe("boltError", () => {
     expect(error.suggestion).toMatch(/credit-ledger/);
   });
 
+  test("a code named after an Object.prototype member is unrecognised, not a function", () => {
+    for (const boltCode of ["constructor", "toString", "__proto__", "hasOwnProperty"]) {
+      const error = bolt.boltError(400, "x", { code: boltCode });
+      expect(error.code).toBe("BOLT_UNRECOGNIZED");
+      expect(typeof error.suggestion).toBe("string");
+    }
+  });
+
   test("details carry txid, feeTxid and credit", () => {
     const error = bolt.boltError(400, "x", { code: "CALL_NOT_SENT", feeTxid: "0xf", credit: 10, txid: "0xt" });
     expect(error.details).toMatchObject({ feeTxid: "0xf", credit: 10, txid: "0xt", boltCode: "CALL_NOT_SENT" });
@@ -97,13 +109,27 @@ describe("boltError", () => {
 describe("nonceFromRefusal", () => {
   const refusal = (message: string, details?: Record<string, unknown>) =>
     new AibtcError(message, "BOLT_INVALID_NONCE", { status: 409, ...details });
-  test("pending nonce -> the next one", () => expect(bolt.nonceFromRefusal(refusal(PENDING_MSG))).toBe(6n));
-  test("stale nonce -> the one Bolt names", () =>
-    expect(bolt.nonceFromRefusal(refusal("the transaction has 3, the next nonce for SP1 is 9"))).toBe(9n));
+  // The pending transaction may be an earlier attempt of this same call, and a refusal does not always name it.
+  test("pending nonce without txid -> none, never the next one", () => {
+    expect(bolt.nonceFromRefusal(refusal(PENDING_MSG))).toBeUndefined();
+    expect(bolt.nonceFromRefusal(refusal(PENDING_MSG, { boltCode: "NONCE_PENDING" }))).toBeUndefined();
+  });
+  test("stale nonce under NONCE_MISMATCH -> the one Bolt names", () =>
+    expect(bolt.nonceFromRefusal(refusal("the transaction has 3, the next nonce for SP1 is 9", { boltCode: "NONCE_MISMATCH" }))).toBe(9n));
+  test("a stale message without the NONCE_MISMATCH code -> none", () =>
+    expect(bolt.nonceFromRefusal(refusal("the transaction has 3, the next nonce for SP1 is 9"))).toBeUndefined());
+  test("a stale-looking message under another code -> none", () =>
+    expect(
+      bolt.nonceFromRefusal(refusal("the transaction has 3, the next nonce for SP1 is 9", { boltCode: "NONCE_PENDING" }))
+    ).toBeUndefined());
   test("stale message that is not behind -> none", () =>
-    expect(bolt.nonceFromRefusal(refusal("the transaction has 9, the next nonce for SP1 is 9"))).toBeUndefined());
-  test("a refusal that names a txid is never re-signed", () =>
-    expect(bolt.nonceFromRefusal(refusal(PENDING_MSG, { txid: "0xabc" }))).toBeUndefined());
+    expect(
+      bolt.nonceFromRefusal(refusal("the transaction has 9, the next nonce for SP1 is 9", { boltCode: "NONCE_MISMATCH" }))
+    ).toBeUndefined());
+  test("a refusal that names a txid or a payment (feeTxid) is never re-signed", () => {
+    expect(bolt.nonceFromRefusal(refusal("the transaction has 3, the next nonce for SP1 is 9", { boltCode: "NONCE_MISMATCH", txid: "0xabc" }))).toBeUndefined();
+    expect(bolt.nonceFromRefusal(refusal("the transaction has 3, the next nonce for SP1 is 9", { boltCode: "NONCE_MISMATCH", feeTxid: "0xfee" }))).toBeUndefined();
+  });
   test("other codes and non-errors -> none", () => {
     expect(bolt.nonceFromRefusal(new AibtcError(PENDING_MSG, "BOLT_REJECTED"))).toBeUndefined();
     expect(bolt.nonceFromRefusal(new Error(PENDING_MSG))).toBeUndefined();
@@ -166,6 +192,34 @@ describe("boltWrite", () => {
     expect(error.code).toBe("BOLT_SENT_UNCONFIRMED");
     expect(error.details).toMatchObject({ sender: SENDER, nonce: "7" });
     expect(error.suggestion).toMatch(/Do not sign again/);
+  });
+
+  test("a first-attempt nonce refusal says to look the operation up, by nonce for a credit write", async () => {
+    mockFetch([json(409, { message: PENDING_MSG, code: "NONCE_PENDING" })]);
+    const credit = await caught(bolt.boltWrite("/w", {}, { ...ctx, credit: true }));
+    expect(credit.code).toBe("BOLT_INVALID_NONCE");
+    expect(credit.suggestion).toMatch(/earlier attempt of this same operation.*credit-ledger --nonce 7, and run the command again/);
+    expect(credit.details).toMatchObject({ boltCode: "NONCE_PENDING" });
+    mockFetch([json(409, { message: PENDING_MSG, code: "NONCE_PENDING" })]);
+    const plain = await caught(bolt.boltWrite("/w", {}, ctx));
+    expect(plain.suggestion).toMatch(/earlier attempt of this same operation/);
+    expect(plain.suggestion).not.toMatch(/credit-ledger/);
+    // The paid-call route refuses while any transaction of the address is pending: waiting is what makes a rerun work.
+    expect(plain.suggestion).toMatch(/Wait for the address's pending transactions to confirm/);
+  });
+
+  test("a transaction passed in signed: the advice is to sign again with the next nonce, not to resend it", async () => {
+    mockFetch([json(409, { message: PENDING_MSG, code: "NONCE_PENDING" })]);
+    const error = await caught(bolt.boltWrite("/w", {}, { ...ctx, credit: true, presigned: true }));
+    expect(error.suggestion).toMatch(/credit-ledger --nonce 7, and sign the transaction again with the account's next nonce/);
+  });
+
+  test("a first-attempt nonce refusal naming only the payment of a paid call -> BOLT_SENT_UNCONFIRMED, never re-signed", async () => {
+    mockFetch([json(409, { message: PENDING_MSG, code: "NONCE_MISMATCH", feeTxid: "0xfee" })]);
+    const error = await caught(bolt.boltWrite("/w", {}, { ...ctx, credit: true }));
+    expect(error.code).toBe("BOLT_SENT_UNCONFIRMED");
+    expect(error.details).toMatchObject({ feeTxid: "0xfee" });
+    expect(error.suggestion).toMatch(/payment 0xfee/);
   });
 
   test("a credit write points at credit-ledger --nonce", async () => {
@@ -402,13 +456,36 @@ describe("signAndSend", () => {
     expect(error.details).toMatchObject({ txid: "0xdead" });
   });
 
-  test("sponsor-call: a nonce refusal without txid is signed again once, at the nonce Bolt names", async () => {
-    mockFetch([refusalReply(), json(200, { txid: "0xok" })]);
+  const staleReply = () =>
+    json(409, { message: `Invalid nonce: transaction has 3, the next nonce for ${SENDER} is 9.`, code: "NONCE_MISMATCH" });
+
+  test("sponsor-call: a pending-nonce refusal without txid is not signed over, and says to look it up", async () => {
+    const calls = mockFetch([refusalReply(), json(200, { txid: "0xok" })]);
+    const { nonces, sign } = signer();
+    const error = await caught(bolt.signAndSend(spec, write, { autoResign: true, credit: true, sign }));
+    expect(nonces.length).toBe(1);
+    expect(calls.length).toBe(1);
+    expect(error.code).toBe("BOLT_INVALID_NONCE");
+    expect(error.suggestion).toMatch(/earlier attempt of this same operation/);
+    expect(error.suggestion).toMatch(/credit-ledger --nonce 5, and run/);
+  });
+
+  test("sponsor-call: a stale-nonce refusal is signed again once, at the nonce Bolt names", async () => {
+    mockFetch([staleReply(), json(200, { txid: "0xok" })]);
     const { nonces, sign } = signer();
     const sent = await bolt.signAndSend(spec, write, { autoResign: true, sign });
-    expect(nonces).toEqual([undefined, 6n]);
+    expect(nonces).toEqual([undefined, 9n]);
     expect(sent.result.txid).toBe("0xok");
-    expect(sent.nonce).toBe(6n);
+    expect(sent.nonce).toBe(9n);
+  });
+
+  test("sponsor-call: a pending refusal on the re-signed attempt ends it with the look-it-up advice", async () => {
+    const calls = mockFetch([staleReply(), refusalReply()]);
+    const { nonces, sign } = signer();
+    const error = await caught(bolt.signAndSend(spec, write, { autoResign: true, credit: true, sign }));
+    expect(nonces).toEqual([undefined, 9n]);
+    expect(calls.length).toBe(2);
+    expect(error.suggestion).toMatch(/earlier attempt of this same operation.*credit-ledger --nonce 9, and run/);
   });
 
   test("transfer/deposit: a nonce refusal without txid is never re-signed", async () => {
@@ -418,7 +495,8 @@ describe("signAndSend", () => {
     expect(nonces.length).toBe(1);
     expect(calls.length).toBe(1);
     expect(error.code).toBe("BOLT_INVALID_NONCE");
-    expect(error.suggestion).toMatch(/earlier attempt of this same payment/);
+    expect(error.suggestion).toMatch(/earlier attempt of this same operation/);
+    expect(error.suggestion).not.toMatch(/credit-ledger/);
   });
 
   test("transfer/deposit: a stale-nonce refusal is not re-signed either", async () => {
@@ -571,6 +649,47 @@ describe("argument checks", () => {
   test("parsePostCondition refuses other amounts with BOLT_INVALID_ARGUMENT, not a SyntaxError", () => {
     for (const bad of ["1.5", "abc", "", "-1", -1, 1.5, "1e3", " 5"]) {
       expect(code(() => bolt.parsePostCondition(pc(bad)))).toBe("BOLT_INVALID_ARGUMENT");
+    }
+  });
+
+  const flags = (contract: string | undefined, extra: Partial<CallFlags> = {}): CallFlags => ({
+    contract,
+    function: "do-it",
+    args: "[]",
+    postConditionMode: "deny",
+    ...extra,
+  });
+  test("parseCallSpec builds the call from a mainnet contract principal", () => {
+    const spec = bolt.parseCallSpec(flags(`${SENDER}.my-contract`, { postConditionMode: "Allow" }));
+    expect(spec).toMatchObject({
+      contractAddress: SENDER,
+      contractName: "my-contract",
+      functionName: "do-it",
+      functionArgs: [],
+      postConditions: [],
+      postConditionMode: PostConditionMode.Allow,
+    });
+  });
+  test("parseCallSpec refuses a testnet, malformed or nameless --contract before anything is signed", () => {
+    for (const bad of [
+      "ST3QZNX3CGT6V7PE1PBK17FCRK1TP1AT02W1N0YJF.my-contract",
+      `${SENDER}.name.extra`,
+      `${SENDER}.`,
+      SENDER,
+      "my-contract",
+      undefined,
+    ]) {
+      expect(code(() => bolt.parseCallSpec(flags(bad)))).toBe("BOLT_INVALID_ARGUMENT");
+    }
+    expect(code(() => bolt.parseCallSpec(flags(`${SENDER}.c`, { function: undefined })))).toBe("BOLT_INVALID_ARGUMENT");
+  });
+  test("parseCallSpec names the alternative in its message", () => {
+    try {
+      bolt.parseCallSpec(flags(undefined), ", or --serialized-tx");
+      throw new Error("expected a throw");
+    } catch (error) {
+      expect((error as AibtcError).code).toBe("BOLT_INVALID_ARGUMENT");
+      expect((error as Error).message).toMatch(/--function, or --serialized-tx$/);
     }
   });
 
