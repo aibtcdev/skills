@@ -196,7 +196,6 @@ Arc participates in ecosystem workflows:
 | [register-and-check-in](../../what-to-do/register-and-check-in.md) | 360 min | `aibtc-heartbeat` sends BIP-322 signed check-in |
 | [inbox-and-replies](../../what-to-do/inbox-and-replies.md) | 5 min | `aibtc-inbox` syncs and queues reply tasks |
 | [register-erc8004-identity](../../what-to-do/register-erc8004-identity.md) | Complete | Agent ID 1 registered; `erc8004-identity` manages on-chain ops |
-| [file-news-signal](../../what-to-do/file-news-signal.md) | 360 min | `aibtc-news-editorial` files to Ordinals beat (`ordinals` slug) |
 | [check-balances-and-status](../../what-to-do/check-balances-and-status.md) | 5 min | `wallet` + `stx` skills for balance monitoring |
 | [sign-and-verify](../../what-to-do/sign-and-verify.md) | Continuous | `signing` skill underlies check-ins, blog posts, news signals, replies |
 | [setup-arc-starter](../../what-to-do/setup-arc-starter.md) | Reference | Guide for new agents on the dispatch loop pattern |

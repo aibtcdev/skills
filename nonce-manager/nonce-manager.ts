@@ -9,7 +9,7 @@
 
 import { Command } from "commander";
 import { acquireNonce, releaseNonce, syncNonce, getStatus, type FailureKind } from "./nonce-store.js";
-import { printJson, handleError } from "../src/lib/utils/cli.js";
+import { printJson, handleError } from "@aibtc/skills/src/lib/utils/cli.js";
 
 const program = new Command("nonce-manager")
   .description("Backup sender nonce tracker for Stacks transactions — not the primary x402 payment state machine")

@@ -7,11 +7,11 @@
  */
 
 import { Command } from "commander";
-import { NETWORK, getExplorerTxUrl } from "../src/lib/config/networks.js";
-import { getWalletManager } from "../src/lib/services/wallet-manager.js";
-import { Erc8004Service } from "../src/lib/services/erc8004.service.js";
-import { resolveFee } from "../src/lib/utils/fee.js";
-import { printJson, handleError } from "../src/lib/utils/cli.js";
+import { NETWORK, getExplorerTxUrl } from "@aibtc/skills/src/lib/config/networks.js";
+import { getWalletManager } from "@aibtc/skills/src/lib/services/wallet-manager.js";
+import { Erc8004Service } from "@aibtc/skills/src/lib/services/erc8004.service.js";
+import { resolveFee } from "@aibtc/skills/src/lib/utils/fee.js";
+import { printJson, handleError } from "@aibtc/skills/src/lib/utils/cli.js";
 
 // ---------------------------------------------------------------------------
 // Validation helpers

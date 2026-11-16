@@ -10,16 +10,16 @@
 import { Command } from "commander";
 import { existsSync, readFileSync, writeFileSync } from "fs";
 import { resolve } from "path";
-import { NETWORK } from "../src/lib/config/networks.js";
-import { getWalletManager } from "../src/lib/services/wallet-manager.js";
-import { MempoolApi, getMempoolTxUrl } from "../src/lib/services/mempool-api.js";
+import { NETWORK } from "@aibtc/skills/src/lib/config/networks.js";
+import { getWalletManager } from "@aibtc/skills/src/lib/services/wallet-manager.js";
+import { MempoolApi, getMempoolTxUrl } from "@aibtc/skills/src/lib/services/mempool-api.js";
 import {
   buildChildCommitTransaction,
   buildChildRevealTransaction,
   deriveChildRevealScript,
   lookupParentInscription,
-} from "../src/lib/transactions/child-inscription-builder.js";
-import { signBtcTransaction } from "../src/lib/transactions/bitcoin-builder.js";
+} from "@aibtc/skills/src/lib/transactions/child-inscription-builder.js";
+import { signBtcTransaction } from "@aibtc/skills/src/lib/transactions/bitcoin-builder.js";
 import {
   P2WPKH_INPUT_VBYTES,
   P2WPKH_OUTPUT_VBYTES,
@@ -28,9 +28,9 @@ import {
   TX_OVERHEAD_VBYTES,
   DUST_THRESHOLD,
   WITNESS_OVERHEAD_VBYTES,
-} from "../src/lib/config/bitcoin-constants.js";
-import { printJson, handleError } from "../src/lib/utils/cli.js";
-import type { InscriptionData } from "../src/lib/transactions/inscription-builder.js";
+} from "@aibtc/skills/src/lib/config/bitcoin-constants.js";
+import { printJson, handleError } from "@aibtc/skills/src/lib/utils/cli.js";
+import type { InscriptionData } from "@aibtc/skills/src/lib/transactions/inscription-builder.js";
 
 // ---------------------------------------------------------------------------
 // State file path (relative to cwd)

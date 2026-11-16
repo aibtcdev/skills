@@ -7,13 +7,13 @@
  */
 
 import { Command } from "commander";
-import { NETWORK, getExplorerTxUrl } from "../src/lib/config/networks.js";
-import { getAccount } from "../src/lib/services/x402.service.js";
-import { transferStx } from "../src/lib/transactions/builder.js";
-import { getTokensService } from "../src/lib/services/tokens.service.js";
-import { getNftService } from "../src/lib/services/nft.service.js";
-import { resolveFee } from "../src/lib/utils/fee.js";
-import { printJson, handleError } from "../src/lib/utils/cli.js";
+import { NETWORK, getExplorerTxUrl } from "@aibtc/skills/src/lib/config/networks.js";
+import { getAccount } from "@aibtc/skills/src/lib/services/x402.service.js";
+import { transferStx } from "@aibtc/skills/src/lib/transactions/builder.js";
+import { getTokensService } from "@aibtc/skills/src/lib/services/tokens.service.js";
+import { getNftService } from "@aibtc/skills/src/lib/services/nft.service.js";
+import { resolveFee } from "@aibtc/skills/src/lib/utils/fee.js";
+import { printJson, handleError } from "@aibtc/skills/src/lib/utils/cli.js";
 
 // ---------------------------------------------------------------------------
 // Helpers

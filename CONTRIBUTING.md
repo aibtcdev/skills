@@ -123,5 +123,5 @@ Common scopes: `wallet`, `btc`, `stx`, `sbtc`, `tokens`, `nft`, `bns`, `identity
 - TypeScript with strict mode (`tsconfig.json`)
 - Every CLI subcommand prints a **single JSON object** to stdout — no raw text output
 - Errors output as `{ "error": "descriptive message" }` with a non-zero exit code
-- Use the shared `src/lib/` modules for wallet loading, config access, network selection, and API calls
+- Use the shared `src/lib/` modules for wallet loading, config access, network selection, and API calls, imported as `@aibtc/skills/src/lib/...` (not `../src/lib/...`), then run `bun run manifest` to regenerate the skill's `package.json`
 - Run `bun run typecheck` to verify TypeScript types before committing

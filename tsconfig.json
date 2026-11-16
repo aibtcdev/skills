@@ -11,7 +11,13 @@
     "forceConsistentCasingInFileNames": true,
     "declaration": true,
     "declarationMap": true,
-    "sourceMap": true
+    "sourceMap": true,
+    // Skills import shared code as "@aibtc/skills/..." so a skill folder copied
+    // on its own resolves it from node_modules (installed from GitHub via its
+    // package.json). Inside this checkout, map it to the repo root (#473).
+    "paths": {
+      "@aibtc/skills/*": ["./*"]
+    }
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"]

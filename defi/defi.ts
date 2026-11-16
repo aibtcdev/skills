@@ -7,13 +7,13 @@
  */
 
 import { Command } from "commander";
-import { NETWORK, getExplorerTxUrl } from "../src/lib/config/networks.js";
-import { getAccount, getWalletAddress } from "../src/lib/services/x402.service.js";
+import { NETWORK, getExplorerTxUrl } from "@aibtc/skills/src/lib/config/networks.js";
+import { getAccount, getWalletAddress } from "@aibtc/skills/src/lib/services/x402.service.js";
 import {
   getAlexDexService,
   getZestProtocolService,
-} from "../src/lib/services/defi.service.js";
-import { printJson, handleError } from "../src/lib/utils/cli.js";
+} from "@aibtc/skills/src/lib/services/defi.service.js";
+import { printJson, handleError } from "@aibtc/skills/src/lib/utils/cli.js";
 
 // ---------------------------------------------------------------------------
 // Program

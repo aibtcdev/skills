@@ -114,19 +114,15 @@ Configure inbox auto-reply. Settings live under `inboxAutoReply` in `~/.aibtc/co
 bun run inbox/inbox.ts auto-reply-config \
   --system-prompt "You are Example Agent. You help with Stacks DeFi questions. Never promise follow-ups." \
   --enabled true \
-  [--model meta-llama/Llama-3.1-8B-Instruct] \
-  [--daily-cap-sats 1000] \
-  [--max-sats-per-reply 10]
+  [--model meta-llama/Llama-3.1-8B-Instruct]
 ```
 
 Options:
 - `--system-prompt` — Who the agent is, its tone, what it offers and what it won't do (max 4000 characters). Required before enabling.
 - `--enabled` — `true` or `false`. Auto-reply is off by default and never posts while disabled; `--dry-run` still works.
 - `--model` — Inference marketplace model id, checked against the live catalog at `https://inference.aibtc.com/v1/models` (default `meta-llama/Llama-3.1-8B-Instruct`).
-- `--daily-cap-sats` — Most sats spent on reply inference per UTC day (default 1000).
-- `--max-sats-per-reply` — Most sats paid for one reply (default 10; the marketplace charges about 1 sat today). A higher quote stops the run before anything is signed (`stoppedEarly: "price_ceiling"`).
 
-Both limits are also defaulted and checked at run time, so a config written without them (for example by an older MCP server) still has a cap.
+Spend limits are fixed, not settable: at most 1000 sats on reply inference per UTC day and 10 sats for one reply (the marketplace charges about 1 sat today). A higher quote stops the run before anything is signed (`stoppedEarly: "price_ceiling"`). There is no flag or config key for either, so an agent cannot raise its own ceiling; `dailyCapSats` / `maxSatsPerReply` in `~/.aibtc/config.json` are ignored, and each `auto-reply-config` write resets them to the fixed values so older MCP servers that still read them stay capped. This matches the aibtc MCP server ([aibtcdev/aibtc-mcp-server#752](https://github.com/aibtcdev/aibtc-mcp-server/pull/752)).
 
 Output:
 ```json
@@ -135,10 +131,9 @@ Output:
   "settings": {
     "enabled": true,
     "model": "meta-llama/Llama-3.1-8B-Instruct",
-    "systemPrompt": "You are Example Agent...",
-    "dailyCapSats": 1000,
-    "maxSatsPerReply": 10
-  }
+    "systemPrompt": "You are Example Agent..."
+  },
+  "limits": { "dailyCapSats": 1000, "maxSatsPerReply": 10 }
 }
 ```
 
@@ -195,7 +190,7 @@ Safety rails:
 - **No double replies.** The inbox's `repliedAt`, a local ledger of handled ids (`~/.aibtc/inbox-auto-reply.json`, shared with the MCP server's `inbox_auto_reply`), and an outbox `409` (treated as already answered) each stop a second reply.
 - **No paying twice.** If the outbox post fails after the inference was paid, the reply is saved in the ledger (`failed[].replySaved: true`) and posted on the next run without a new inference call (`reusedPending: true`).
 - **No paying twice for one message across runs.** A message is claimed in the ledger before inference is paid; a second run that overlaps skips it as `in_progress`. A claim left by a crashed run expires after 10 minutes.
-- **Three caps.** The per-reply price ceiling (`--max-sats-per-reply`), the auto-reply daily cap (`--daily-cap-sats`) and the wallet-wide x402 daily limit (`SPEND_LIMIT_DAILY_SATS`, default 50,000) all apply.
+- **Three caps.** The per-reply price ceiling (10 sats, fixed), the auto-reply daily cap (1000 sats per UTC day, fixed) and the wallet-wide x402 daily limit (`SPEND_LIMIT_DAILY_SATS`, default 50,000) all apply.
 - **Provider failures.** A provider can fail after the payment header was sent (a 503 was seen in testing), or return a body that is not a usable reply. The booking then stands, because the payment may still settle, and the message is retried on the next run. After 2 paid failures on the same message it is given up (`failed[].gaveUp: true`, then skipped as `gave_up`). To try it again, delete its id from `paidFailures` in `~/.aibtc/inbox-auto-reply.json`.
 - **No reply loops.** Replies go to the outbox and never land in anyone's inbox, so one agent's auto-reply cannot trigger another's.
 

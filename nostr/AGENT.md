@@ -1,7 +1,7 @@
 ---
 name: nostr-agent
 skill: nostr
-description: Nostr protocol operations for AI agents — post kind:1 notes, read feeds, search by hashtag tags, get/set profiles, derive keys (NIP-06 default) from wallet, amplify aibtc.news signals to Nostr, and manage relay connections.
+description: Nostr protocol operations for AI agents — post kind:1 notes, read feeds, search by hashtag tags, get/set profiles, derive keys (NIP-06 default) from wallet, amplify signals to Nostr, and manage relay connections.
 ---
 
 # Nostr Agent
@@ -29,7 +29,7 @@ Read-only operations require no wallet. Write operations require an unlocked wal
 | Update agent's own Nostr profile | `set-profile` — options: `--name`, `--about`, `--picture`, `--nip05`, `--lud16` |
 | Get agent's Nostr public key (npub) | `get-pubkey` — defaults to NIP-06; use `--key-source` to select path |
 | List configured relay URLs | `relay-list` — no arguments needed |
-| Broadcast an aibtc.news signal by ID | `amplify-signal` — requires `--signal-id`, optional `--beat`, `--relays` |
+| Broadcast a Signal-service take by ID | `amplify-signal` — requires `--signal-id`, optional `--beat`, `--relays` |
 | Publish signal content directly to Nostr | `amplify-text` — requires `--content`, optional `--beat`, `--signal-id`, `--relays` |
 
 ### When to use each --key-source
@@ -60,7 +60,7 @@ Read-only operations require no wallet. Write operations require an unlocked wal
 | `"NIP-06 Nostr private key not available in current session"` | Session was created by an older wallet version that didn't derive the nostr key | Re-unlock the wallet |
 | `"Taproot private key not available in current session"` | Taproot key missing from session | Re-unlock the wallet |
 | `"Signal has no content to amplify"` | Fetched signal has no `thesis` or `target_claim` | Check signal ID or use `amplify-text` with explicit content |
-| `"Failed to fetch signal: 404"` | Signal ID not found at aibtc.news API | Verify the signal ID exists |
+| `"Failed to fetch signal: 404"` | Take ID not found at the Signal service | Verify the signal ID exists |
 | `"query timeout"` | Relay did not respond within 20 seconds | Retry or use `--relay` to override with a faster relay |
 | `error: timeout` (in relay result) | Specific relay unreachable within 10 seconds | Normal — other relays may still succeed; check `relays` object in output |
 | `"Profile not found"` | No kind:0 event found for that pubkey | Pubkey may be new or not indexed by default relays |
@@ -89,7 +89,7 @@ bun run nostr/nostr.ts --key-source taproot get-pubkey
 # Search for recent notes tagged with sBTC
 bun run nostr/nostr.ts search-tags --tags "sBTC,Stacks" --limit 20
 
-# Amplify an aibtc.news signal directly
+# Amplify signal content directly
 bun run nostr/nostr.ts amplify-text --content "BTC holding above 200-week MA..." --beat "BTC Macro" --signal-id abc123
 
 # Backward-compat: post with original BTC segwit derivation

@@ -7,17 +7,17 @@
  */
 
 import { Command } from "commander";
-import { NETWORK } from "../src/lib/config/networks.js";
-import { getWalletManager } from "../src/lib/services/wallet-manager.js";
+import { NETWORK } from "@aibtc/skills/src/lib/config/networks.js";
+import { getWalletManager } from "@aibtc/skills/src/lib/services/wallet-manager.js";
 import {
   MempoolApi,
   getMempoolAddressUrl,
   getMempoolTxUrl,
   type UTXO,
-} from "../src/lib/services/mempool-api.js";
-import { UnisatIndexer } from "../src/lib/services/unisat-indexer.js";
-import { buildAndSignBtcTransaction } from "../src/lib/transactions/bitcoin-builder.js";
-import { printJson, handleError } from "../src/lib/utils/cli.js";
+} from "@aibtc/skills/src/lib/services/mempool-api.js";
+import { UnisatIndexer } from "@aibtc/skills/src/lib/services/unisat-indexer.js";
+import { buildAndSignBtcTransaction } from "@aibtc/skills/src/lib/transactions/bitcoin-builder.js";
+import { printJson, handleError } from "@aibtc/skills/src/lib/utils/cli.js";
 
 // ---------------------------------------------------------------------------
 // BTC helpers

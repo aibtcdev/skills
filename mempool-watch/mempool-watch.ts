@@ -7,13 +7,13 @@
  */
 
 import { Command } from "commander";
-import { NETWORK } from "../src/lib/config/networks.js";
+import { NETWORK } from "@aibtc/skills/src/lib/config/networks.js";
 import {
   getMempoolApiUrl,
   getMempoolTxUrl,
   getMempoolAddressUrl,
-} from "../src/lib/services/mempool-api.js";
-import { printJson, handleError } from "../src/lib/utils/cli.js";
+} from "@aibtc/skills/src/lib/services/mempool-api.js";
+import { printJson, handleError } from "@aibtc/skills/src/lib/utils/cli.js";
 
 const MEMPOOL_API = getMempoolApiUrl(NETWORK);
 

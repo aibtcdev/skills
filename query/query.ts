@@ -12,10 +12,10 @@ import {
   getExplorerAddressUrl,
   getExplorerContractUrl,
   getExplorerTxUrl,
-} from "../src/lib/config/networks.js";
-import { getHiroApi } from "../src/lib/services/hiro-api.js";
-import { getWalletManager } from "../src/lib/services/wallet-manager.js";
-import { printJson, handleError } from "../src/lib/utils/cli.js";
+} from "@aibtc/skills/src/lib/config/networks.js";
+import { getHiroApi } from "@aibtc/skills/src/lib/services/hiro-api.js";
+import { getWalletManager } from "@aibtc/skills/src/lib/services/wallet-manager.js";
+import { printJson, handleError } from "@aibtc/skills/src/lib/utils/cli.js";
 
 // ---------------------------------------------------------------------------
 // Address helpers

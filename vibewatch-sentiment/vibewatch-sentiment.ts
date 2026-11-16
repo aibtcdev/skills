@@ -11,8 +11,8 @@
  */
 
 import { Command } from "commander";
-import { createApiClient, resolvePreferredAsset, type X402PaymentAsset } from "../src/lib/services/x402.service.js";
-import { printJson, handleError } from "../src/lib/utils/cli.js";
+import { createApiClient, resolvePreferredAsset, type X402PaymentAsset } from "@aibtc/skills/src/lib/services/x402.service.js";
+import { printJson, handleError } from "@aibtc/skills/src/lib/utils/cli.js";
 
 // ---------------------------------------------------------------------------
 // Endpoint hosts — the API host serves both tiers; discovery lives at

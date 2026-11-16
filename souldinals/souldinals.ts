@@ -9,16 +9,16 @@
 import { readFileSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { Command } from "commander";
-import { NETWORK } from "../src/lib/config/networks.js";
-import { getWalletManager } from "../src/lib/services/wallet-manager.js";
-import { MempoolApi, getMempoolTxUrl } from "../src/lib/services/mempool-api.js";
+import { NETWORK } from "@aibtc/skills/src/lib/config/networks.js";
+import { getWalletManager } from "@aibtc/skills/src/lib/services/wallet-manager.js";
+import { MempoolApi, getMempoolTxUrl } from "@aibtc/skills/src/lib/services/mempool-api.js";
 import {
   buildCommitTransaction,
   buildRevealTransaction,
   type InscriptionData,
-} from "../src/lib/transactions/inscription-builder.js";
-import { signBtcTransaction } from "../src/lib/transactions/bitcoin-builder.js";
-import { printJson, handleError } from "../src/lib/utils/cli.js";
+} from "@aibtc/skills/src/lib/transactions/inscription-builder.js";
+import { signBtcTransaction } from "@aibtc/skills/src/lib/transactions/bitcoin-builder.js";
+import { printJson, handleError } from "@aibtc/skills/src/lib/utils/cli.js";
 
 // ---------------------------------------------------------------------------
 // Constants

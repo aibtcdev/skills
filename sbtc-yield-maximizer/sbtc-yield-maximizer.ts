@@ -5,10 +5,10 @@ import { homedir, tmpdir } from "os";
 import { extname, isAbsolute, join, resolve as resolvePath } from "path";
 import { closeSync, openSync, statSync, unlinkSync } from "fs";
 import { cvToJSON, hexToCV } from "@stacks/transactions";
-import { getWalletManager } from "../src/lib/services/wallet-manager.js";
-import { getExplorerTxUrl } from "../src/lib/config/networks.js";
-import { getZestProtocolService } from "../src/lib/services/defi.service.js";
-import { getHiroApi } from "../src/lib/services/hiro-api.js";
+import { getWalletManager } from "@aibtc/skills/src/lib/services/wallet-manager.js";
+import { getExplorerTxUrl } from "@aibtc/skills/src/lib/config/networks.js";
+import { getZestProtocolService } from "@aibtc/skills/src/lib/services/defi.service.js";
+import { getHiroApi } from "@aibtc/skills/src/lib/services/hiro-api.js";
 
 const NETWORK = "mainnet";
 const HIRO_API = "https://api.mainnet.hiro.so";

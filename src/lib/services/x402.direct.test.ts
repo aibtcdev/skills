@@ -27,6 +27,7 @@ import {
   resolvePreferredAsset,
   spendableStx,
   selectStacksPaymentOption,
+  findStacksNetworkMismatch,
   SpendLimitError,
 } from "./x402.service.js";
 
@@ -48,6 +49,22 @@ interface FakeOptions {
   balances?: { stx: string; sbtc: string; locked?: string } | "error";
   nonce?: number;
   txStatus?: string;
+  /** Per-txid answer for /extended/v1/tx/{txid}: a tx_status string, or an HTTP error status. Falls back to `txStatus`. */
+  txLookup?: Record<string, string | number>;
+  /** Overrides for /extended/v1/address/{sender}/nonces, read on every request. */
+  nonceInfo?: Partial<{
+    last_executed_tx_nonce: number | null;
+    possible_next_nonce: number;
+    detected_mempool_nonces: number[];
+  }>;
+  /** One-shot overrides consumed in order by successive nonce reads, before `nonceInfo`. */
+  nonceInfoQueue?: Array<Partial<{ last_executed_tx_nonce: number | null; possible_next_nonce: number }>>;
+  /** Confirmed history served at /extended/v1/address/{sender}/transactions. */
+  addressTxs?: unknown[];
+  /** Pending transactions served at /extended/v1/tx/mempool. */
+  mempoolTxs?: unknown[];
+  /** Headers each request to /paid arrived with, lower-cased names. */
+  seenHeaders?: Array<Record<string, string | string[] | undefined>>;
   /** When set, the paid 2xx carries a canonical checkStatusUrl hint answered with this status. */
   canonical?: { status: string; terminalReason?: string };
   /** How the paid replay is answered. */
@@ -111,7 +128,19 @@ async function startFake(sender: string, opts: FakeOptions = {}): Promise<Fake> 
         possible_next_nonce: opts.nonce ?? 7,
         detected_missing_nonces: [],
         detected_mempool_nonces: [],
+        ...(opts.nonceInfo ?? {}),
+        ...(opts.nonceInfoQueue?.shift() ?? {}),
       });
+    }
+    // Sponsored builds let @stacks/transactions look up the sender nonce (via getStacksClient).
+    // 7.6.x reads /extended/v1/.../nonces (above), 7.7+ reads v3; /v2/accounts is its fallback.
+    if (url.pathname === `/extended/v3/principals/${sender}/nonces`) {
+      hiroHits.push(url.pathname);
+      return json(200, { next_nonce: opts.nonce ?? 7 });
+    }
+    if (url.pathname === `/v2/accounts/${sender}`) {
+      hiroHits.push(url.pathname);
+      return json(200, { nonce: opts.nonce ?? 7, balance: "0x0", locked: "0x0" });
     }
     if (url.pathname === `/extended/v1/address/${sender}/balances`) {
       hiroHits.push(url.pathname);
@@ -124,9 +153,24 @@ async function startFake(sender: string, opts: FakeOptions = {}): Promise<Fake> 
         non_fungible_tokens: {},
       });
     }
+    if (url.pathname === `/extended/v1/address/${sender}/transactions`) {
+      hiroHits.push(url.pathname);
+      const all = opts.addressTxs ?? [];
+      const limit = Number(url.searchParams.get("limit") ?? 50);
+      const offset = Number(url.searchParams.get("offset") ?? 0);
+      return json(200, { limit, offset, total: all.length, results: all.slice(offset, offset + limit) });
+    }
+    if (url.pathname === "/extended/v1/tx/mempool") {
+      hiroHits.push(url.pathname);
+      const all = opts.mempoolTxs ?? [];
+      return json(200, { limit: 50, offset: 0, total: all.length, results: all });
+    }
     if (url.pathname.startsWith("/extended/v1/tx/")) {
       hiroHits.push(url.pathname);
-      return json(200, { tx_id: url.pathname.split("/").pop(), tx_status: opts.txStatus ?? "success" });
+      const id = url.pathname.split("/").pop() ?? "";
+      const answer = opts.txLookup?.[id.replace(/^0x/, "")] ?? opts.txStatus ?? "success";
+      if (typeof answer === "number") return json(answer, { error: `lookup failed for ${id}` });
+      return json(200, { tx_id: id, tx_status: answer });
     }
     if (url.pathname === "/rpc/payment-check/pay_relay_123") {
       return json(200, {
@@ -138,6 +182,7 @@ async function startFake(sender: string, opts: FakeOptions = {}): Promise<Fake> 
 
     // --- paid endpoint ---
     if (url.pathname === "/paid") {
+      opts.seenHeaders?.push({ ...req.headers });
       const signature = req.headers[X402_HEADERS.PAYMENT_SIGNATURE];
       if (!signature) {
         res.statusCode = 402;
@@ -232,29 +277,76 @@ describe("selectStacksPaymentOption", () => {
   const stx: PaymentRequirementsV2 = { scheme: "exact", network: chain, amount: "300000", asset: "STX", payTo: "SPX", maxTimeoutSeconds: 60 };
   // A non-Stacks option: the type forbids it, the wire does not.
   const evm: PaymentRequirementsV2 = { ...stx, network: "eip155:8453" as unknown as NetworkV2, asset: "0xusdc" };
+  const bareSbtc: PaymentRequirementsV2 = { ...sbtc, asset: "sBTC" };
+  const foreignSbtc: PaymentRequirementsV2 = { ...sbtc, asset: "SP000000000000000000002Q6VF78.sbtc-token" };
+  const pick = (
+    accepts: PaymentRequirementsV2[],
+    preferred?: "STX" | "sBTC",
+    mode: "direct" | "sponsored" = "direct"
+  ) => selectStacksPaymentOption(accepts, preferred, { network, mode });
 
-  test("without a preference it is the first Stacks option, whatever its asset", () => {
-    expect(selectStacksPaymentOption([sbtc, stx])).toBe(sbtc);
-    expect(selectStacksPaymentOption([stx, sbtc])).toBe(stx);
-    expect(selectStacksPaymentOption([evm, stx])).toBe(stx);
-    expect(selectStacksPaymentOption([evm])).toBeNull();
+  test("without a preference it is the first payable Stacks option", () => {
+    expect(pick([sbtc, stx])).toBe(sbtc);
+    expect(pick([stx, sbtc])).toBe(stx);
+    expect(pick([evm, stx])).toBe(stx);
+    expect(pick([evm])).toBeNull();
   });
 
   test("a preference picks by asset regardless of order", () => {
-    expect(selectStacksPaymentOption([sbtc, stx], "STX")).toBe(stx);
-    expect(selectStacksPaymentOption([sbtc, stx], "sBTC")).toBe(sbtc);
-    expect(selectStacksPaymentOption([stx, sbtc], "sBTC")).toBe(sbtc);
+    expect(pick([sbtc, stx], "STX")).toBe(stx);
+    expect(pick([sbtc, stx], "sBTC")).toBe(sbtc);
+    expect(pick([stx, sbtc], "sBTC")).toBe(sbtc);
     // sBTC matches by contract id, STX only literally: an unrelated token is neither.
-    expect(selectStacksPaymentOption([{ ...stx, asset: "SP1.other-token" }], "STX")).toBeNull();
-    expect(selectStacksPaymentOption([{ ...stx, asset: "stx" }], "STX")?.asset).toBe("stx");
+    expect(pick([{ ...stx, asset: "SP1.other-token" }], "STX")).toBeNull();
+    expect(pick([{ ...stx, asset: "stx" }], "STX")?.asset).toBe("stx");
     // Padding is refused, as the direct builder refuses it: no select-then-reject.
-    expect(selectStacksPaymentOption([{ ...stx, asset: " STX" }], "STX")).toBeNull();
+    expect(pick([{ ...stx, asset: " STX" }], "STX")).toBeNull();
   });
 
   test("a preference the challenge does not offer selects nothing", () => {
-    expect(selectStacksPaymentOption([sbtc], "STX")).toBeNull();
-    expect(selectStacksPaymentOption([stx], "sBTC")).toBeNull();
-    expect(selectStacksPaymentOption([evm], "STX")).toBeNull();
+    expect(pick([sbtc], "STX")).toBeNull();
+    expect(pick([stx], "sBTC")).toBeNull();
+    expect(pick([evm], "STX")).toBeNull();
+  });
+
+  test("skips options the builder would refuse, so a later canonical option is paid (#464)", () => {
+    for (const mode of ["direct", "sponsored"] as const) {
+      // A lookalike *.sbtc-token is refused by both builders.
+      expect(pick([foreignSbtc, sbtc], "sBTC", mode)).toBe(sbtc);
+      expect(pick([sbtc, foreignSbtc], "sBTC", mode)).toBe(sbtc);
+      expect(pick([foreignSbtc], "sBTC", mode)).toBeNull();
+      expect(pick([foreignSbtc, stx], undefined, mode)).toBe(stx);
+      expect(pick([{ ...stx, asset: "SP1.other-token" }, stx], undefined, mode)).toBe(stx);
+    }
+    // Bare "sBTC" is accepted only by the sponsored guard (compatibility).
+    expect(pick([bareSbtc, sbtc], "sBTC", "direct")).toBe(sbtc);
+    expect(pick([bareSbtc, sbtc], "sBTC", "sponsored")).toBe(bareSbtc);
+    expect(pick([bareSbtc], "sBTC", "direct")).toBeNull();
+  });
+
+  test("an offer on the other Stacks network does not mask one on the wallet's network (#469)", () => {
+    const other: Network = network === "mainnet" ? "testnet" : "mainnet";
+    const otherChain = getStacksChainId(other) as NetworkV2;
+    const wrongStx: PaymentRequirementsV2 = { ...stx, network: otherChain };
+    const wrongBareSbtc: PaymentRequirementsV2 = { ...bareSbtc, network: otherChain };
+    expect(pick([wrongStx, stx])).toBe(stx);
+    expect(pick([stx, wrongStx])).toBe(stx);
+    expect(pick([wrongBareSbtc, bareSbtc], "sBTC", "sponsored")).toBe(bareSbtc);
+    expect(pick([wrongStx])).toBeNull();
+    expect(pick([wrongStx], undefined, "sponsored")).toBeNull();
+    // An unparseable chain id is left to the callers' network guards.
+    const unknownStx: PaymentRequirementsV2 = { ...stx, network: "stacks:unknown" as NetworkV2 };
+    expect(pick([unknownStx])).toBe(unknownStx);
+  });
+
+  test("findStacksNetworkMismatch names the other network only when nothing else is offered", () => {
+    const other: Network = network === "mainnet" ? "testnet" : "mainnet";
+    const wrongStx: PaymentRequirementsV2 = { ...stx, network: getStacksChainId(other) as NetworkV2 };
+    expect(findStacksNetworkMismatch([wrongStx], network)).toBe(other);
+    expect(findStacksNetworkMismatch([evm, wrongStx], network)).toBe(other);
+    expect(findStacksNetworkMismatch([wrongStx, { ...stx, asset: "SP1.other-token" }], network)).toBeNull();
+    expect(findStacksNetworkMismatch([wrongStx, { ...stx, network: "stacks:unknown" as NetworkV2 }], network)).toBeNull();
+    expect(findStacksNetworkMismatch([evm], network)).toBeNull();
   });
 
   test("resolvePreferredAsset canonicalizes case and rejects anything else", () => {
@@ -468,8 +560,15 @@ describe("createApiClient payment modes", () => {
       txStatus: undefined,
       settlementState: undefined,
     });
-    // The sponsored path reads only the wallet balance from the Stacks API.
-    expect(f.hiroHits).toEqual([`/extended/v1/address/${sender}/balances`]);
+    // The sponsored path reads only the wallet balance and the sender nonce, both from
+    // the configured Stacks API (the nonce used to go to public Hiro regardless). Which
+    // nonce route depends on the @stacks/transactions version.
+    expect(f.hiroHits[0]).toBe(`/extended/v1/address/${sender}/balances`);
+    expect(f.hiroHits.slice(1)).toHaveLength(1);
+    expect([
+      `/extended/v1/address/${sender}/nonces`,
+      `/extended/v3/principals/${sender}/nonces`,
+    ]).toContain(f.hiroHits[1]);
   });
 
   test("sponsored mode refuses before signing when the wallet lacks the sBTC price", async () => {
@@ -725,7 +824,7 @@ describe("createApiClient payment modes", () => {
     process.env.X402_PAYMENT_MODE = "direct";
     const f = await up({ accept: { asset: "SP2XYZ.sbtc-token" } });
     const api = await createApiClient(f.origin, "test.direct-asset");
-    await expect(api.request({ method: "GET", url: "/paid" })).rejects.toThrow(/only signs native STX or the canonical sBTC/);
+    await expect(api.request({ method: "GET", url: "/paid" })).rejects.toThrow(/offers no Stacks option this client pays.*only native STX or the canonical sBTC/);
     expect(f.paidRequests).toHaveLength(0);
     expect(f.hiroHits).toEqual([]);
   });
@@ -765,6 +864,32 @@ describe("createApiClient payment modes", () => {
     const api = await createApiClient(f.origin, "test.direct-network");
     await expect(api.request({ method: "GET", url: "/paid" })).rejects.toThrow(/Network mismatch/);
     expect(f.paidRequests).toHaveLength(0);
+  });
+
+  test("a wrong-network offer first does not mask the wallet-network offer (#469)", async () => {
+    process.env.X402_PAYMENT_MODE = "direct";
+    const other: Network = network === "mainnet" ? "testnet" : "mainnet";
+    const f = await up({
+      accept: { asset: "STX", amount: "1000", network: getStacksChainId(other) },
+      acceptsAfter: [{ asset: "STX", amount: "1000" }],
+    });
+    const api = await createApiClient(f.origin, "test.direct-network-order");
+    const res = await api.request({ method: "GET", url: "/paid" });
+    expect(res.status).toBe(200);
+    expect(f.paidRequests).toHaveLength(1);
+  });
+
+  test("a challenge on the other network only reports a network mismatch, not an asset refusal (#469)", async () => {
+    for (const mode of ["direct", "sponsored"] as const) {
+      process.env.X402_PAYMENT_MODE = mode;
+      const other: Network = network === "mainnet" ? "testnet" : "mainnet";
+      const f = await up({ accept: { asset: "STX", network: getStacksChainId(other) } });
+      const api = await createApiClient(f.origin, `test.${mode}-network-only`);
+      const err = await rejection(api.request({ method: "GET", url: "/paid" }));
+      expect(err.message).toMatch(/Network mismatch: endpoint requires/);
+      expect(err.message).not.toMatch(/Offered assets/);
+      expect(f.paidRequests).toHaveLength(0);
+    }
   });
 
   test("a failed paid replay surfaces the server's status and body plus the txid", async () => {
@@ -881,21 +1006,341 @@ describe("createApiClient payment modes", () => {
     expect(f.paidRequests).toHaveLength(1);
   });
 
-  test("a different request is not a duplicate; the guard clears after the TTL", async () => {
+  // --- duplicate guard past the TTL: reconcile against the chain (#460) ---
+
+  const DEDUP_FILE = () => process.env.X402_DEDUP_STATE_FILE!;
+  async function readDedupState(): Promise<Record<string, Record<string, unknown>>> {
+    return JSON.parse(await readFile(DEDUP_FILE(), "utf8"));
+  }
+  /** Push every record `ms` into the past, as if that much time had gone by. */
+  async function ageRecords(ms: number): Promise<void> {
+    const state = await readDedupState();
+    for (const entry of Object.values(state)) entry.timestamp = (entry.timestamp as number) - ms;
+    await writeFile(DEDUP_FILE(), JSON.stringify(state));
+  }
+  /** One direct payment whose paid request fails (500): the record stays, outcome ambiguous. */
+  async function ambiguousPayment(f: Fake, params: Record<string, string> = { slug: "stacks" }, tag = "first") {
+    const api = await createApiClient(f.origin, `test.ambiguous-${tag}`);
+    const failure = await rejection(api.request({ method: "GET", url: "/paid", params }));
+    expect(failure.message).toMatch(/ambiguous/);
+    return decodeTx(f.paidRequests[f.paidRequests.length - 1]);
+  }
+  async function retry(f: Fake, params: Record<string, string> = { slug: "stacks" }, tag = "retry") {
+    const api = await createApiClient(f.origin, `test.${tag}`);
+    return rejection(api.request({ method: "GET", url: "/paid", params }));
+  }
+  const TTL_PLUS = 901_000;
+
+  test("the record stores the payment's nonce and intent, not the request", async () => {
     process.env.X402_PAYMENT_MODE = "direct";
-    process.env.X402_DEDUP_TTL_SECONDS = "1";
-    // Failed replays leave the outcome ambiguous, so the records stay armed until the TTL.
     const f = await up({ paid: { kind: "http", status: 500, body: { error: "boom" } } });
-    const a = await createApiClient(f.origin, "test.dedup-a");
-    await rejection(a.request({ method: "GET", url: "/paid", params: { slug: "stacks" } }));
-    const b = await createApiClient(f.origin, "test.dedup-b");
-    await rejection(b.request({ method: "GET", url: "/paid", params: { slug: "zest" } }));
+    const { tx, auth } = await ambiguousPayment(f);
+    const [entry] = Object.values(await readDedupState());
+    expect(entry).toMatchObject({
+      txid: tx.txid(),
+      nonce: auth.spendingCondition.nonce.toString(),
+      payer: sender,
+      payTo: sender,
+      amount: "100",
+      asset: SBTC,
+    });
+    expect(JSON.stringify(entry)).not.toContain("slug");
+  });
+
+  test("a different request is not a duplicate; past the TTL an earlier payment that aborted on chain clears", async () => {
+    process.env.X402_PAYMENT_MODE = "direct";
+    const f = await up({ paid: { kind: "http", status: 500, body: { error: "boom" } }, txStatus: "abort_by_post_condition" });
+    await ambiguousPayment(f, { slug: "stacks" }, "a");
+    await ambiguousPayment(f, { slug: "zest" }, "b");
     expect(f.paidRequests).toHaveLength(2);
 
-    await new Promise((r) => setTimeout(r, 1100));
-    const c = await createApiClient(f.origin, "test.dedup-c");
-    await rejection(c.request({ method: "GET", url: "/paid", params: { slug: "stacks" } }));
+    await ageRecords(TTL_PLUS);
+    const failure = await retry(f, { slug: "stacks" }, "after-abort");
+    expect(failure).not.toBeInstanceOf(DuplicatePaymentError);
     expect(f.paidRequests).toHaveLength(3);
+  });
+
+  test("past the TTL, a payment that confirmed is refused as paid, and remembered without another lookup", async () => {
+    process.env.X402_PAYMENT_MODE = "direct";
+    const opts: FakeOptions = { paid: { kind: "http", status: 500, body: { error: "boom" } }, txStatus: "success" };
+    const f = await up(opts);
+    const { tx } = await ambiguousPayment(f);
+    await ageRecords(TTL_PLUS);
+
+    const failure = await retry(f);
+    expect(failure).toBeInstanceOf(DuplicatePaymentError);
+    expect((failure as DuplicatePaymentError).reason).toBe("paid");
+    expect((failure as DuplicatePaymentError).txid).toBe(tx.txid());
+    expect(failure.message).toMatch(/confirmed on chain/);
+    expect(failure.message).toContain("clear-dedup");
+    const [entry] = Object.values(await readDedupState());
+    expect(entry.paidTxid).toBe(tx.txid());
+
+    const lookups = f.hiroHits.filter((h) => h.startsWith("/extended/v1/tx/")).length;
+    opts.txStatus = "abort_by_response"; // would clear, if it were asked
+    const again = await retry(f, { slug: "stacks" }, "again");
+    expect((again as DuplicatePaymentError).reason).toBe("paid");
+    expect(f.hiroHits.filter((h) => h.startsWith("/extended/v1/tx/")).length).toBe(lookups);
+    expect(f.paidRequests).toHaveLength(1);
+  });
+
+  test("past the TTL, a payment still pending in the mempool keeps refusing", async () => {
+    process.env.X402_PAYMENT_MODE = "direct";
+    const f = await up({ paid: { kind: "http", status: 500, body: { error: "boom" } }, txStatus: "pending" });
+    await ambiguousPayment(f);
+    await ageRecords(TTL_PLUS);
+    const failure = await retry(f);
+    expect(failure).toBeInstanceOf(DuplicatePaymentError);
+    expect((failure as DuplicatePaymentError).reason).toBe("unresolved");
+    expect(failure.message).toMatch(/still pending/);
+    expect(f.paidRequests).toHaveLength(1);
+  });
+
+  test("past the TTL, a failed chain lookup refuses (fail closed) and says why", async () => {
+    process.env.X402_PAYMENT_MODE = "direct";
+    const opts: FakeOptions = { paid: { kind: "http", status: 500, body: { error: "boom" } } };
+    const f = await up(opts);
+    const { tx } = await ambiguousPayment(f);
+    await ageRecords(TTL_PLUS);
+    opts.txLookup = { [tx.txid()]: 503 };
+    const failure = await retry(f);
+    expect(failure).toBeInstanceOf(DuplicatePaymentError);
+    expect(failure.message).toMatch(/could not be read/);
+    expect(failure.message).toMatch(/503/);
+    expect(f.paidRequests).toHaveLength(1);
+  });
+
+  test("dropped, and its nonce is still the next one: pays again at the same nonce, so only one can land", async () => {
+    process.env.X402_PAYMENT_MODE = "direct";
+    const opts: FakeOptions = { paid: { kind: "http", status: 500, body: { error: "boom" } }, txStatus: "dropped_stale_garbage_collect" };
+    const f = await up(opts);
+    const first = await ambiguousPayment(f);
+    await ageRecords(TTL_PLUS);
+    opts.paid = { kind: "ok" };
+    const api = await createApiClient(f.origin, "test.dropped-retry");
+    await api.request({ method: "GET", url: "/paid", params: { slug: "stacks" } });
+    expect(f.paidRequests).toHaveLength(2);
+    const second = decodeTx(f.paidRequests[1]);
+    expect(second.auth.spendingCondition.nonce).toBe(first.auth.spendingCondition.nonce);
+  });
+
+  test("unknown to the API, and its nonce went to an unrelated transaction: pays again", async () => {
+    process.env.X402_PAYMENT_MODE = "direct";
+    const opts: FakeOptions = { paid: { kind: "http", status: 500, body: { error: "boom" } } };
+    const f = await up(opts);
+    const first = await ambiguousPayment(f);
+    const n = Number(first.auth.spendingCondition.nonce);
+    await ageRecords(TTL_PLUS);
+    opts.txLookup = { [first.tx.txid()]: 404 };
+    opts.nonce = n + 1; // n executed
+    opts.addressTxs = [
+      {
+        tx_id: `0x${"c".repeat(64)}`,
+        tx_status: "success",
+        tx_type: "token_transfer",
+        nonce: n,
+        sender_address: sender,
+        token_transfer: { recipient_address: "SP000000000000000000002Q6VF78", amount: "1" },
+      },
+    ];
+    opts.paid = { kind: "ok" };
+    const api = await createApiClient(f.origin, "test.unrelated-retry");
+    await api.request({ method: "GET", url: "/paid", params: { slug: "stacks" } });
+    expect(f.paidRequests).toHaveLength(2);
+    expect(decodeTx(f.paidRequests[1]).auth.spendingCondition.nonce).toBe(BigInt(n + 1));
+  });
+
+  test("dropped, but a replacement at the same nonce paying the same intent confirmed: refused as paid", async () => {
+    process.env.X402_PAYMENT_MODE = "direct";
+    const opts: FakeOptions = { paid: { kind: "http", status: 500, body: { error: "boom" } } };
+    const f = await up(opts);
+    const first = await ambiguousPayment(f);
+    const n = Number(first.auth.spendingCondition.nonce);
+    await ageRecords(TTL_PLUS);
+    const replacement = "d".repeat(64);
+    opts.txLookup = { [first.tx.txid()]: "dropped_replace_by_fee" };
+    opts.nonce = n + 1;
+    opts.addressTxs = [
+      {
+        tx_id: `0x${replacement}`,
+        tx_status: "success",
+        tx_type: "contract_call",
+        nonce: n,
+        sender_address: sender,
+        contract_call: {
+          contract_id: SBTC,
+          function_name: "transfer",
+          function_args: [{ repr: "u100" }, { repr: `'${sender}` }, { repr: `'${sender}` }, { repr: "none" }],
+        },
+      },
+    ];
+    const failure = await retry(f);
+    expect(failure).toBeInstanceOf(DuplicatePaymentError);
+    expect((failure as DuplicatePaymentError).reason).toBe("paid");
+    expect((failure as DuplicatePaymentError).txid).toBe(replacement);
+    expect(f.paidRequests).toHaveLength(1);
+  });
+
+  test("dropped, nonce used, but the transaction at that nonce is not indexed yet: refuses", async () => {
+    process.env.X402_PAYMENT_MODE = "direct";
+    const opts: FakeOptions = { paid: { kind: "http", status: 500, body: { error: "boom" } } };
+    const f = await up(opts);
+    const first = await ambiguousPayment(f);
+    await ageRecords(TTL_PLUS);
+    opts.txLookup = { [first.tx.txid()]: "dropped_replace_by_fee" };
+    opts.nonce = Number(first.auth.spendingCondition.nonce) + 1;
+    opts.addressTxs = [];
+    const failure = await retry(f);
+    expect(failure).toBeInstanceOf(DuplicatePaymentError);
+    expect(failure.message).toMatch(/not indexed yet/);
+    expect(f.paidRequests).toHaveLength(1);
+  });
+
+  test("unknown to the API with a transaction pending at its nonce, or a nonce gap below it: refuses", async () => {
+    process.env.X402_PAYMENT_MODE = "direct";
+    const opts: FakeOptions = { paid: { kind: "http", status: 500, body: { error: "boom" } } };
+    const f = await up(opts);
+    const first = await ambiguousPayment(f);
+    const n = Number(first.auth.spendingCondition.nonce);
+    await ageRecords(TTL_PLUS);
+    opts.txLookup = { [first.tx.txid()]: 404 };
+
+    opts.nonceInfo = { detected_mempool_nonces: [n] };
+    const pending = await retry(f, { slug: "stacks" }, "pending-at-n");
+    expect(pending).toBeInstanceOf(DuplicatePaymentError);
+    expect(pending.message).toMatch(new RegExp(`at its nonce ${n} is pending`));
+
+    opts.nonceInfo = { last_executed_tx_nonce: n - 3, possible_next_nonce: n - 2, detected_mempool_nonces: [] };
+    const gap = await retry(f, { slug: "stacks" }, "gap");
+    expect(gap).toBeInstanceOf(DuplicatePaymentError);
+    expect(gap.message).toMatch(/are missing/);
+    expect(f.paidRequests).toHaveLength(1);
+  });
+
+  test("if the nonce moves between the check and the signing, the payment is refused and the record kept", async () => {
+    process.env.X402_PAYMENT_MODE = "direct";
+    const opts: FakeOptions = { paid: { kind: "http", status: 500, body: { error: "boom" } } };
+    const f = await up(opts);
+    const first = await ambiguousPayment(f);
+    const n = Number(first.auth.spendingCondition.nonce);
+    await ageRecords(TTL_PLUS);
+    opts.txLookup = { [first.tx.txid()]: 404 };
+    // The reconcile read sees n unused and next; the builder's read a moment later sees n + 1.
+    opts.nonceInfoQueue = [{}, { last_executed_tx_nonce: n, possible_next_nonce: n + 1 }];
+    const failure = await retry(f);
+    expect(failure.message).toMatch(new RegExp(`signed at nonce ${n}, which was unused a moment ago`));
+    expect(f.paidRequests).toHaveLength(1);
+    const txids = Object.values(await readDedupState()).map((e) => e.txid);
+    expect(txids).toEqual([first.tx.txid()]);
+  });
+
+  test("a record written before nonce tracking refuses when its txid is unknown, and names the way out", async () => {
+    process.env.X402_PAYMENT_MODE = "direct";
+    const opts: FakeOptions = { paid: { kind: "http", status: 500, body: { error: "boom" } } };
+    const f = await up(opts);
+    const { tx } = await ambiguousPayment(f);
+    const state = await readDedupState();
+    for (const entry of Object.values(state)) {
+      for (const field of ["nonce", "payer", "payTo", "amount", "asset"]) delete entry[field];
+    }
+    await writeFile(DEDUP_FILE(), JSON.stringify(state));
+    await ageRecords(TTL_PLUS);
+    opts.txLookup = { [tx.txid()]: 404 };
+    const failure = await retry(f);
+    expect(failure).toBeInstanceOf(DuplicatePaymentError);
+    expect(failure.message).toMatch(/predates nonce tracking/);
+    expect(failure.message).toContain(`clear-dedup --txid ${tx.txid()}`);
+    expect(f.paidRequests).toHaveLength(1);
+  });
+
+  test("an unrelated later payment does not prune an expired, unresolved record", async () => {
+    process.env.X402_PAYMENT_MODE = "direct";
+    const opts: FakeOptions = { paid: { kind: "http", status: 500, body: { error: "boom" } }, txStatus: "pending" };
+    const f = await up(opts);
+    const a = await ambiguousPayment(f, { slug: "stacks" }, "a");
+    await ageRecords(TTL_PLUS);
+    opts.nonce = 8; // a distinct transaction, not a byte-identical re-sign
+    const b = await ambiguousPayment(f, { slug: "zest" }, "b");
+    expect(b.tx.txid()).not.toBe(a.tx.txid());
+    const txids = Object.values(await readDedupState()).map((e) => e.txid);
+    expect(txids).toContain(a.tx.txid());
+    const failure = await retry(f);
+    expect(failure).toBeInstanceOf(DuplicatePaymentError);
+    expect(f.paidRequests).toHaveLength(2);
+  });
+
+  test("records past the 30-day ceiling are pruned on the next write", async () => {
+    process.env.X402_PAYMENT_MODE = "direct";
+    const opts: FakeOptions = { paid: { kind: "http", status: 500, body: { error: "boom" } } };
+    const f = await up(opts);
+    const a = await ambiguousPayment(f, { slug: "stacks" }, "a");
+    await ageRecords(31 * 24 * 3600 * 1000);
+    opts.nonce = 8;
+    await ambiguousPayment(f, { slug: "zest" }, "b");
+    const txids = Object.values(await readDedupState()).map((e) => e.txid);
+    expect(txids).not.toContain(a.tx.txid());
+    expect(txids).toHaveLength(1);
+  });
+
+  // --- obligation id (#460) ---
+
+  test("X-Payment-Obligation-Id: a retry with fresh request ids and body is still the same purchase, and the header never leaves the client", async () => {
+    process.env.X402_PAYMENT_MODE = "direct";
+    const seenHeaders: NonNullable<FakeOptions["seenHeaders"]> = [];
+    const f = await up({ paid: { kind: "http", status: 500, body: { error: "boom" } }, seenHeaders });
+    const send = async (requestId: string, obligation: string) => {
+      const api = await createApiClient(f.origin, `test.obligation-${requestId}`);
+      return rejection(
+        api.request({
+          method: "POST",
+          url: "/paid",
+          data: { prompt: "hi", ts: requestId },
+          headers: { "X-Payment-Obligation-Id": obligation, "x-request-id": requestId },
+        })
+      );
+    };
+    expect((await send("r1", "job-1")).message).toMatch(/ambiguous/);
+    const dup = await send("r2", "job-1");
+    expect(dup).toBeInstanceOf(DuplicatePaymentError);
+    expect(f.paidRequests).toHaveLength(1);
+
+    // A different obligation is a different purchase.
+    expect((await send("r3", "job-2")).message).toMatch(/ambiguous/);
+    expect(f.paidRequests).toHaveLength(2);
+
+    expect(seenHeaders.length).toBeGreaterThanOrEqual(4);
+    for (const headers of seenHeaders) expect(headers["x-payment-obligation-id"]).toBeUndefined();
+  });
+
+  test("an invalid X-Payment-Obligation-Id fails before anything is sent or signed", async () => {
+    process.env.X402_PAYMENT_MODE = "direct";
+    const seenHeaders: NonNullable<FakeOptions["seenHeaders"]> = [];
+    const f = await up({ seenHeaders });
+    const api = await createApiClient(f.origin, "test.obligation-bad");
+    const failure = await rejection(
+      api.request({ method: "GET", url: "/paid", headers: { "X-Payment-Obligation-Id": "x".repeat(300) } })
+    );
+    expect(failure.message).toMatch(/x-payment-obligation-id must be/);
+    expect(seenHeaders).toHaveLength(0);
+    expect(f.paidRequests).toHaveLength(0);
+  });
+
+  test("without an obligation id, per-attempt tracing headers do not make a retry a new purchase", async () => {
+    process.env.X402_PAYMENT_MODE = "direct";
+    const f = await up({ paid: { kind: "http", status: 500, body: { error: "boom" } } });
+    const send = async (n: string) => {
+      const api = await createApiClient(f.origin, `test.trace-${n}`);
+      return rejection(
+        api.request({
+          method: "GET",
+          url: "/paid",
+          headers: { "x-request-id": `req-${n}`, traceparent: `00-${n.repeat(32)}-${n.repeat(16)}-01` },
+        })
+      );
+    };
+    await send("1");
+    expect(await send("2")).toBeInstanceOf(DuplicatePaymentError);
+    expect(f.paidRequests).toHaveLength(1);
   });
 
   test("the daily spend ledger refuses once today's cap is reached, across client instances", async () => {

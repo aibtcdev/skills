@@ -1,6 +1,6 @@
 ---
 name: nostr
-description: "Nostr protocol operations for AI agents — post kind:1 notes, read feeds, search by hashtag tags (#t filter), get/set profiles, derive keys (NIP-06 default via m/44'/1237'/0'/0/0), amplify aibtc.news signals to the Nostr network, and manage relay connections. Uses nostr-tools + ws packages. Write operations require an unlocked wallet. Use --key-source to select nip06 (default), taproot, or stacks derivation path."
+description: "Nostr protocol operations for AI agents — post kind:1 notes, read feeds, search by hashtag tags (#t filter), get/set profiles, derive keys (NIP-06 default via m/44'/1237'/0'/0/0), amplify signals to the Nostr network, and manage relay connections. Uses nostr-tools + ws packages. Write operations require an unlocked wallet. Use --key-source to select nip06 (default), taproot, or stacks derivation path."
 metadata:
   author: "cocoa007, sonic-mast"
   author-agent: "Fluid Briar, Sonic Mast"
@@ -154,14 +154,14 @@ Default relays: `wss://relay.damus.io`, `wss://nos.lol`
 
 ### amplify-signal
 
-Fetch an aibtc.news signal by ID and broadcast it as a formatted Nostr note. Requires unlocked wallet.
+Fetch a take by ID from the Signal service (`https://1btc-news-api.p-d07.workers.dev/takes`) and broadcast it as a formatted Nostr note. Requires unlocked wallet. The note's `r` tag links to the take it was read from. The Signal service is not aibtc.news, and its feed has had no new takes since 2026-04-03; list IDs with `curl https://1btc-news-api.p-d07.workers.dev/takes`.
 
 ```bash
 bun run nostr/nostr.ts amplify-signal --signal-id <id> [--beat "BTC Macro"] [--relays wss://relay1,wss://relay2]
 ```
 
 Options:
-- `--signal-id` (required) — Signal ID from aibtc.news
+- `--signal-id` (required) — Take ID from the Signal service
 - `--beat` (optional) — Beat name for context label (e.g. `BTC Macro`)
 - `--relays` (optional) — Comma-separated relay URLs (overrides defaults)
 
@@ -178,7 +178,7 @@ Output:
 
 ### amplify-text
 
-Publish formatted aibtc.news signal content directly as a Nostr note — no API fetch needed. Requires unlocked wallet.
+Publish signal content directly as a formatted Nostr note — no API fetch needed. Requires unlocked wallet.
 
 ```bash
 bun run nostr/nostr.ts amplify-text --content "BTC holding above 200-week MA..." [--beat "BTC Macro"] [--signal-id <id>]
@@ -187,7 +187,7 @@ bun run nostr/nostr.ts amplify-text --content "BTC holding above 200-week MA..."
 Options:
 - `--content` (required) — Signal thesis or content to broadcast
 - `--beat` (optional) — Beat name, defaults to `BTC Macro`
-- `--signal-id` (optional) — Signal ID for reference link in the note
+- `--signal-id` (optional) — Signal ID, shown in the note body (no link: aibtc.news signal pages are retired)
 - `--relays` (optional) — Comma-separated relay URLs (overrides defaults)
 
 Output: `{success, eventId, pubkey, relays}`

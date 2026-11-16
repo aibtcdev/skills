@@ -69,9 +69,14 @@ const MOCK_POOL_DETAIL = {
   },
 };
 
+// Captured before any test swaps it: inside afterEach the bare `fetch` name
+// resolves to globalThis.fetch, i.e. the mock, which then leaked into every
+// test file that runs later in the same `bun test` process.
+const realFetch = globalThis.fetch;
+
 afterEach(() => {
   // Reset to real fetch after each test
-  globalThis.fetch = fetch;
+  globalThis.fetch = realFetch;
 });
 
 test("analyzePool returns partial result with hiro_rate_limited when fetch throws 429", async () => {

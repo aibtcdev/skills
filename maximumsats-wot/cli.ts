@@ -16,7 +16,7 @@
  *   arc creds set --service maximumsats-wot --key l402-token --value "<token>:<preimage>"
  */
 
-import { getCredential } from "../credentials/store.js";
+import { getCredential } from "@aibtc/skills/credentials/store.js";
 
 const BASE_URL = "https://wot.klabo.world";
 

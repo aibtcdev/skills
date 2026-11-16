@@ -8,11 +8,11 @@
  */
 
 import { Command } from "commander";
-import { NETWORK } from "../src/lib/config/networks.js";
-import { getSponsorRelayUrl, getSponsorApiKey } from "../src/lib/config/sponsor.js";
-import { checkRelayHealth } from "../src/lib/services/relay-health.service.js";
-import { getWalletManager } from "../src/lib/services/wallet-manager.js";
-import { printJson, handleError } from "../src/lib/utils/cli.js";
+import { NETWORK } from "@aibtc/skills/src/lib/config/networks.js";
+import { getSponsorRelayUrl, getSponsorApiKey } from "@aibtc/skills/src/lib/config/sponsor.js";
+import { checkRelayHealth } from "@aibtc/skills/src/lib/services/relay-health.service.js";
+import { getWalletManager } from "@aibtc/skills/src/lib/services/wallet-manager.js";
+import { printJson, handleError } from "@aibtc/skills/src/lib/utils/cli.js";
 
 // ---------------------------------------------------------------------------
 // Types

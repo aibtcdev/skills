@@ -26,6 +26,24 @@ jobs:
       - name: TypeScript typecheck
         run: bun run typecheck
 
+      # Tests answer every Stacks API call from local fakes; run them against
+      # both network configs, since mainnet-only failures went unnoticed before.
+      - name: Tests (testnet)
+        run: bun test
+        env:
+          NETWORK: testnet
+
+      - name: Tests (mainnet)
+        run: bun test
+        env:
+          NETWORK: mainnet
+
+      # Install every skill the way `npx skills add` does (its folder alone, in a
+      # project with its own node_modules), `bun install`, and run each entry (#473).
+      # Shared code comes from this checkout, so a PR is tested with its own src/lib.
+      - name: Standalone skill installs
+        run: bun run check:standalone
+
       - name: Setup Python (tier-1 spec validator)
         uses: actions/setup-python@v5
         with:

@@ -36,7 +36,7 @@ import { Command }    from "commander";
 import { homedir }    from "os";
 import { join }       from "path";
 import { readFileSync, writeFileSync } from "fs";
-import * as ecc       from "tiny-secp256k1";
+import { schnorr }    from "@noble/curves/secp256k1.js";
 
 // == Constants ================================================================
 const FETCH_TIMEOUT_MS    = 30_000;
@@ -376,13 +376,16 @@ function tapTaggedHash(tag: string, data: Uint8Array): Buffer {
   return createHash("sha256").update(th).update(th).update(data).digest();
 }
 
-function xOnlyPubkeyToP2TR(xHex: string): string {
+export function xOnlyPubkeyToP2TR(xHex: string): string {
   if (xHex.length !== 64) throw new Error(`Expected 32-byte x-only pubkey, got ${xHex.length / 2} bytes`);
   const xBytes = Buffer.from(xHex, "hex");
-  const tweak = tapTaggedHash("TapTweak", xBytes);
-  const tweaked = ecc.xOnlyPointAddTweak(xBytes, tweak);
-  if (!tweaked) throw new Error("Taproot key tweak failed");
-  return bech32mEncode("bc", [1, ...convertBits(tweaked.xOnlyPubkey, 8, 5)]);
+  const tweak = BigInt("0x" + tapTaggedHash("TapTweak", xBytes).toString("hex"));
+  // BIP-341: Q = lift_x(P) + t*G, output key = x(Q). lift_x throws for an x not on the curve.
+  const { Point, utils } = schnorr;
+  if (tweak >= Point.Fn.ORDER) throw new Error("Taproot key tweak failed");
+  const tweaked = utils.lift_x(BigInt("0x" + xHex)).add(Point.BASE.multiply(tweak));
+  if (tweaked.equals(Point.ZERO)) throw new Error("Taproot key tweak failed");
+  return bech32mEncode("bc", [1, ...convertBits(utils.pointToBytes(tweaked), 8, 5)]);
 }
 
 // BIP-350 test vectors
@@ -805,11 +808,26 @@ async function getYieldOptions(
         let capUsd: number;
         let swapNote: string | null = null;
 
-        if (hasX || hasY) {
+        const xUsd = (balances as unknown as Record<string, TokenBalance>)[def.tokenX]?.usd ?? 0;
+        const yUsd = (balances as unknown as Record<string, TokenBalance>)[def.tokenY]?.usd ?? 0;
+
+        if (hasX && hasY) {
+          // Both sides held. Bounded by the SMALLER side, doubled: a paired
+          // deposit can only be as large as the side that runs out first.
           tier = "deploy_now";
-          const xUsd = (balances as unknown as Record<string, TokenBalance>)[def.tokenX]?.usd ?? 0;
-          const yUsd = (balances as unknown as Record<string, TokenBalance>)[def.tokenY]?.usd ?? 0;
+          capUsd = Math.min(xUsd, yUsd) * 2;
+        } else if (hasX || hasY) {
+          // One side only, and this is NOT deploy_now.
+          //
+          // dlmm-core-v-1-1 holds the X asset only at bins at or above the active
+          // bin, and Y only at or below it, so both assets are valid together
+          // ONLY at the active bin. A deposit funded from one side lands outside
+          // it, which is outside the range where fees accrue. Reporting the
+          // pool's APY and a daily figure against that describes income the
+          // depositor does not receive.
+          tier = "swap_first";
           capUsd = Math.max(xUsd, yUsd);
+          swapNote = `Swap part of your ${hasX ? tokenXMeta.symbol : tokenYMeta.symbol} into ${hasX ? tokenYMeta.symbol : tokenXMeta.symbol} on Bitflow first`;
         } else {
           // Check if user has any token that could be swapped
           const totalUsd = balances.sbtc.usd + balances.stx.usd + balances.usdcx.usd + balances.usdh.usd + balances.aeusdc.usd;
@@ -2278,8 +2296,8 @@ program
   .action(() => {
     console.log(JSON.stringify({
       status: "ok",
-      message: "Requires: tiny-secp256k1 (BIP-341 EC point addition). All other operations use public APIs.",
-      data: { requires: ["tiny-secp256k1"] },
+      message: "Requires: @noble/curves (BIP-341 EC point addition). All other operations use public APIs.",
+      data: { requires: ["@noble/curves"] },
     }, null, 2));
   });
 

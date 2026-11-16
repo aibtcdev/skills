@@ -22,17 +22,17 @@ import {
 } from "@stacks/transactions";
 import { hashMessage } from "@stacks/encryption";
 import { bytesToHex } from "@stacks/common";
-import { NETWORK, getExplorerTxUrl } from "../src/lib/config/networks.js";
-import { getAccount, getWalletAddress } from "../src/lib/services/x402.service.js";
-import { getHiroApi } from "../src/lib/services/hiro-api.js";
-import { advanceNonce } from "../src/lib/services/nonce-tracker.js";
-import { parseArgToClarityValue } from "../src/lib/transactions/clarity-values.js";
+import { NETWORK, getExplorerTxUrl } from "@aibtc/skills/src/lib/config/networks.js";
+import { getAccount, getWalletAddress } from "@aibtc/skills/src/lib/services/x402.service.js";
+import { getHiroApi } from "@aibtc/skills/src/lib/services/hiro-api.js";
+import { advanceNonce } from "@aibtc/skills/src/lib/services/nonce-tracker.js";
+import { parseArgToClarityValue } from "@aibtc/skills/src/lib/transactions/clarity-values.js";
 import {
   createFungiblePostCondition,
   createStxPostCondition,
-} from "../src/lib/transactions/post-conditions.js";
-import { AibtcError } from "../src/lib/utils/errors.js";
-import { printJson, handleError } from "../src/lib/utils/cli.js";
+} from "@aibtc/skills/src/lib/transactions/post-conditions.js";
+import { AibtcError } from "@aibtc/skills/src/lib/utils/errors.js";
+import { printJson, handleError } from "@aibtc/skills/src/lib/utils/cli.js";
 
 // ---------------------------------------------------------------------------
 // Constants

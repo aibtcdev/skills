@@ -125,7 +125,7 @@ function entryTs(name: string): string {
  */
 
 import { Command } from "commander";
-import { printJson, handleError } from "../src/lib/utils/cli.js";
+import { printJson, handleError } from "@aibtc/skills/src/lib/utils/cli.js";
 
 const program = new Command();
 
@@ -200,5 +200,6 @@ console.log("  Next steps:");
 console.log("    1. Replace all TODO markers in the generated files");
 console.log("    2. Implement your subcommands in the .ts file");
 console.log("    3. Add an entry to the Skills table in README.md");
-console.log(`    4. Run: bun run typecheck`);
+console.log(`    4. Run: bun run manifest   (writes ${name}/package.json and skills.json)`);
+console.log(`       then: bun run typecheck && bun run validate`);
 console.log(`    5. Commit: feat(${name}): add ${name} skill\n`);

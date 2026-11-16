@@ -1,6 +1,6 @@
 import { describe, test, expect, afterEach, mock } from "bun:test";
 import { PostConditionMode, makeContractCall } from "@stacks/transactions";
-import { AibtcError } from "../src/lib/utils/errors.js";
+import { AibtcError } from "@aibtc/skills/src/lib/utils/errors.js";
 
 // The nonce tracker writes under ~/.aibtc: replace the call the skill makes with a recorder.
 const tracked: Array<[string, number, string]> = [];

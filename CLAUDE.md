@@ -174,7 +174,7 @@ AGENT.md is intentionally concise (one page). Cover:
 - On error: `console.log(JSON.stringify({ error: "descriptive message" })); process.exit(1)`
 - Never use `process.exit(0)` explicitly — normal exit is sufficient
 - Mark sensitive options (passwords, mnemonics) to avoid accidental logging
-- Use `src/lib/` shared modules for wallet access, network config, and API calls
+- Use `src/lib/` shared modules for wallet access, network config, and API calls, imported as `@aibtc/skills/src/lib/...` (never `../src/lib/...`), so the skill folder also runs when installed on its own
 
 ## x402 Service URLs
 
@@ -205,9 +205,10 @@ bun run x402/x402.ts list-endpoints
 3. Add `AGENT.md` covering prerequisites, decision logic, safety checks, and error handling
 4. Add `<name>/<name>.ts` — Commander CLI where every subcommand prints JSON to stdout
 5. Add an entry to the Skills table in `README.md`
-6. Run `bun run manifest` to update `skills.json`
-7. Run `bun run typecheck` to verify TypeScript
-8. Commit: `feat(<name>): add <name> skill`
+6. Run `bun run manifest` to update `skills.json` and generate `<name>/package.json` (the skill's dependencies when installed on its own; do not edit it by hand)
+7. Run `bun run typecheck` and `bun run validate`
+8. Optionally check the standalone install: `bun run check:standalone <name>`
+9. Commit: `feat(<name>): add <name> skill`
 
 ### Adding a Workflow Guide
 
@@ -251,6 +252,8 @@ This repo uses [Release Please](https://github.com/googleapis/release-please) fo
 | File / Path | Purpose |
 |-------------|---------|
 | `skills.json` | Auto-generated manifest — run `bun run manifest` to update |
+| `<skill>/package.json` | Auto-generated per-skill dependencies for standalone installs (`bun run manifest`) |
+| `scripts/check-standalone.ts` | Installs each skill on its own and runs it (`bun run check:standalone`) |
 | `package.json` | Version source of truth — manifest reads version from here |
 | `tsconfig.json` | TypeScript strict mode configuration |
 | `scripts/generate-manifest.ts` | Globs all `*/SKILL.md`, parses frontmatter, writes `skills.json` |

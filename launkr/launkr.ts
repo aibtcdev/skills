@@ -20,19 +20,19 @@ import {
   PostConditionMode,
   type ClarityValue,
 } from "@stacks/transactions";
-import { NETWORK, getExplorerTxUrl } from "../src/lib/config/networks.js";
-import { getAccount, getWalletAddress } from "../src/lib/services/x402.service.js";
-import { callContract, deployContract } from "../src/lib/transactions/builder.js";
-import { getHiroApi } from "../src/lib/services/hiro-api.js";
-import { pollTransactionConfirmation } from "../src/lib/utils/x402-recovery.js";
+import { NETWORK, getExplorerTxUrl } from "@aibtc/skills/src/lib/config/networks.js";
+import { getAccount, getWalletAddress } from "@aibtc/skills/src/lib/services/x402.service.js";
+import { callContract, deployContract } from "@aibtc/skills/src/lib/transactions/builder.js";
+import { getHiroApi } from "@aibtc/skills/src/lib/services/hiro-api.js";
+import { pollTransactionConfirmation } from "@aibtc/skills/src/lib/utils/x402-recovery.js";
 import {
   createStxPostCondition,
   createContractStxPostCondition,
   createFungiblePostCondition,
   createContractFungiblePostCondition,
-} from "../src/lib/transactions/post-conditions.js";
-import { resolveFee } from "../src/lib/utils/fee.js";
-import { printJson, handleError } from "../src/lib/utils/cli.js";
+} from "@aibtc/skills/src/lib/transactions/post-conditions.js";
+import { resolveFee } from "@aibtc/skills/src/lib/utils/fee.js";
+import { printJson, handleError } from "@aibtc/skills/src/lib/utils/cli.js";
 
 // ---------------------------------------------------------------------------
 // Constants

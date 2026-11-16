@@ -167,7 +167,7 @@ Output:
 
 ### get-server-version
 
-Check the currently installed package version and compare with the latest published version on npm.
+Check the installed skills version (from the repo's `package.json`) and compare it with the latest GitHub release (`skills-vX.Y.Z` tags; the package is not published to npm).
 
 ```
 bun run settings/settings.ts get-server-version
@@ -176,11 +176,13 @@ bun run settings/settings.ts get-server-version
 Output:
 ```json
 {
-  "currentVersion": "0.1.0",
-  "latestVersion": "0.1.0",
+  "currentVersion": "0.44.0",
+  "latestVersion": "0.44.0",
   "isLatest": true,
   "updateAvailable": false,
-  "package": "@aibtc/skills"
+  "package": "@aibtc/skills",
+  "releaseUrl": "https://github.com/aibtcdev/skills/releases/tag/skills-v0.44.0",
+  "hint": "Running the latest version."
 }
 ```
 

@@ -7,9 +7,9 @@
  */
 
 import { Command } from "commander";
-import { NETWORK, getExplorerTxUrl } from "../src/lib/config/networks.js";
-import { getAccount, getWalletAddress } from "../src/lib/services/x402.service.js";
-import { getWalletManager } from "../src/lib/services/wallet-manager.js";
+import { NETWORK, getExplorerTxUrl } from "@aibtc/skills/src/lib/config/networks.js";
+import { getAccount, getWalletAddress } from "@aibtc/skills/src/lib/services/x402.service.js";
+import { getWalletManager } from "@aibtc/skills/src/lib/services/wallet-manager.js";
 import {
   getBitflowService,
   type BitflowToken,
@@ -17,9 +17,9 @@ import {
   type HodlmmRelativeLiquidityBinInput,
   type HodlmmRelativeWithdrawalInput,
   type UnifiedBitflowRouteQuote,
-} from "../src/lib/services/bitflow.service.js";
-import { resolveFee } from "../src/lib/utils/fee.js";
-import { printJson, handleError } from "../src/lib/utils/cli.js";
+} from "@aibtc/skills/src/lib/services/bitflow.service.js";
+import { resolveFee } from "@aibtc/skills/src/lib/utils/fee.js";
+import { printJson, handleError } from "@aibtc/skills/src/lib/utils/cli.js";
 
 const HIGH_IMPACT_THRESHOLD = 0.05; // 5%
 

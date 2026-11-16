@@ -13,6 +13,7 @@ import { X402_HEADERS, decodePaymentPayload } from "../utils/x402-protocol.js";
 import { mnemonicToAccount } from "./x402.service.js";
 import { PaidRequestError, postWithSponsoredPayment } from "./x402-post.js";
 import {
+  AUTO_REPLY_LIMITS,
   AIBTC_API,
   INFERENCE_GATEWAY,
   MAX_REPLY_CHARS,
@@ -365,11 +366,30 @@ describe("runAutoReply", () => {
     expect(summary.inferenceSatsSpentToday).toBe(0);
   });
 
-  test("refuses to run without a numeric daily cap", async () => {
+  test("limits above the fixed ceilings are clamped, so a caller cannot raise them", async () => {
     serveInbox([msg("a")]);
-    await expect(
-      runAutoReply({ ...base, dailyCapSats: undefined as unknown as number, account, generator: fakeGenerator() })
-    ).rejects.toThrow(/dailyCapSats/);
+    serveOutbox(201);
+    const generator = fakeGenerator(AUTO_REPLY_LIMITS.maxSatsPerReply + 1);
+    const summary = await runAutoReply({ ...base, dailyCapSats: 1e9, maxSatsPerReply: 1e9, account, generator });
+    expect(summary.stoppedEarly).toBe("price_ceiling");
+    expect(generator.seen).toEqual([]);
+    expect(summary.inferenceCapRemainingSats).toBe(AUTO_REPLY_LIMITS.dailyCapSats);
+  });
+
+  test("a missing limit falls back to the fixed ceiling; a non-integer one is refused", async () => {
+    serveInbox([msg("a")]);
+    serveOutbox(201);
+    const { dailyCapSats: _d, maxSatsPerReply: _m, ...noLimits } = base;
+    const summary = await runAutoReply({ ...noLimits, account, generator: fakeGenerator(1) });
+    expect(summary.replied.map((r) => r.messageId)).toEqual(["a"]);
+    expect(summary.inferenceCapRemainingSats).toBe(AUTO_REPLY_LIMITS.dailyCapSats - 1);
+
+    await expect(runAutoReply({ ...base, dailyCapSats: Number.NaN, account, generator: fakeGenerator() })).rejects.toThrow(
+      /dailyCapSats/
+    );
+    await expect(runAutoReply({ ...base, maxSatsPerReply: -1, account, generator: fakeGenerator() })).rejects.toThrow(
+      /maxSatsPerReply/
+    );
   });
 
   test("keeps ledger fields it does not know about", async () => {
