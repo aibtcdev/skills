@@ -122,6 +122,13 @@ NETWORK=mainnet bun run tallfenn-x402-art/tallfenn-x402-art.ts full-bundle --pro
 Returns `seedPack`, `svg`, and `motionTimeline` for the same prompt in a single
 150-sat call.
 
+## Free response shape
+
+Every free subcommand returns:
+
+- `result` — the worker JSON body (unchanged fields such as `endpoint` from `/` are preserved)
+- `endpoint` — the URL that was requested (CLI context)
+
 ## Paid response shape
 
 Every paid subcommand returns:
@@ -156,11 +163,11 @@ with `paymentMode: "direct"`, so `X402_PAYMENT_MODE` does not choose the mode.
 The shared per-payment cap (`X402_MAX_SATS_PER_PAYMENT`) still applies on top
 of the route price table.
 
-`TALLFENN_ART_URL`, when set, must be an absolute `https://` URL (`http://localhost`
-or `http://127.0.0.1` only for local wrangler dev). No query, fragment, or
-credentials; the CLI uses origin + pathname and appends routes. It replaces
-the worker base for every request, including the POST that carries the signed
-transfer. `payTo` is still pinned
+`TALLFENN_ART_URL`, when set, must be an absolute `https://` origin (`http://localhost`,
+`http://127.0.0.1`, or `http://[::1]` only for local wrangler dev — free routes
+only unless you intentionally pay mainnet sBTC through the relay). No path
+prefix, query, fragment, or credentials. It replaces the worker host for every
+request, including the POST that carries the signed transfer. `payTo` is still pinned
 to the address above: a host that names a different recipient is refused
 before anything is signed. Leave the variable unset to use the production worker.
 

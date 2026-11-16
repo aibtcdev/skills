@@ -10,9 +10,13 @@
  */
 
 import { Command } from "commander";
-import { createApiClient, getDirectPaymentMetadata, resolveDirectPaymentAsset } from "../src/lib/services/x402.service.js";
-import { decodePaymentResponse, type PaymentRequirementsV2 } from "../src/lib/utils/x402-protocol.js";
-import { printJson, handleError } from "../src/lib/utils/cli.js";
+import {
+  createApiClient,
+  getDirectPaymentMetadata,
+  resolveDirectPaymentAsset,
+} from "@aibtc/skills/src/lib/services/x402.service.js";
+import { decodePaymentResponse, type PaymentRequirementsV2 } from "@aibtc/skills/src/lib/utils/x402-protocol.js";
+import { printJson, handleError } from "@aibtc/skills/src/lib/utils/cli.js";
 
 // ---------------------------------------------------------------------------
 // Endpoint host
@@ -24,11 +28,16 @@ function isLocalDevHost(hostname: string): boolean {
   return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]";
 }
 
-/** Origin + pathname only (no query, hash, or credentials) for safe path concatenation. */
+/** Origin only (no path prefix) until shared x402 dedup keys include the full request URL. */
 function resolveBaseUrl(): string {
   const raw = process.env.TALLFENN_ART_URL;
-  if (raw === undefined || raw.trim() === "") {
+  if (raw === undefined) {
     return DEFAULT_BASE_URL.replace(/\/+$/, "");
+  }
+  if (raw.trim() === "") {
+    throw new Error(
+      "TALLFENN_ART_URL was set but is empty or whitespace-only (nothing was signed or paid). Unset it to use the production worker."
+    );
   }
   if (raw !== raw.trim()) {
     throw new Error(
@@ -47,7 +56,7 @@ function resolveBaseUrl(): string {
   const httpLocal = parsed.protocol === "http:" && isLocalDevHost(parsed.hostname);
   if (!httpsOk && !httpLocal) {
     throw new Error(
-      `TALLFENN_ART_URL must use https (or http://localhost / http://127.0.0.1 for local wrangler dev). Got ${parsed.protocol}//${parsed.hostname}. Nothing was signed or paid.`
+      `TALLFENN_ART_URL must use https (or http://localhost, http://127.0.0.1, or http://[::1] for local wrangler dev). Got ${parsed.protocol}//${parsed.hostname}. Nothing was signed or paid.`
     );
   }
   if (parsed.username || parsed.password) {
@@ -58,8 +67,13 @@ function resolveBaseUrl(): string {
       "TALLFENN_ART_URL must not include query or fragment (nothing was signed or paid)."
     );
   }
-  const path = parsed.pathname.replace(/\/+$/, "");
-  return path.length > 0 ? `${parsed.origin}${path}` : parsed.origin;
+  const pathOnly = parsed.pathname.replace(/\/+$/, "");
+  if (pathOnly.length > 0 && pathOnly !== "/") {
+    throw new Error(
+      "TALLFENN_ART_URL must be an origin only (no path prefix). Base-path overrides share x402 dedup keys incorrectly until fixed in the shared client. Nothing was signed or paid."
+    );
+  }
+  return parsed.origin;
 }
 
 // ---------------------------------------------------------------------------
@@ -100,19 +114,18 @@ function assertAcceptedQuote(path: string, selected: PaymentRequirementsV2): voi
       `Refusing payment: quoted asset ${selected.asset} is not the canonical sBTC contract. Nothing was signed or paid.`
     );
   }
+  // Defence in depth; the shared client usually rejects network mismatch before beforePay.
   if (selected.network !== "stacks:1") {
     throw new Error(
       `Refusing payment: quoted network ${selected.network} is not stacks:1. Nothing was signed or paid.`
     );
   }
-  let quotedAmount: bigint;
-  let knownPrice: bigint;
-  try {
-    quotedAmount = BigInt(selected.amount);
-    knownPrice = BigInt(expectedPrice);
-  } catch {
+  const amountStr = String(selected.amount ?? "");
+  if (!/^[1-9]\d*$/.test(amountStr)) {
     throw new Error("Refusing payment: invalid quoted amount. Nothing was signed or paid.");
   }
+  const quotedAmount = BigInt(amountStr);
+  const knownPrice = BigInt(expectedPrice);
   if (quotedAmount > knownPrice) {
     throw new Error(
       `Refusing payment: quoted amount ${selected.amount} sats exceeds the expected ${expectedPrice} sats for ${path}. ` +
@@ -222,6 +235,10 @@ async function fetchFree(baseUrl: string, path: string): Promise<Record<string, 
   return (await res.json()) as Record<string, unknown>;
 }
 
+function wrapFreeOutput(data: Record<string, unknown>, endpoint: string): Record<string, unknown> {
+  return { result: data, endpoint };
+}
+
 async function paidPost(
   baseUrl: string,
   path: string,
@@ -284,7 +301,7 @@ program
     try {
       const baseUrl = resolveBaseUrl();
       const data = await fetchFree(baseUrl, "/");
-      printJson({ ...data, endpoint: `${baseUrl}/` });
+      printJson(wrapFreeOutput(data, `${baseUrl}/`));
     } catch (error) {
       handleError(error);
     }
@@ -297,7 +314,7 @@ program
     try {
       const baseUrl = resolveBaseUrl();
       const data = await fetchFree(baseUrl, "/health");
-      printJson({ ...data, endpoint: `${baseUrl}/health` });
+      printJson(wrapFreeOutput(data, `${baseUrl}/health`));
     } catch (error) {
       handleError(error);
     }
@@ -310,7 +327,7 @@ program
     try {
       const baseUrl = resolveBaseUrl();
       const data = await fetchFree(baseUrl, "/api/art/teaser");
-      printJson({ ...data, endpoint: `${baseUrl}/api/art/teaser` });
+      printJson(wrapFreeOutput(data, `${baseUrl}/api/art/teaser`));
     } catch (error) {
       handleError(error);
     }
@@ -323,7 +340,7 @@ program
     try {
       const baseUrl = resolveBaseUrl();
       const data = await fetchFree(baseUrl, "/api/art/samples");
-      printJson({ ...data, endpoint: `${baseUrl}/api/art/samples` });
+      printJson(wrapFreeOutput(data, `${baseUrl}/api/art/samples`));
     } catch (error) {
       handleError(error);
     }

@@ -16,8 +16,8 @@ description: Deterministic generative-art seed packs, 512x512 SVG previews, and 
   with `NETWORK=mainnet` set. The CLI signs a self-paid transfer. The relay
   does not pay the gas. `TALLFENN_ART_URL`, if set, must be an absolute
   `https://` URL (or `http://localhost` / `http://127.0.0.1` for local wrangler
-  dev only). It must not include query, fragment, or credentials. The CLI uses
-  origin + pathname only, then appends route paths. Every request — including
+  dev only, including `http://[::1]`). Origin only — no path prefix on the URL.
+  It must not include query, fragment, or credentials. Every request — including
   the signed transfer — goes to that base instead of the production worker.
   `payTo` stays pinned to `SP3F9T1HAHTMK5AV29Q9DK1VNHCQFH3F5T5FXKQAC`.
   Unset or empty uses the default production worker.
@@ -43,8 +43,8 @@ description: Deterministic generative-art seed packs, 512x512 SVG previews, and 
    - Need only parameters/palette? → `seed-pack` (100 sats)
    - Already have a `hash` and need the SVG? → `svg-preview --hash <hash>` (100 sats)
    - Need only keyframe coordinates? → `motion-timeline` (100 sats)
-   - Need parameters + SVG (or all three)? → `full-bundle` (150 sats, saves
-     50–150 sats).
+   - Need parameters + SVG (or all three)? → `full-bundle` (150 sats, saves 150
+     sats vs three separate 100-sat calls).
 3. **Cache by `(prompt, pieceVersion)`:** Output is strictly deterministic.
    Never pay twice for the same prompt and version; store the JSON output and
    reuse it locally.
@@ -86,8 +86,8 @@ description: Deterministic generative-art seed packs, 512x512 SVG previews, and 
 
 | Error | Meaning | Action |
 | --- | --- | --- |
-| `--prompt is required` / `--hash must be exactly 64 lowercase hex characters` / `--palette was provided` / `--palette entry` / `--palette segments` | Local input validation failed before wallet access | Fix CLI arguments; nothing was signed or spent |
-| `TALLFENN_ART_URL must` (https, query, fragment, credentials, whitespace) | Invalid custom worker base URL before any network or wallet use | Fix or unset `TALLFENN_ART_URL`; nothing was signed or spent |
+| `--prompt` / `--piece-version` / `--hash` / `--palette` validation messages (required, whitespace, length, empty segments, at most 16, bad color) | Local input validation failed before wallet access | Fix CLI arguments; nothing was signed or spent |
+| `TALLFENN_ART_URL` errors (empty when set, https, origin-only, query, fragment, credentials) | Invalid custom worker base URL before any network or wallet use | Fix or unset `TALLFENN_ART_URL`; nothing was signed or spent |
 | `Refusing payment:` … `Nothing was signed or paid` | The 402 quote failed the route price, payTo, asset, or network check | Do not retry until the quote matches the published price and recipient. Nothing was signed |
 | `DuplicatePaymentError` | A prior attempt may have sent a transfer within `X402_DEDUP_TTL_SECONDS` (default 900s) | Read the earlier txid in the error and check Hiro before paying again |
 | `SpendLimitError` | The quote would pass the wallet's daily sBTC or STX cap | Wait for the next day or raise the cap. Nothing was signed |

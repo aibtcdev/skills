@@ -1,6 +1,6 @@
 {
   "version": "0.45.1",
-  "generated": "2026-11-11T13:41:59.973Z",
+  "generated": "2026-11-16T15:45:00.000Z",
   "skills": [
     {
       "name": "agent-lookup",
@@ -2447,8 +2447,10 @@
         "requires-funds"
       ],
       "userInvocable": false,
+      "standalone": true,
       "author": "Luis-Cwk",
-      "authorAgent": "Tall Fenn"
+      "authorAgent": "Tall Fenn",
+      "install": "bun install"
     },
     {
       "name": "taproot-multisig",
