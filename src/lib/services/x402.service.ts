@@ -139,6 +139,16 @@ type X402RequestConfig = { x402ObligationId?: string };
 export interface CreateApiClientOptions {
   /** Pay with this asset when the challenge offers it; unset = first Stacks option. */
   preferredAsset?: X402PaymentAsset;
+  /**
+   * Runs on the 402 option that is about to be signed. Throw to refuse.
+   * Nothing is signed before this returns.
+   */
+  beforePay?: (accept: PaymentRequirementsV2) => Promise<void>;
+  /**
+   * Overrides X402_PAYMENT_MODE for this client. Resolved before any await,
+   * so a caller cannot lose the mode by restoring the environment later.
+   */
+  paymentMode?: X402PaymentMode;
 }
 
 export function resolvePreferredAsset(raw: string | undefined): X402PaymentAsset | undefined {
@@ -1290,7 +1300,7 @@ export async function createApiClient(
   // Resolved once per client so a bad value fails here, not mid-payment —
   // the mode, the preferred asset and, in direct mode, every cap, fee and
   // ledger setting.
-  const paymentMode = resolvePaymentMode();
+  const paymentMode = resolvePaymentMode(options.paymentMode);
   const preferredAsset = resolvePreferredAsset(options.preferredAsset);
   const directPolicy = paymentMode === "direct" ? resolveDirectPaymentPolicy() : null;
 
@@ -1478,6 +1488,10 @@ export async function createApiClient(
           return Promise.reject(
             new Error(networkMismatchMessage(paymentNetwork, account.network))
           );
+        }
+
+        if (options.beforePay) {
+          await options.beforePay(selectedOption);
         }
 
         let transaction: StacksTransactionWire;
