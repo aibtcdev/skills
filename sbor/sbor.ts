@@ -34,6 +34,7 @@ type Index = {
   label: string; currency: string; headline: string;
   borrow: number; supply: number;
   allInSupply?: number; allInSupplyDiffers?: boolean;
+  allInSupplyIncomplete?: boolean; allInSupplyNote?: string;
   venues: string[]; largestConstituentWeight: number;
   markets: Market[];
   termAverages?: Record<string, { borrow: number | null; supply: number | null } | null>;
@@ -101,8 +102,10 @@ const timeoutOr = (e: unknown, url: string, what: string) =>
 async function get<T>(path: string): Promise<T> {
   return (await fetchSbor(path, "application/json", "json")) as T;
 }
-/* history.json for the withdrawal check: null when it cannot be read. */
-const getHistory = () => fetchSbor(HISTORY, "application/json", "json", true);
+/* SBOR's list of withdrawn fixings, a few hundred bytes, read on every call
+   instead of the whole history: null when it cannot be read. */
+const WITHDRAWALS = "/api/v1/withdrawals.json";
+const getWithdrawals = () => fetchSbor(WITHDRAWALS, "application/json", "json", true);
 async function getText(path: string): Promise<string> {
   return (await fetchSbor(path, "text/plain", "text")) as string;
 }
@@ -224,6 +227,7 @@ const concentration = (ix: Index) => ({
     ? "One venue. This is a reading of that venue, not a market average, whatever the constituent weights are."
     : undefined
 });
+const INCOMPLETE_NOTE = "One or more constituents carry protocol yield that SBOR cannot read today, so it is left out: the all-in supply figure understates what a supplier receives.";
 const summarise = (ix: Index) => ({
   index: ix.label,
   borrow: ix.borrow,
@@ -231,6 +235,10 @@ const summarise = (ix: Index) => ({
   ...(ix.allInSupplyDiffers ? {
     allInSupply: ix.allInSupply,
     allInSupplyNote: "Includes protocol yield carried by the asset itself. Not a lending rate. Do not add it to supply."
+  } : {}),
+  ...(ix.allInSupplyIncomplete ? {
+    allInSupplyIncomplete: true,
+    allInSupplyIncompleteNote: ix.allInSupplyNote ?? INCOMPLETE_NOTE
   } : {}),
   ...concentration(ix)
 });
@@ -247,7 +255,14 @@ const withheldReason = (withheld: unknown, label: string): string | null => {
 };
 /* SBOR's own reason comes first: an index it withheld (a rate at or near zero
    on-chain, say) is not the same as one it could not read. */
-const absentReason = (d: Latest, label: string) => withheldReason(d.withheld, label) ?? ABSENT_REASON;
+/* Withheld means SBOR recorded the index as withheld, whether or not the
+   record carries a reason: the flag follows the key, the text follows the
+   reason. */
+const isWithheld = (withheld: unknown, label: string) =>
+  !!withheld && typeof withheld === "object" && Object.prototype.hasOwnProperty.call(withheld, label);
+const WITHHELD_NO_REASON = "SBOR withheld this index and recorded no reason. Treat it as unknown, not as zero.";
+const absentReason = (d: Latest, label: string) =>
+  withheldReason(d.withheld, label) ?? (isWithheld(d.withheld, label) ? WITHHELD_NO_REASON : ABSENT_REASON);
 /* Every benchmark missing from a fixing, with SBOR's reason. Used by rate and
    markets so an absence is never silent. Before its first fixing the
    bitcoin-collateral reference did not exist yet, which is said as such. */
@@ -255,12 +270,12 @@ const notPublishedIn = (d: Latest, date: string) => {
   const missing = [...INDICES.filter(l => !d.indices[l]), ...(refIndex(d) ? [] : [BTC_REF])];
   return missing.length ? missing.map(l => l === BTC_REF && date < REF_FIRST_FIXING
     ? { index: l, withheld: false, reason: `${BTC_REF} did not exist yet. It was first published with the fixing of ${REF_FIRST_FIXING}.` }
-    : { index: l, withheld: withheldReason(d.withheld, l) !== null, reason: absentReason(d, l) }) : undefined;
+    : { index: l, withheld: isWithheld(d.withheld, l), reason: absentReason(d, l) }) : undefined;
 };
 const absent = (label: string, d: Latest, path: string = LATEST, reason: string = absentReason(d, label)) => ({
   index: label,
   published: false,
-  withheld: withheldReason(d.withheld, label) !== null,
+  withheld: isWithheld(d.withheld, label),
   reason,
   publishedThatDay: Object.keys(d.indices),
   ...meta(d, path)
@@ -284,32 +299,27 @@ const isCalendarDate = (s: string): boolean => {
    "7.000000000000001". */
 const pct100 = (rate: number) => String(Number((rate * 100).toPrecision(12)));
 
-/* history.json keys each series by its own short name; the reference rate is
-   stored as btcUsdc. Every key is mapped to the label the skill uses. */
-const HISTORY_KEYS: Record<string, string> = { btcUsdc: BTC_REF };
 /* The fixings withdrawn after publication on one date, label to reason. An
    archive file is never rewritten, so its figure for a withdrawn fixing still
-   stands there: history.json is where the withdrawal is recorded.
-   `checked` is false when history.json has no row for that date yet. The two
-   files are cached separately, so a fresh fixing can briefly have no row: a
-   withdrawal then cannot be ruled out, which is never read as "none". */
+   stands there. SBOR lists every withdrawal in /api/v1/withdrawals.json, a
+   small file written with each fixing, with asOf: the latest fixing it was
+   built with. A date after asOf has not been checked yet, and an unreadable
+   file cannot rule a withdrawal out: neither is ever read as "none". */
 type Withdrawals = { byLabel: Record<string, string>; checked: boolean };
-function withdrawalsOn(h: unknown, date: string): Withdrawals {
-  /* history.json down or not a list: the check cannot be made, which is
-     reported the same way as a missing row. */
-  if (!Array.isArray(h)) return { byLabel: {}, checked: false };
-  const row = (h as Record<string, any>[]).find(r => r?.date === date);
+function withdrawalsOn(w: unknown, date: string): Withdrawals {
+  const f = w as { asOf?: unknown; withdrawals?: unknown } | null;
+  if (!f || typeof f.asOf !== "string" || !Array.isArray(f.withdrawals)) return { byLabel: {}, checked: false };
   const byLabel: Record<string, string> = {};
-  for (const [key, v] of Object.entries(row ?? {}))
-    if (v && typeof v === "object" && (v as any).withdrawn)
-      byLabel[HISTORY_KEYS[key] ?? key] = String((v as any).reason ?? "Withdrawn after publication.");
-  return { byLabel, checked: Boolean(row) };
+  for (const e of f.withdrawals as { date?: unknown; index?: unknown; reason?: unknown }[])
+    if (e?.date === date && typeof e.index === "string")
+      byLabel[e.index] = typeof e.reason === "string" && e.reason.trim() ? e.reason : "Withdrawn after publication.";
+  return { byLabel, checked: f.asOf >= date };
 }
 /* Reporting commands still answer when the check cannot be made yet, and say
    so; compare, which returns a verdict, refuses instead. */
 const withdrawalCaveat = (w: Withdrawals, date: string) => w.checked ? {} : {
   withdrawalCheck: "unconfirmed",
-  withdrawalNote: `The record of withdrawals (history.json) has no row for ${date} yet, or could not be read, so a withdrawal of this fixing cannot be ruled out. Read it again in a few minutes before acting on it.`
+  withdrawalNote: `SBOR's list of withdrawals (withdrawals.json) does not cover ${date} yet, or could not be read, so a withdrawal of this fixing cannot be ruled out. Read it again in a few minutes before acting on it.`
 };
 const withdrawnEntry = (label: string, date: string, reason: string) => ({
   index: label, date, withdrawn: true, reason,
@@ -343,7 +353,7 @@ program.command("rate")
     }
     const path = o.date ? `/api/v1/archive/${o.date}.json` : LATEST;
     /* The fixing and the record of withdrawals are fetched together. */
-    const [d, h] = await Promise.all([get<Latest>(path), getHistory()]);
+    const [d, h] = await Promise.all([get<Latest>(path), getWithdrawals()]);
     /* Withdrawals are checked for the current fixing too, not only past dates:
        a fixing can be withdrawn on the day it was published. */
     const day = o.date ?? fixingDate(d);
@@ -397,7 +407,7 @@ program.command("compare")
        reading either the verdict or the plain sentence cannot miss it. */
     const looksLikeFraction = rate > 0 && rate < 0.5;
 
-    const [d, h] = await Promise.all([get<Latest>(LATEST), getHistory()]);
+    const [d, h] = await Promise.all([get<Latest>(LATEST), getWithdrawals()]);
     requireFresh(d);
 
     const ix = lookup(d, o.index);
@@ -409,7 +419,7 @@ program.command("compare")
        whose withdrawal cannot be ruled out yet does not get a verdict either. */
     const w = withdrawalsOn(h, fixingDate(d));
     if (!w.checked)
-      die(`The record of withdrawals (history.json) has no row for the ${fixingDate(d)} fixing yet, or could not be read, so a withdrawal cannot be ruled out. Refusing to return a verdict. Try again in a few minutes.`);
+      die(`SBOR's list of withdrawals (withdrawals.json) does not cover the ${fixingDate(d)} fixing yet, or could not be read, so a withdrawal cannot be ruled out. Refusing to return a verdict. Try again in a few minutes.`);
     if (w.byLabel[o.index])
       die(`Today's ${o.index} fixing was withdrawn after publication, so there is no valid benchmark to compare against. SBOR's reason: ${w.byLabel[o.index]} Refusing to return a verdict.`);
 
@@ -423,6 +433,8 @@ program.command("compare")
       die(`Could not compute a difference from offered ${rate} against benchmark ${bench}. Refusing to return a verdict.`);
 
     const worse = side === "borrow" ? diff > 0 : diff < 0;
+    const allInDiff = side === "supply" && ix.allInSupplyDiffers && typeof ix.allInSupply === "number" && Number.isFinite(ix.allInSupply)
+      ? bps(rate, ix.allInSupply) : null;
     /* Only a full member that carries weight can be named best. A market still
        phasing in is listed by markets, never recommended: a new market's rate
        can be mechanically low for weeks while its rate model adjusts. A market
@@ -444,11 +456,19 @@ program.command("compare")
          figures: the lending rate (the benchmark above) and the all-in rate. An
          offer that already includes staking or protocol yield must be read
          against the all-in figure, so both comparisons are returned. */
-      ...(side === "supply" && ix.allInSupplyDiffers && typeof ix.allInSupply === "number" && Number.isFinite(ix.allInSupply) ? {
+      ...(allInDiff !== null ? {
         allInSupply: ix.allInSupply,
-        allInDifferenceBps: bps(rate, ix.allInSupply),
-        allInVerdict: Math.abs(bps(rate, ix.allInSupply)) < 1 ? "at market" : bps(rate, ix.allInSupply) < 0 ? "worse than market" : "better than market",
+        allInDifferenceBps: allInDiff,
+        allInVerdict: Math.abs(allInDiff) < 1 ? "at market" : allInDiff < 0 ? "worse than market" : "better than market",
         allInSupplyNote: `The verdict above is against the lending rate alone (${bench}%). If the offer includes the asset's own staking or protocol yield, judge it by allInVerdict, against the all-in rate of ${ix.allInSupply}%. Do not add the two figures.`
+      } : {}),
+      /* Some protocol yield could not be read, so the all-in figure is
+         understated. An offer that includes that yield cannot be judged
+         against it, and the verdict against the lending rate alone can make
+         it look better than it is. */
+      ...(side === "supply" && ix.allInSupplyIncomplete ? {
+        allInSupplyIncomplete: true,
+        allInSupplyIncompleteNote: `${ix.allInSupplyNote ?? INCOMPLETE_NOTE} If the offer includes protocol yield, this verdict against the lending rate alone overstates how good it is: do not act on it without that yield.`
       } : {}),
       ...(looksLikeFraction && {
         unitsWarning: `--rate was given as ${rate}, which is ${rate}%, not ${pct100(rate)}%. Rates this low do occur, so this has been treated as ${rate}% and answered. If you meant ${pct100(rate)}%, pass --rate ${pct100(rate)} and read the verdict again. Do not act on this result until you have checked which you meant.`
@@ -484,7 +504,7 @@ program.command("markets")
   .option("--index <index>", "SBOR-USD | SBOR-BTC | SBOR-STX | BTC-COLLATERAL-USDC")
   .action(async o => {
     checkIndex(o.index);
-    const [d, h] = await Promise.all([get<Latest>(LATEST), getHistory()]);
+    const [d, h] = await Promise.all([get<Latest>(LATEST), getWithdrawals()]);
     const day = fixingDate(d);
     const w = withdrawalsOn(h, day);
     if (o.index && w.byLabel[o.index]) return out({ ...withdrawnEntry(o.index, day, w.byLabel[o.index]), ...meta(d) });
@@ -495,9 +515,7 @@ program.command("markets")
     const all = o.index ? (one ? [one] : []) : [...Object.values(d.indices), ...(ref ? [ref] : [])];
     const entries = all.filter(ix => !w.byLabel[ix.label]);
     const withdrawn = all.filter(ix => w.byLabel[ix.label]).map(ix => withdrawnEntry(ix.label, day, w.byLabel[ix.label]));
-    if (!all.length)
-      return out(o.index ? absent(o.index, d)
-        : { markets: [], notPublished: notPublishedIn(d, day), ...withdrawalCaveat(w, day), ...meta(d) });
+    if (o.index && !one) return out(absent(o.index, d));
     out({
       markets: entries.flatMap(ix => ix.markets.map(m => ({
         index: ix.label, venue: m.venue, asset: m.asset,
@@ -530,11 +548,11 @@ program.command("history")
   .action(async o => {
     checkIndex(o.index, false);
     const asked = Number(o.days);
-    if (!Number.isFinite(asked) || asked < 1) die(`--days must be a positive number.`);
+    if (!Number.isInteger(asked) || asked < 1) die(`--days must be a whole number of days, 1 or more, got "${o.days}".`);
     /* The series starts 2026-09-01, so a window longer than that adds nothing.
        Capping it also keeps a huge --days from breaking the date arithmetic. */
     const sinceStart = Math.floor((Date.now() - Date.parse(`${SERIES_START}T00:00:00Z`)) / 864e5) + 1;
-    const days = Math.min(Math.floor(asked), Math.max(1, sinceStart));
+    const days = Math.min(asked, Math.max(1, sinceStart));
     const h = await get<Record<string, any>[]>(HISTORY);
     if (!Array.isArray(h))
       die(`The history at ${BASE}${HISTORY} could not be read as a list. Do not substitute an estimate.`);
@@ -549,13 +567,13 @@ program.command("history")
       .sort((a, b) => a.date.localeCompare(b.date))
       .map(r => {
         const reason = withheldReason(r.withheld, o.index);
-        return reason !== null
-          ? { date: r.date, withheld: true, reason }
+        return isWithheld(r.withheld, o.index)
+          ? { date: r.date, withheld: true, reason: reason ?? WITHHELD_NO_REASON }
           : { date: r.date, withheld: false, reason: ABSENT_REASON };
       });
     if (!rows.length) return out({ index: o.index, days, fixings: [], notPublished, notPublishedCount: notPublished.length, note: `No fixings for ${o.index} in the last ${days} days.` });
 
-    const valid = rows.filter(r => !r[o.index].withdrawn && typeof r[o.index].borrow === "number");
+    const valid = rows.filter(r => !r[o.index].withdrawn && typeof r[o.index].borrow === "number" && Number.isFinite(r[o.index].borrow));
 
     /* A mean across a methodology change averages two different definitions of
        the same number. SBOR revised its methodology several times in the first
@@ -577,6 +595,12 @@ program.command("history")
       index: o.index, days, ...(days < asked && { daysNote: `--days ${asked} was capped at ${days}: the series starts ${SERIES_START}.` }), count: rows.length,
       fixings: rows.map(r => r[o.index].withdrawn
         ? { date: r.date, withdrawn: true, reason: r[o.index].reason }
+        /* A row that is not withdrawn but has no numeric borrow is reported
+           as incomplete, never as a reading and never as withdrawn. */
+        : typeof r[o.index].borrow !== "number" || !Number.isFinite(r[o.index].borrow)
+        ? { date: r.date, incomplete: true, borrow: null, supply: typeof r[o.index].supply === "number" ? r[o.index].supply : null,
+            note: "This day's record has no usable borrow rate. Treat it as unknown, not as zero.",
+            methodologyVersion: r.methodologyVersion ?? null }
         : { date: r.date, borrow: r[o.index].borrow, supply: r[o.index].supply,
             /* The history row stores the venues as a list or, in older rows,
                as a count: each is returned under its own name. */
@@ -592,7 +616,8 @@ program.command("history")
       meanBorrowNote: versions.length > 1
         ? `This window spans ${versions.length} methodology versions (${versions.join(", ")}), so no single mean is given. Use byMethodologyVersion, or narrow --days to stay within one version.`
         : undefined,
-      withdrawnCount: rows.length - valid.length,
+      withdrawnCount: rows.filter(r => r[o.index].withdrawn).length,
+      incompleteCount: rows.filter(r => !r[o.index].withdrawn && !(typeof r[o.index].borrow === "number" && Number.isFinite(r[o.index].borrow))).length,
       notPublished,
       notPublishedCount: notPublished.length,
       note: "Withdrawn fixings stay in the record rather than being deleted, and are excluded from every mean. Days in notPublished had a fixing but no reading for this index, with SBOR's reason where it gave one (withheld): never a zero, and the series has gaps there. A change in methodologyVersion means the basis changed.",
@@ -605,7 +630,7 @@ program.command("chains")
   .option("--index <index>", "only markets comparable to this index")
   .action(async o => {
     checkIndex(o.index);
-    const [d, h] = await Promise.all([get<Latest>(LATEST), getHistory()]);
+    const [d, h] = await Promise.all([get<Latest>(LATEST), getWithdrawals()]);
     const day = fixingDate(d);
     const w = withdrawalsOn(h, day);
     if (o.index && w.byLabel[o.index]) return out({ ...withdrawnEntry(o.index, day, w.byLabel[o.index]), ...meta(d) });
@@ -655,6 +680,9 @@ program.command("chains")
           : null
       } : undefined,
       note: d.externalReference?.note,
+      /* Without --index, indices missing from the fixing are named, as in
+         rate and markets. */
+      notPublished: o.index ? undefined : notPublishedIn(d, day),
       ...withdrawalCaveat(w, day),
       warning: "Context only. On-chain comparisons are never constituents of an SBOR index. Each market's source field says where it was read: from contract state, or from DefiLlama. Depth is total supplied, labelled by depthBasis. One market is selected per chain: a venue publishing a borrow rate and utilisation is preferred over one that does not, and depth decides between those that publish both.",
       ...meta(d)

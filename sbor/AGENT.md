@@ -38,9 +38,11 @@ returns `withdrawn: true` and the reason instead of the figure, and so do
 `markets` and `chains` for the current fixing. If a response says
 `withdrawalCheck: "unconfirmed"`, the record of withdrawals has not caught up
 with the fixing yet: read it again before acting. When fewer indices come back
-than expected, read `notPublished`: `rate` and `markets` list every index (and
-the bitcoin-collateral reference) missing from the fixing, `history` every day
-an index was missing, each with SBOR's reason. `withheld: true` means SBOR chose
+than expected, read `notPublished`: without `--index`, `rate`, `markets` and
+`chains` list every index (and the bitcoin-collateral reference) missing from the
+fixing, and `history` every day an index was missing, each with SBOR's reason.
+With `--index`, a missing index comes back as `published: false`: read
+`withheld` and `reason`. `withheld: true` means SBOR chose
 not to publish it and says why; before 2026-09-25 the reference "did not exist
 yet". The series has gaps there.
 
@@ -59,6 +61,10 @@ so weight alone would miss it. `compare` returns `venueCount` and sets
 **Read utilisation before routing.** The cheapest rate at 95% utilisation may not
 be drawable, and a withdrawal may not be available when you want it. Prefer a
 venue with headroom.
+
+**`allInSupplyIncomplete: true` means the all-in figure is understated.** Some
+protocol yield could not be read. Do not judge an offer that includes protocol
+yield on that index as good from `compare` alone.
 
 **Do not add `supply` and `allInSupply`.** `allInSupply` already contains the
 lending rate. Adding them double counts.
