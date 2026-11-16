@@ -358,6 +358,29 @@ export async function releaseNonce(
 }
 
 /**
+ * Record a nonce used by a sender that broadcasts through its own path (not
+ * acquireNonce): move the tracked next nonce past `usedNonce` and log the txid.
+ * Does nothing when the address has no entry: the next acquireNonce syncs from
+ * Hiro. Never moves the tracked nonce backwards.
+ */
+export async function advanceNonce(address: string, usedNonce: number, txid?: string): Promise<void> {
+  await withLock(async () => {
+    const state = readStateFileSync();
+    const entry = state.addresses[address];
+    if (!entry) return;
+    if (entry.nextNonce <= usedNonce) entry.nextNonce = usedNonce + 1;
+    if (txid) {
+      entry.pending.push({ nonce: usedNonce, txid, timestamp: new Date().toISOString() });
+      if (entry.pending.length > MAX_PENDING_LOG) {
+        entry.pending = entry.pending.slice(-MAX_PENDING_LOG);
+      }
+    }
+    entry.lastUpdated = new Date().toISOString();
+    writeStateFileSync(state);
+  });
+}
+
+/**
  * Force re-sync nonce state from Hiro API.
  */
 export async function syncNonce(address: string): Promise<SyncResult> {

@@ -1,6 +1,6 @@
 {
-  "version": "0.45.1",
-  "generated": "2026-11-11T13:41:59.973Z",
+  "version": "0.45.2",
+  "generated": "2026-11-16T13:17:23.478Z",
   "skills": [
     {
       "name": "agent-lookup",
@@ -336,6 +336,34 @@
         "preorder_bns_name",
         "register_bns_name"
       ],
+      "install": "bun install"
+    },
+    {
+      "name": "bolt",
+      "description": "Pay Stacks fees in sBTC or USDCx when the wallet has no STX — send sBTC/USDCx, or have any contract call sponsored (e.g. ERC-8004 registration), paid in sBTC in the same request or from prepaid credit. Mainnet, no API key.",
+      "entry": "bolt/bolt.ts",
+      "arguments": [
+        "status",
+        "transfer",
+        "call",
+        "credit-balance",
+        "credit-ledger",
+        "credit-deposit",
+        "credit-withdraw",
+        "sponsor-call"
+      ],
+      "requires": [
+        "wallet"
+      ],
+      "tags": [
+        "l2",
+        "write",
+        "mainnet-only",
+        "requires-funds"
+      ],
+      "userInvocable": false,
+      "standalone": true,
+      "author": "ronoel",
       "install": "bun install"
     },
     {
