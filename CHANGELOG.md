@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.45.3](https://github.com/aibtcdev/skills/compare/skills-v0.45.2...skills-v0.45.3) (2026-11-16)
+
+
+### Bug Fixes
+
+* **stacks-alpha-engine:** a one sided HODLMM holding is not "deploy now" ([#415](https://github.com/aibtcdev/skills/issues/415)) ([eae5ca4](https://github.com/aibtcdev/skills/commit/eae5ca4abe94ea8c0383c39d5a71813ec7702d0a))
+
 ## [0.45.2](https://github.com/aibtcdev/skills/compare/skills-v0.45.1...skills-v0.45.2) (2026-11-11)
 
 
