@@ -145,7 +145,7 @@ interface HodlmmPositions { has_position: boolean; pools: HodlmmUserPool[] }
 
 type YieldTier = "deploy_now" | "swap_first" | "acquire_to_unlock";
 
-interface YieldOption {
+export interface YieldOption {
   tier: YieldTier;
   protocol: string; pool: string; token_needed: string; apy_pct: number;
   daily_usd: number; monthly_usd: number; gas_to_enter_stx: number;
@@ -482,19 +482,8 @@ async function scoutWallet(wallet: string): Promise<ScoutResult> {
 
   // -- Best move --------------------------------------------------------------
   const walletUsd = balances.sbtc.usd + balances.stx.usd + balances.usdcx.usd + balances.usdh.usd + balances.susdh.usd + balances.aeusdc.usd;
-  const deployNow = options.filter(o => o.tier === "deploy_now");
-  const bestOpt = deployNow[0];
-  let recommendation = "No yield opportunities available for your current holdings.";
-  let opportunityCost = 0;
-
   const outOfRange = hodlmm.positions.pools.filter(p => !p.in_range);
-  if (outOfRange.length > 0) {
-    recommendation = `WARNING: ${outOfRange.length} HODLMM position(s) OUT OF RANGE (${outOfRange.map(p => p.name).join(", ")}). Consider rebalancing.`;
-    opportunityCost = bestOpt?.daily_usd ?? 0;
-  } else if (bestOpt && bestOpt.apy_pct > 0 && walletUsd > 10) {
-    opportunityCost = round((walletUsd * bestOpt.apy_pct / 100) / 365, 4);
-    recommendation = `Best option: ${bestOpt.protocol} ${bestOpt.pool} (${bestOpt.token_needed}) at ${bestOpt.apy_pct}% APY (~$${opportunityCost}/day missed).`;
-  }
+  const { recommendation, opportunityCost } = computeBestMove(options, walletUsd, outOfRange.map(p => p.name));
 
   // -- Break prices -----------------------------------------------------------
   const { breakPrices, sources: bpSrc } = await getBreakPrices(hodlmm.positions, prices.sbtc);
@@ -801,45 +790,12 @@ async function getYieldOptions(
         const tokenYMeta = TOKENS[def.tokenY];
         if (!tokenXMeta || !tokenYMeta) continue;
 
-        const hasX = (balances as unknown as Record<string, TokenBalance>)[def.tokenX]?.amount > 0;
-        const hasY = (balances as unknown as Record<string, TokenBalance>)[def.tokenY]?.amount > 0;
-
-        let tier: YieldTier;
-        let capUsd: number;
-        let swapNote: string | null = null;
-
-        const xUsd = (balances as unknown as Record<string, TokenBalance>)[def.tokenX]?.usd ?? 0;
-        const yUsd = (balances as unknown as Record<string, TokenBalance>)[def.tokenY]?.usd ?? 0;
-
-        if (hasX && hasY) {
-          // Both sides held. Bounded by the SMALLER side, doubled: a paired
-          // deposit can only be as large as the side that runs out first.
-          tier = "deploy_now";
-          capUsd = Math.min(xUsd, yUsd) * 2;
-        } else if (hasX || hasY) {
-          // One side only, and this is NOT deploy_now.
-          //
-          // dlmm-core-v-1-1 holds the X asset only at bins at or above the active
-          // bin, and Y only at or below it, so both assets are valid together
-          // ONLY at the active bin. A deposit funded from one side lands outside
-          // it, which is outside the range where fees accrue. Reporting the
-          // pool's APY and a daily figure against that describes income the
-          // depositor does not receive.
-          tier = "swap_first";
-          capUsd = Math.max(xUsd, yUsd);
-          swapNote = `Swap part of your ${hasX ? tokenXMeta.symbol : tokenYMeta.symbol} into ${hasX ? tokenYMeta.symbol : tokenXMeta.symbol} on Bitflow first`;
-        } else {
-          // Check if user has any token that could be swapped
-          const totalUsd = balances.sbtc.usd + balances.stx.usd + balances.usdcx.usd + balances.usdh.usd + balances.aeusdc.usd;
-          if (totalUsd > 10) {
-            tier = "swap_first";
-            capUsd = totalUsd * 0.5; // conservative: assume half could be swapped
-            swapNote = `Swap to ${tokenXMeta.symbol} or ${tokenYMeta.symbol} on Bitflow first`;
-          } else {
-            tier = "acquire_to_unlock";
-            capUsd = 0;
-          }
-        }
+        const byKey = balances as unknown as Record<string, TokenBalance>;
+        const totalUsd = balances.sbtc.usd + balances.stx.usd + balances.usdcx.usd + balances.usdh.usd + balances.aeusdc.usd;
+        const { tier, capUsd, swapNote } = sizeHodlmmOption(
+          byKey[def.tokenX] ?? { amount: 0, usd: 0 }, byKey[def.tokenY] ?? { amount: 0, usd: 0 },
+          totalUsd, tokenXMeta.symbol, tokenYMeta.symbol,
+        );
 
         const d = dailyUsd(capUsd, bp.apr24h);
         options.push({
@@ -870,6 +826,68 @@ async function getYieldOptions(
   });
 
   return { options, sources };
+}
+
+// -- HODLMM option sizing -----------------------------------------------------
+export interface HodlmmSizing { tier: YieldTier; capUsd: number; swapNote: string | null }
+
+export function sizeHodlmmOption(
+  x: TokenBalance, y: TokenBalance, totalUsd: number, xSym: string, ySym: string,
+): HodlmmSizing {
+  const hasX = x.amount > 0;
+  const hasY = y.amount > 0;
+  const xUsd = x.usd;
+  const yUsd = y.usd;
+
+  if (hasX && hasY) {
+    // Both sides held. Bounded by the SMALLER side, doubled: a paired
+    // deposit can only be as large as the side that runs out first.
+    return { tier: "deploy_now", capUsd: Math.min(xUsd, yUsd) * 2, swapNote: null };
+  }
+  if (hasX || hasY) {
+    // One side only, and this is NOT deploy_now.
+    //
+    // dlmm-core-v-1-1 holds the X asset only at bins at or above the active
+    // bin, and Y only at or below it, so both assets are valid together
+    // ONLY at the active bin. A deposit funded from one side lands outside
+    // it, which is outside the range where fees accrue. Reporting the
+    // pool's APY and a daily figure against that describes income the
+    // depositor does not receive.
+    return {
+      tier: "swap_first",
+      capUsd: Math.max(xUsd, yUsd),
+      swapNote: `Swap part of your ${hasX ? xSym : ySym} into ${hasX ? ySym : xSym} on Bitflow first`,
+    };
+  }
+  // Check if user has any token that could be swapped
+  if (totalUsd > 10) {
+    // conservative: assume half could be swapped
+    return { tier: "swap_first", capUsd: totalUsd * 0.5, swapNote: `Swap to ${xSym} or ${ySym} on Bitflow first` };
+  }
+  return { tier: "acquire_to_unlock", capUsd: 0, swapNote: null };
+}
+
+// -- Best move ----------------------------------------------------------------
+export function computeBestMove(
+  options: YieldOption[], walletUsd: number, outOfRangeNames: string[],
+): { recommendation: string; opportunityCost: number } {
+  const bestOpt = options.filter(o => o.tier === "deploy_now")[0];
+  let recommendation = "No yield opportunities available for your current holdings.";
+  let opportunityCost = 0;
+
+  if (outOfRangeNames.length > 0) {
+    recommendation = `WARNING: ${outOfRangeNames.length} HODLMM position(s) OUT OF RANGE (${outOfRangeNames.join(", ")}). Consider rebalancing.`;
+    opportunityCost = bestOpt?.daily_usd ?? 0;
+  } else if (bestOpt && bestOpt.apy_pct > 0 && walletUsd > 10) {
+    opportunityCost = round((walletUsd * bestOpt.apy_pct / 100) / 365, 4);
+    recommendation = `Best option: ${bestOpt.protocol} ${bestOpt.pool} (${bestOpt.token_needed}) at ${bestOpt.apy_pct}% APY (~$${opportunityCost}/day missed).`;
+  }
+  return { recommendation, opportunityCost };
+}
+
+// -- Deploy gate: which scout option a deploy is checked against ----------------
+export function findDeployGateOption(options: YieldOption[], protocol: string, _poolId: string): YieldOption | undefined {
+  return options.find(o => o.protocol.toLowerCase() === protocol);
 }
 
 // -- Break prices -------------------------------------------------------------
@@ -1285,7 +1303,7 @@ function buildDlmmSwapInstruction(
   };
 }
 
-function buildDeployInstructions(protocol: Protocol, amount: number, token: string, scout: ScoutResult, poolId: string = "dlmm_1"): ExecuteInstruction[] {
+export function buildDeployInstructions(protocol: Protocol, amount: number, token: string, scout: ScoutResult, poolId: string = "dlmm_1"): ExecuteInstruction[] {
   const instructions: ExecuteInstruction[] = [];
   const wallet = scout.wallet;
 
@@ -1768,7 +1786,8 @@ async function _runPipeline(wallet: string, command: string, opts: Record<string
       const amount = parseInt(opts.amount ?? "0", 10);
 
       // Check 0% APY
-      const targetOpt = scout.options.find(o => o.protocol.toLowerCase() === protocol);
+      const poolId = (opts as Record<string, string>).poolId ?? "dlmm_1";
+      const targetOpt = findDeployGateOption(scout.options, protocol, poolId);
       if (targetOpt && targetOpt.apy_pct === 0 && !opts.force) {
         return { status: "refused", command, scout, reserve, guardian, refusal_reasons: [`${protocol} APY is 0%. Use --force to override.`] };
       }
