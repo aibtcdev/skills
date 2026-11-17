@@ -110,6 +110,9 @@ export const TOKENS: Record<string, TokenMeta> = {
   aeusdc: { symbol: "aeUSDC", contract: AEUSDC_TOKEN, decimals: 6, ftSuffix: "::aeUSDC" },
 };
 
+// Dollar stablecoins (TOKENS keys). A pool of two of them swaps at stablecoin fees.
+const STABLE_TOKENS = new Set(["usdcx", "usdh", "aeusdc"]);
+
 // Reverse lookup: token contract principal → TokenMeta. Used to derive asset_name + decimals
 // from on-chain route data (xToken/yToken/xForY) when building DLMM swap post-conditions.
 const TOKENS_BY_CONTRACT: Record<string, TokenMeta> = Object.fromEntries(
@@ -146,6 +149,7 @@ interface HodlmmPositions { has_position: boolean; pools: HodlmmUserPool[] }
 type YieldTier = "deploy_now" | "swap_first" | "acquire_to_unlock";
 
 export interface YieldOption {
+  pool_id?: string;        // HODLMM rows only: "dlmm_<id>", as passed to deploy --pool-id
   tier: YieldTier;
   protocol: string; pool: string; token_needed: string; apy_pct: number;
   daily_usd: number; monthly_usd: number; gas_to_enter_stx: number;
@@ -795,10 +799,12 @@ async function getYieldOptions(
         const { tier, capUsd, swapNote } = sizeHodlmmOption(
           byKey[def.tokenX] ?? { amount: 0, usd: 0 }, byKey[def.tokenY] ?? { amount: 0, usd: 0 },
           totalUsd, tokenXMeta.symbol, tokenYMeta.symbol,
+          STABLE_TOKENS.has(def.tokenX) && STABLE_TOKENS.has(def.tokenY),
         );
 
         const d = dailyUsd(capUsd, bp.apr24h);
         options.push({
+          pool_id: `dlmm_${def.id}`,
           tier, protocol: "HODLMM", pool: def.name, token_needed: `${tokenXMeta.symbol}/${tokenYMeta.symbol}`,
           apy_pct: round(bp.apr24h, 2), daily_usd: d, monthly_usd: round(d * 30, 2),
           gas_to_enter_stx: 0.05, swap_cost_note: swapNote,
@@ -829,23 +835,35 @@ async function getYieldOptions(
 }
 
 // -- HODLMM option sizing -----------------------------------------------------
+// A side worth less than this (or with no price) does not count as held.
+export const HODLMM_DUST_USD = 1;
+// A paired deposit is deploy_now only if the smaller side is at least this
+// share of the larger one. Below it, the paired deposit is a small fraction of
+// what swapping to balance the sides would put in range.
+export const HODLMM_MIN_SIDE_RATIO = 0.1;
+
 export interface HodlmmSizing { tier: YieldTier; capUsd: number; swapNote: string | null }
 
+// One rule for every HODLMM row: capUsd is the capital that sits in the pool,
+// at the active bin, once the swap named in swapNote is done. The swap fee is
+// stated in the note, as for the other swap_first options, not deducted.
 export function sizeHodlmmOption(
-  x: TokenBalance, y: TokenBalance, totalUsd: number, xSym: string, ySym: string,
+  x: TokenBalance, y: TokenBalance, totalUsd: number, xSym: string, ySym: string, stablePair = false,
 ): HodlmmSizing {
-  const hasX = x.amount > 0;
-  const hasY = y.amount > 0;
-  const xUsd = x.usd;
-  const yUsd = y.usd;
+  const feeNote = stablePair ? "~0.01% fee, stablecoin pair" : "~0.1-0.3% fee + gas";
+  const hasX = x.usd >= HODLMM_DUST_USD;
+  const hasY = y.usd >= HODLMM_DUST_USD;
+  const big = Math.max(x.usd, y.usd);
+  const small = Math.min(x.usd, y.usd);
 
-  if (hasX && hasY) {
+  if (hasX && hasY && small >= big * HODLMM_MIN_SIDE_RATIO) {
     // Both sides held. Bounded by the SMALLER side, doubled: a paired
     // deposit can only be as large as the side that runs out first.
-    return { tier: "deploy_now", capUsd: Math.min(xUsd, yUsd) * 2, swapNote: null };
+    return { tier: "deploy_now", capUsd: small * 2, swapNote: null };
   }
   if (hasX || hasY) {
-    // One side only, and this is NOT deploy_now.
+    // One side only (or the other side is dust or far smaller), and this is
+    // NOT deploy_now.
     //
     // dlmm-core-v-1-1 holds the X asset only at bins at or above the active
     // bin, and Y only at or below it, so both assets are valid together
@@ -853,16 +871,27 @@ export function sizeHodlmmOption(
     // it, which is outside the range where fees accrue. Reporting the
     // pool's APY and a daily figure against that describes income the
     // depositor does not receive.
+    //
+    // Swapping half the difference evens the sides, so both are then worth
+    // (big + small) / 2 and the whole pair can go in at the active bin.
+    const xIsBig = x.usd >= y.usd;
+    const swapUsd = round((big - small) / 2, 2);
     return {
       tier: "swap_first",
-      capUsd: Math.max(xUsd, yUsd),
-      swapNote: `Swap part of your ${hasX ? xSym : ySym} into ${hasX ? ySym : xSym} on Bitflow first`,
+      capUsd: big + small,
+      swapNote: `Swap ~$${swapUsd} of your ${xIsBig ? xSym : ySym} into ${xIsBig ? ySym : xSym} on Bitflow first, so both sides match (${feeNote})`,
     };
   }
-  // Check if user has any token that could be swapped
+  // Neither side held. Conservative: assume half the other holdings get swapped
+  // into the pair, split evenly between the two sides.
   if (totalUsd > 10) {
-    // conservative: assume half could be swapped
-    return { tier: "swap_first", capUsd: totalUsd * 0.5, swapNote: `Swap to ${xSym} or ${ySym} on Bitflow first` };
+    const capUsd = totalUsd * 0.5;
+    const perSide = round(capUsd / 2, 2);
+    return {
+      tier: "swap_first",
+      capUsd,
+      swapNote: `Swap ~$${perSide} into ${xSym} and ~$${perSide} into ${ySym} on Bitflow first (~0.1-0.3% fee + gas)`,
+    };
   }
   return { tier: "acquire_to_unlock", capUsd: 0, swapNote: null };
 }
@@ -879,14 +908,20 @@ export function computeBestMove(
     recommendation = `WARNING: ${outOfRangeNames.length} HODLMM position(s) OUT OF RANGE (${outOfRangeNames.join(", ")}). Consider rebalancing.`;
     opportunityCost = bestOpt?.daily_usd ?? 0;
   } else if (bestOpt && bestOpt.apy_pct > 0 && walletUsd > 10) {
-    opportunityCost = round((walletUsd * bestOpt.apy_pct / 100) / 365, 4);
+    // The option's own daily figure, sized on the capital it can actually take
+    // (e.g. a paired HODLMM deposit is bounded by its smaller side), not the
+    // whole wallet at that option's APY.
+    opportunityCost = bestOpt.daily_usd;
     recommendation = `Best option: ${bestOpt.protocol} ${bestOpt.pool} (${bestOpt.token_needed}) at ${bestOpt.apy_pct}% APY (~$${opportunityCost}/day missed).`;
   }
   return { recommendation, opportunityCost };
 }
 
 // -- Deploy gate: which scout option a deploy is checked against ----------------
-export function findDeployGateOption(options: YieldOption[], protocol: string, _poolId: string): YieldOption | undefined {
+// HODLMM has one row per pool, so match the pool being deployed to; the first
+// HODLMM row belongs to whichever pool sorts first. Other protocols have one row.
+export function findDeployGateOption(options: YieldOption[], protocol: string, poolId: string): YieldOption | undefined {
+  if (protocol === "hodlmm") return options.find(o => o.protocol.toLowerCase() === "hodlmm" && o.pool_id === poolId);
   return options.find(o => o.protocol.toLowerCase() === protocol);
 }
 
@@ -1303,7 +1338,7 @@ function buildDlmmSwapInstruction(
   };
 }
 
-export function buildDeployInstructions(protocol: Protocol, amount: number, token: string, scout: ScoutResult, poolId: string = "dlmm_1"): ExecuteInstruction[] {
+export function buildDeployInstructions(protocol: Protocol, amount: number, token: string, scout: ScoutResult, poolId: string = "dlmm_1", allowOneSided = false): ExecuteInstruction[] {
   const instructions: ExecuteInstruction[] = [];
   const wallet = scout.wallet;
 
@@ -1481,6 +1516,20 @@ export function buildDeployInstructions(protocol: Protocol, amount: number, toke
           tool: "info",
           params: {},
           description: `HODLMM deploy to ${poolId} (${pool.name}) requires ${pool.tokenX.toUpperCase()} and/or ${pool.tokenY.toUpperCase()} in wallet — neither present.`,
+        });
+        break;
+      }
+
+      if (!(hasX && hasY) && !allowOneSided) {
+        // A one-sided deposit can only go to bins away from the active bin (see
+        // the X/Y bin invariants below), which earn no fees until the price
+        // moves into them. Don't build it unless the caller asks with --force.
+        const held = hasX ? xMeta?.symbol ?? pool.tokenX : yMeta?.symbol ?? pool.tokenY;
+        const missing = hasX ? yMeta?.symbol ?? pool.tokenY : xMeta?.symbol ?? pool.tokenX;
+        instructions.push({
+          tool: "info",
+          params: {},
+          description: `HODLMM ${pool.name}: wallet holds ${held} but no ${missing}. A ${held}-only deposit lands outside the active bin and earns no fees until the price moves into it. Swap about half of the ${held} into ${missing} on Bitflow first, then deploy both. Use --force to place the one-sided deposit anyway.`,
         });
         break;
       }
@@ -1807,8 +1856,8 @@ async function _runPipeline(wallet: string, command: string, opts: Record<string
         }
       }
 
-      instructions = buildDeployInstructions(protocol, amount, token, scout, ((opts as Record<string, string>).poolId ?? "dlmm_1"));
-      description = `Deploy ${amount} ${token} to ${protocol}${protocol === "hodlmm" ? ` (${((opts as Record<string, string>).poolId ?? "dlmm_1")})` : ""}`;
+      instructions = buildDeployInstructions(protocol, amount, token, scout, poolId, Boolean(opts.force));
+      description = `Deploy ${amount} ${token} to ${protocol}${protocol === "hodlmm" ? ` (${poolId})` : ""}`;
       break;
     }
 
@@ -2222,7 +2271,7 @@ program
   .requiredOption("--amount <value>", "Amount in smallest unit (sats for sBTC, micro for stablecoins)")
   .option("--token <symbol>", "Token to deploy (default: inferred from protocol)")
   .option("--pool-id <id>", "HODLMM pool ID for protocol=hodlmm (default: dlmm_1). Ignored for other protocols.", "dlmm_1")
-  .option("--force", "Override 0% APY refusal")
+  .option("--force", "Override the 0% APY and YTG refusals, and allow a one-sided HODLMM deposit")
   .option("--confirm", "Execute the transaction (without this flag, outputs a dry-run preview)")
   .action(async (opts: Record<string, string>) => {
     const result = await runPipeline(opts.wallet, "deploy", opts);
