@@ -1,6 +1,6 @@
 {
-  "version": "0.45.1",
-  "generated": "2026-11-11T13:41:59.973Z",
+  "version": "0.45.2",
+  "generated": "2026-11-17T22:07:37.913Z",
   "skills": [
     {
       "name": "agent-lookup",
@@ -2578,32 +2578,6 @@
         "get_validation_status",
         "get_validation_summary"
       ],
-      "install": "bun install"
-    },
-    {
-      "name": "vibewatch-sentiment",
-      "description": "Stacks ecosystem community sentiment from the Vibewatch Stacks Vibe Index — free public index plus x402 pay-per-query depth (per-project history, evidence receipts, deltas) settled in sBTC on Stacks.",
-      "entry": "vibewatch-sentiment/vibewatch-sentiment.ts",
-      "arguments": [
-        "index",
-        "terms",
-        "reports",
-        "project",
-        "evidence",
-        "delta"
-      ],
-      "requires": [
-        "wallet"
-      ],
-      "tags": [
-        "l2",
-        "read-only",
-        "requires-funds"
-      ],
-      "userInvocable": false,
-      "standalone": true,
-      "author": "brandonjamesmarshall",
-      "authorAgent": "Sonic Mast",
       "install": "bun install"
     },
     {
