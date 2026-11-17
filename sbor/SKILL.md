@@ -110,8 +110,20 @@ carries weight 0 and is not part of the rate.
 
 ### history
 
-Daily fixings. Withdrawn fixings are returned with their reason rather than
-silently omitted.
+Daily fixings. Each row is one of three kinds:
+
+- a reading, with `borrow` and `supply`;
+- `withdrawn: true` with SBOR's reason: withdrawn after publication, never
+  silently omitted, and left out of every mean. Withdrawals are read from
+  SBOR's `withdrawals.json`, the same list `rate`, `markets`, `chains` and
+  `compare` use;
+- `incomplete: true` with `borrow: null`: the record has no usable borrow
+  rate. Treat it as unknown, never as zero. Also left out of every mean.
+
+`withdrawnCount` and `incompleteCount` count the last two. Days with no entry
+at all are in `notPublished`. If `withdrawalCheck` is `"unconfirmed"`, the list
+of withdrawals does not cover every day in the window yet (or could not be
+read): the days named in `withdrawalNote` may still be withdrawn.
 
 ### chains
 

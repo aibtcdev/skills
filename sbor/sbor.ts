@@ -306,14 +306,28 @@ const pct100 = (rate: number) => String(Number((rate * 100).toPrecision(12)));
    built with. A date after asOf has not been checked yet, and an unreadable
    file cannot rule a withdrawal out: neither is ever read as "none". */
 type Withdrawals = { byLabel: Record<string, string>; checked: boolean };
-function withdrawalsOn(w: unknown, date: string): Withdrawals {
+type WithdrawalList = { byDate: Record<string, Record<string, string>>; asOf: string | null };
+/* SBOR writes the published labels. The history's short keys are mapped too,
+   so a withdrawal keyed either way is never missed. */
+const LABEL_ALIASES: Record<string, string> = { btcUsdc: BTC_REF, btcCollateralUsd: "BTC-COLLATERAL-USD" };
+/* asOf must be a real calendar date. Anything else (missing, "", "latest")
+   leaves asOf null, which checks nothing: the check fails closed. */
+function readWithdrawals(w: unknown): WithdrawalList {
   const f = w as { asOf?: unknown; withdrawals?: unknown } | null;
-  if (!f || typeof f.asOf !== "string" || !Array.isArray(f.withdrawals)) return { byLabel: {}, checked: false };
-  const byLabel: Record<string, string> = {};
+  if (!f || typeof f.asOf !== "string" || !isCalendarDate(f.asOf) || !Array.isArray(f.withdrawals))
+    return { byDate: {}, asOf: null };
+  const byDate: Record<string, Record<string, string>> = {};
   for (const e of f.withdrawals as { date?: unknown; index?: unknown; reason?: unknown }[])
-    if (e?.date === date && typeof e.index === "string")
-      byLabel[e.index] = typeof e.reason === "string" && e.reason.trim() ? e.reason : "Withdrawn after publication.";
-  return { byLabel, checked: f.asOf >= date };
+    if (typeof e?.date === "string" && typeof e.index === "string")
+      (byDate[e.date] ||= {})[LABEL_ALIASES[e.index] ?? e.index] =
+        typeof e.reason === "string" && e.reason.trim() ? e.reason : "Withdrawn after publication.";
+  return { byDate, asOf: f.asOf };
+}
+/* Checked only when both dates are real calendar dates and the list covers
+   the date. A missing fixing date ("") never counts as covered. */
+function withdrawalsOn(w: unknown, date: string): Withdrawals {
+  const l = readWithdrawals(w);
+  return { byLabel: l.byDate[date] ?? {}, checked: l.asOf !== null && isCalendarDate(date) && l.asOf >= date };
 }
 /* Reporting commands still answer when the check cannot be made yet, and say
    so; compare, which returns a verdict, refuses instead. */
@@ -553,7 +567,11 @@ program.command("history")
        Capping it also keeps a huge --days from breaking the date arithmetic. */
     const sinceStart = Math.floor((Date.now() - Date.parse(`${SERIES_START}T00:00:00Z`)) / 864e5) + 1;
     const days = Math.min(asked, Math.max(1, sinceStart));
-    const h = await get<Record<string, any>[]>(HISTORY);
+    const [h, wl] = await Promise.all([get<Record<string, any>[]>(HISTORY), getWithdrawals()]);
+    /* Withdrawals come from withdrawals.json, the same list rate, markets,
+       chains and compare read, so every command agrees on a date. A row the
+       history itself marks withdrawn counts too: either source is enough. */
+    const list = readWithdrawals(wl);
     if (!Array.isArray(h))
       die(`The history at ${BASE}${HISTORY} could not be read as a list. Do not substitute an estimate.`);
     /* --days 30 means the last 30 calendar days, today included. */
@@ -573,7 +591,15 @@ program.command("history")
       });
     if (!rows.length) return out({ index: o.index, days, fixings: [], notPublished, notPublishedCount: notPublished.length, note: `No fixings for ${o.index} in the last ${days} days.` });
 
-    const valid = rows.filter(r => !r[o.index].withdrawn && typeof r[o.index].borrow === "number" && Number.isFinite(r[o.index].borrow));
+    const withdrawnReason = (r: Record<string, any>): string | null =>
+      list.byDate[r.date]?.[o.index] ?? (r[o.index].withdrawn
+        ? (typeof r[o.index].reason === "string" && r[o.index].reason.trim() ? r[o.index].reason : "Withdrawn after publication.")
+        : null);
+    const hasBorrow = (r: Record<string, any>) => typeof r[o.index].borrow === "number" && Number.isFinite(r[o.index].borrow);
+    const valid = rows.filter(r => withdrawnReason(r) === null && hasBorrow(r));
+    /* Days after the list's asOf, or every day if it could not be read, are
+       not confirmed: they are still shown, and flagged. */
+    const unchecked = rows.filter(r => list.asOf === null || r.date > list.asOf).map(r => r.date);
 
     /* A mean across a methodology change averages two different definitions of
        the same number. SBOR revised its methodology several times in the first
@@ -593,11 +619,11 @@ program.command("history")
     const versions = Object.keys(byVersion);
     out({
       index: o.index, days, ...(days < asked && { daysNote: `--days ${asked} was capped at ${days}: the series starts ${SERIES_START}.` }), count: rows.length,
-      fixings: rows.map(r => r[o.index].withdrawn
-        ? { date: r.date, withdrawn: true, reason: r[o.index].reason }
+      fixings: rows.map(r => withdrawnReason(r) !== null
+        ? { date: r.date, withdrawn: true, reason: withdrawnReason(r) }
         /* A row that is not withdrawn but has no numeric borrow is reported
            as incomplete, never as a reading and never as withdrawn. */
-        : typeof r[o.index].borrow !== "number" || !Number.isFinite(r[o.index].borrow)
+        : !hasBorrow(r)
         ? { date: r.date, incomplete: true, borrow: null, supply: typeof r[o.index].supply === "number" ? r[o.index].supply : null,
             note: "This day's record has no usable borrow rate. Treat it as unknown, not as zero.",
             methodologyVersion: r.methodologyVersion ?? null }
@@ -616,12 +642,19 @@ program.command("history")
       meanBorrowNote: versions.length > 1
         ? `This window spans ${versions.length} methodology versions (${versions.join(", ")}), so no single mean is given. Use byMethodologyVersion, or narrow --days to stay within one version.`
         : undefined,
-      withdrawnCount: rows.filter(r => r[o.index].withdrawn).length,
-      incompleteCount: rows.filter(r => !r[o.index].withdrawn && !(typeof r[o.index].borrow === "number" && Number.isFinite(r[o.index].borrow))).length,
+      withdrawnCount: rows.filter(r => withdrawnReason(r) !== null).length,
+      incompleteCount: rows.filter(r => withdrawnReason(r) === null && !hasBorrow(r)).length,
+      ...(unchecked.length > 0 && {
+        withdrawalCheck: "unconfirmed",
+        withdrawalNote: list.asOf === null
+          ? "SBOR's list of withdrawals (withdrawals.json) could not be read, so a withdrawal of any fixing in this window cannot be ruled out. Read it again in a few minutes before acting on it."
+          : `SBOR's list of withdrawals (withdrawals.json) covers fixings up to ${list.asOf}, so a withdrawal of ${unchecked.join(", ")} cannot be ruled out yet. Read it again in a few minutes before acting on it.`
+      }),
       notPublished,
       notPublishedCount: notPublished.length,
       note: "Withdrawn fixings stay in the record rather than being deleted, and are excluded from every mean. Days in notPublished had a fixing but no reading for this index, with SBOR's reason where it gave one (withheld): never a zero, and the series has gaps there. A change in methodologyVersion means the basis changed.",
-      source: `${BASE}${HISTORY}`
+      source: `${BASE}${HISTORY}`,
+      withdrawalsSource: `${BASE}${WITHDRAWALS}`
     });
   });
 
