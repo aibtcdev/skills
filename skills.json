@@ -1,6 +1,6 @@
 {
-  "version": "0.45.1",
-  "generated": "2026-11-11T13:41:59.973Z",
+  "version": "0.45.2",
+  "generated": "2026-11-11T19:44:51.730Z",
   "skills": [
     {
       "name": "agent-lookup",
@@ -1935,6 +1935,33 @@
         "get_rune_utxos",
         "transfer_rune"
       ],
+      "install": "bun install"
+    },
+    {
+      "name": "sbor",
+      "description": "SBOR, benchmark lending rates for Bitcoin DeFi, read from contract state. Get the current borrow and supply rate per currency on Stacks, or the cost of borrowing USDC against plain bitcoin across every eligible market SBOR reads (Morpho on Ethereum, Base, Arbitrum and Arc, Granite on Stacks); judge whether a rate you have been offered is above or below the market; list the venues behind a rate with their utilization; read the history; compare with lending markets elsewhere; and check for cross-venue inversions.",
+      "entry": "sbor/sbor.ts",
+      "arguments": [
+        "rate",
+        "compare",
+        "markets",
+        "history",
+        "chains",
+        "inversions",
+        "context",
+        "method"
+      ],
+      "requires": [],
+      "tags": [
+        "read-only",
+        "mainnet-only",
+        "defi",
+        "l2"
+      ],
+      "userInvocable": false,
+      "standalone": true,
+      "author": "sborxyz",
+      "authorAgent": "SBOR",
       "install": "bun install"
     },
     {
