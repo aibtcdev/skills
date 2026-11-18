@@ -45,7 +45,6 @@ const TOKEN_SBTC = "token-sbtc";
 // Fee estimates (bps)
 const FEE_BPS = {
   xyk: 30,  // 0.30% Bitflow XYK fee
-  dlmm: 25, // 0.25% HODLMM fee (variable, typical)
 };
 
 // Safety limits — HARD CAPS enforced in code, not just documentation
@@ -88,6 +87,8 @@ interface DlmmData {
   activeBinId: number;
   totalBins: number;
   source: "bitflow-api" | "unavailable";
+  xFeeBps: number;
+  yFeeBps: number;
 }
 
 interface McpCommand {
@@ -243,7 +244,8 @@ async function fetchXykReserves(oracle: OraclePrices): Promise<XykReserves> {
   if (!data.okay) throw new Error(`Contract call failed: ${JSON.stringify(data)}`);
 
   const hex = data.result.startsWith("0x") ? data.result.substring(2) : data.result;
-  const { xBalance, yBalance } = decodeClarityPool(hex);
+  const decoded = decodeClarityPool(hex);
+  const { xBalance, yBalance } = decoded;
 
   const xBalanceSats = Number(xBalance);
   const yBalanceMicro = Number(yBalance);
@@ -275,12 +277,26 @@ interface HodlmmBinsResponse {
   bins: HodlmmBin[];
 }
 
+interface HodlmmPoolResponse {
+  pools: Array<{
+    pool_id: string;
+    x_total_fee_bps: string;
+    y_total_fee_bps: string;
+  }>;
+}
+
 async function fetchDlmmBins(): Promise<DlmmData> {
   try {
-    const bins = await fetchJson<HodlmmBinsResponse>(
-      `${BITFLOW_QUOTES_API}/bins/${DLMM_POOL_ID}`,
-      BITFLOW_API_KEY ? { headers: { "x-api-key": BITFLOW_API_KEY } } : undefined
-    );
+    const [bins, pools] = await Promise.all([
+      fetchJson<HodlmmBinsResponse>(
+        `${BITFLOW_QUOTES_API}/bins/${DLMM_POOL_ID}`,
+        BITFLOW_API_KEY ? { headers: { "x-api-key": BITFLOW_API_KEY } } : undefined
+      ),
+      fetchJson<HodlmmPoolResponse>(
+        `${BITFLOW_QUOTES_API}/pools?amm_type=dlmm`,
+        BITFLOW_API_KEY ? { headers: { "x-api-key": BITFLOW_API_KEY } } : undefined
+      ),
+    ]);
 
     const activeBinId = bins.active_bin_id ?? 0;
     const activeBin = bins.bins?.find((b) => b.bin_id === activeBinId);
@@ -293,14 +309,27 @@ async function fetchDlmmBins(): Promise<DlmmData> {
     const rawPrice = activeBin?.price ? Number(activeBin.price) : 0;
     const stxPerBtc = rawPrice * 10;
 
+    const poolData = pools.pools?.find(p => p.pool_id === DLMM_POOL_ID);
+    if (!poolData) {
+      // Pool missing from /pools?amm_type=dlmm — fall back to conservative static rather than
+      // zeroing the DLMM cost leg, which would overstate arb profitability.
+      console.warn(`[hodlmm-arb-executor] ${DLMM_POOL_ID} not found in DLMM pools API; using fallback fee`);
+    }
+    // FALLBACK_DLMM_FEE_BPS: wider than any active dlmm_6 fee; keeps GO/NO-GO on the safe side.
+    const FALLBACK_DLMM_FEE_BPS = 50;
+    const xFeeBps = poolData?.x_total_fee_bps ? Number(poolData.x_total_fee_bps) : FALLBACK_DLMM_FEE_BPS;
+    const yFeeBps = poolData?.y_total_fee_bps ? Number(poolData.y_total_fee_bps) : FALLBACK_DLMM_FEE_BPS;
+
     return {
       stxPerBtc: round(stxPerBtc, 2),
       activeBinId,
       totalBins: bins.bins?.length ?? 0,
       source: stxPerBtc > 0 ? "bitflow-api" : "unavailable",
+      xFeeBps,
+      yFeeBps,
     };
   } catch {
-    return { stxPerBtc: 0, activeBinId: 0, totalBins: 0, source: "unavailable" };
+    return { stxPerBtc: 0, activeBinId: 0, totalBins: 0, source: "unavailable", xFeeBps: 0, yFeeBps: 0 };
   }
 }
 
@@ -322,7 +351,12 @@ function analyzeSpread(oracle: OraclePrices, xyk: XykReserves, dlmm: DlmmData): 
   if (dlmm.source === "unavailable" || dlmm.stxPerBtc === 0) return null;
 
   const grossSpread = Math.abs(((xyk.stxPerBtc - dlmm.stxPerBtc) / dlmm.stxPerBtc) * 100);
-  const estFee = (FEE_BPS.xyk + FEE_BPS.dlmm) / 100;
+  // XYK fee is a fixed protocol parameter (30 bps). Only DLMM fees are variable.
+  // Use the higher of x/y DLMM fees as a direction-agnostic conservative bound.
+  // For dlmm_6 today xFeeBps == yFeeBps (symmetric pool), so this is a no-op in practice
+  // but guards against asymmetric-fee pools if more come online.
+  const dlmmFeeTotal = Math.max(dlmm.xFeeBps, dlmm.yFeeBps) / 100;
+  const estFee = (FEE_BPS.xyk / 100) + dlmmFeeTotal;
   const netSpread = grossSpread - estFee;
   // Confidence buffer: STX feed uncertainty as % of price.
   // stxPerBtc = btcUsd / stxUsd — latency between publishes creates noise.
@@ -368,15 +402,15 @@ function buildEntryCommands(oracle: OraclePrices, activeBinId: number, satsCappe
         pool_id: DLMM_POOL_ID,
         bins: JSON.stringify([
           {
-            activeBinOffset: 1,   // one bin above active = pricing at premium
-            xAmount: String(satsCapped),
-            yAmount: "0",         // one-sided sBTC deposit above active bin
+            activeBinOffset: -1,
+            xAmount: "0",
+            yAmount: String(satsCapped),
           },
         ]),
         active_bin_tolerance: JSON.stringify({ expectedBinId: activeBinId, maxDeviation: "2" }),
         slippage_tolerance: "1.5",
       },
-      description: `Add ${sbtcAmount} sBTC to DLMM pool ${DLMM_POOL_ID} bin +1 (LP entry at premium)`,
+      description: `Add ${sbtcAmount} sBTC to DLMM pool ${DLMM_POOL_ID} bin -1 (Y-side LP entry below active)`,
       postConditions: [
         `FT debit sBTC eq ${satsCapped} sats`,
         `LP tokens credited for pool ${DLMM_POOL_ID}`,
@@ -390,7 +424,7 @@ function buildEntryCommands(oracle: OraclePrices, activeBinId: number, satsCappe
 // ---------------------------------------------------------------------------
 
 function buildExitCommands(position: LpPosition, currentActiveBinId: number, oracle: OraclePrices): McpCommand[] {
-  // entryBinId stores the actual LP bin (activeBin + 1 at entry time).
+  // entryBinId stores the actual LP bin (activeBin - 1 at entry time = Y-only below active).
   // currentOffset = LP bin relative to current active bin.
   const currentOffset = position.entryBinId - currentActiveBinId;
   const sbtcAmount = position.satsSent / 1e8;
@@ -491,8 +525,8 @@ program
           status: dlmm.source === "unavailable" ? (!BITFLOW_API_KEY ? "warn" : "error") : "ok",
           detail: dlmm.source === "unavailable"
             ? (!BITFLOW_API_KEY
-                ? "BITFLOW_API_KEY env var not set — set it to enable DLMM spread detection"
-                : "HODLMM API unreachable — execute requires DLMM data")
+              ? "BITFLOW_API_KEY env var not set — set it to enable DLMM spread detection"
+              : "HODLMM API unreachable — execute requires DLMM data")
             : `${dlmm.stxPerBtc} STX/BTC | active bin ${dlmm.activeBinId} | ${dlmm.totalBins} bins | oracle implied ${oracleImplied} STX/BTC`,
         });
       } catch (e) {
@@ -773,7 +807,7 @@ program
       state.openPosition = {
         entryTimestamp: state.lastExecutionAt,
         entrySpreadPct: signal.grossSpreadPct,
-        entryBinId: dlmm.activeBinId + 1, // LP deposited at activeBinOffset: +1
+        entryBinId: dlmm.activeBinId - 1,
         satsSent: satsCapped,
         estimatedEntryUsd: round((satsCapped / 1e8) * oracle.btcUsd, 2),
       };
