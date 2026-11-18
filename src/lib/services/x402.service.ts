@@ -390,6 +390,22 @@ export function requestWasNeverSent(error: unknown): boolean {
 }
 
 /**
+ * The absolute URL axios will actually call for this request, without query
+ * params (the dedup key hashes those separately). `new URL(url, baseURL)`
+ * resolves "/x" against the base ORIGIN and drops a base path such as
+ * "https://h/a"; axios joins them instead ("https://h/a/x"). Keying on the
+ * former let two clients on different base paths share one dedup record (#493).
+ */
+export function resolvePaymentRequestUrl(
+  requestUrl: string | undefined,
+  baseURL: string | undefined,
+  allowAbsoluteUrls?: boolean
+): string {
+  const joined = axios.getUri({ baseURL, url: requestUrl ?? "", allowAbsoluteUrls });
+  return new URL(joined).toString();
+}
+
+/**
  * STX the wallet can actually send: Hiro's `stx.balance` includes STX locked
  * in stacking, which a transfer cannot move.
  */
@@ -1501,7 +1517,11 @@ export async function createApiClient(
           const rawHeaders = requestConfig.headers as { toJSON?: () => Record<string, unknown> } | Record<string, unknown> | undefined;
           const requestKey = generatePaymentRequestKey({
             method: String(requestConfig.method ?? "get"),
-            url: new URL(String(requestConfig.url ?? ""), requestConfig.baseURL ?? url).toString(),
+            url: resolvePaymentRequestUrl(
+              requestConfig.url,
+              requestConfig.baseURL ?? url,
+              requestConfig.allowAbsoluteUrls
+            ),
             params: requestConfig.params,
             data: typeof requestConfig.data === "string" ? safeJsonTransform(requestConfig.data) : requestConfig.data,
             headers:
