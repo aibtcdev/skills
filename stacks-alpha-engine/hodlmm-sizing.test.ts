@@ -4,6 +4,10 @@ import {
   computeBestMove,
   findDeployGateOption,
   buildDeployInstructions,
+  hodlmmYieldOptions,
+  hodlmmDeployRefusal,
+  planDeploy,
+  planMigrate,
   type YieldOption,
 } from "./stacks-alpha-engine";
 
@@ -131,7 +135,7 @@ describe("buildDeployInstructions: no one-sided HODLMM deposit by default (#489 
     expect(ins).toHaveLength(1);
     expect(ins[0].tool).toBe("info");
     expect(ins[0].description).toContain("Swap");
-    expect(ins[0].description).toContain("--force");
+    expect(ins[0].description).toContain("--allow-one-sided");
   });
 
   test("USDCx only: same refusal", () => {
@@ -139,7 +143,7 @@ describe("buildDeployInstructions: no one-sided HODLMM deposit by default (#489 
     expect(ins.some(i => i.tool === "bitflow:add-liquidity-simple")).toBe(false);
   });
 
-  test("with force, the one-sided deposit is still built (out-of-range bins +1..+5)", () => {
+  test("with allowOneSided, the one-sided deposit is still built (out-of-range bins +1..+5)", () => {
     const ins = buildDeployInstructions("hodlmm", 1_000_000, "stx", scout(10, 0), "dlmm_3", true);
     const add = ins.find(i => i.tool === "bitflow:add-liquidity-simple");
     expect(add).toBeDefined();
@@ -152,5 +156,141 @@ describe("buildDeployInstructions: no one-sided HODLMM deposit by default (#489 
     const add = ins.find(i => i.tool === "bitflow:add-liquidity-simple");
     const bins = JSON.parse(String(add!.params.bins)) as Array<{ activeBinOffset: number }>;
     expect(bins.map(b => b.activeBinOffset)).toEqual([0]);
+  });
+});
+
+// Review follow-ups on #491.
+
+type Scout = Parameters<typeof planDeploy>[1];
+type Bal = { amount: number; usd: number };
+const none: Bal = { amount: 0, usd: 0 };
+
+function wallet(over: Partial<Record<"sbtc" | "stx" | "usdcx" | "usdh" | "aeusdc", Bal>>) {
+  return { sbtc: none, stx: none, usdcx: none, usdh: none, susdh: none, aeusdc: none, ...over };
+}
+function scoutOf(balances: ReturnType<typeof wallet>, options: YieldOption[] = []): Scout {
+  return {
+    wallet: "SP000000000000000000002Q6VF78", balances, options,
+    prices: { sbtc: 100000, stx: 1, usdcx: 1, usdh: 1, aeusdc: 1 },
+  } as unknown as Scout;
+}
+// A row of the Bitflow /pools response, as fetchBitflowPools returns it.
+const bitflowPool = (poolId: string, apr24h: number) => ({ poolId, apr24h, tvlUsd: 1_000_000, volumeUsd1d: 500_000 });
+const tools = (p: ReturnType<typeof planDeploy>) => (p.status === "ok" ? p.instructions.map(i => i.tool) : []);
+const reasons = (p: ReturnType<typeof planDeploy>) => (p.status === "refused" ? p.refusal_reasons.join(" ") : "");
+
+describe("deploy gate: a HODLMM pool with no scan row is refused (#491 review 1)", () => {
+  const stxUsdcx = wallet({ stx: usd(1000), usdcx: usd(1000) });
+  const deploy3 = { protocol: "hodlmm", token: "stx", amount: "1000000", poolId: "dlmm_3" };
+
+  test("zero-APR pool: the scan makes no row for it, so the deploy is refused", () => {
+    const rows = hodlmmYieldOptions([bitflowPool("dlmm_3", 0), bitflowPool("dlmm_1", 12)], stxUsdcx);
+    expect(rows.map(r => r.pool_id)).toEqual(["dlmm_1"]);
+    const plan = planDeploy(deploy3, scoutOf(stxUsdcx, rows));
+    expect(plan.status).toBe("refused");
+    expect(reasons(plan)).toContain("No scan data for dlmm_3");
+  });
+
+  test("Bitflow pool list unavailable (no HODLMM rows at all): refused", () => {
+    const plan = planDeploy(deploy3, scoutOf(stxUsdcx, hodlmmYieldOptions([], stxUsdcx)));
+    expect(plan.status).toBe("refused");
+    expect(reasons(plan)).toContain("--force");
+  });
+
+  test("--force overrides it and builds the paired deposit", () => {
+    const plan = planDeploy({ ...deploy3, force: "true" }, scoutOf(stxUsdcx, []));
+    expect(tools(plan)).toEqual(["bitflow:add-liquidity-simple"]);
+  });
+});
+
+describe("migrate checks the HODLMM deposit before withdrawing (#491 review 2)", () => {
+  const sbtcOnly = wallet({ sbtc: usd(5000, 0.05) });
+  const migrate = { from: "zest", to: "hodlmm", amount: "100000", poolId: "dlmm_1" };
+
+  test("zest -> hodlmm with only sBTC: refused as a whole, no zest_withdraw planned", () => {
+    const plan = planMigrate(migrate, scoutOf(sbtcOnly));
+    expect(plan.status).toBe("refused");
+    expect(tools(plan)).toEqual([]);
+    expect(reasons(plan)).toContain("nothing withdrawn from zest");
+    expect(reasons(plan)).toContain("--allow-one-sided");
+  });
+
+  test("both sides held: withdraw, then the paired deposit", () => {
+    const plan = planMigrate(migrate, scoutOf(wallet({ sbtc: usd(5000, 0.05), usdcx: usd(5000) })));
+    expect(tools(plan)).toEqual(["zest_withdraw", "bitflow:add-liquidity-simple"]);
+  });
+
+  test("--allow-one-sided: withdraw, then the one-sided deposit", () => {
+    const plan = planMigrate({ ...migrate, allowOneSided: "true" }, scoutOf(sbtcOnly));
+    expect(tools(plan)).toEqual(["zest_withdraw", "bitflow:add-liquidity-simple"]);
+  });
+});
+
+describe("deploy uses the scan's dust and ratio rule (#491 review 3)", () => {
+  const dustY = wallet({ sbtc: usd(5000, 0.05), usdcx: { amount: 0.000001, usd: 0.000001 } });
+  const lopsided = wallet({ sbtc: usd(5000, 0.05), usdcx: usd(100) });
+
+  test("$5,000 sBTC + 1 atomic USDCx: scan says swap_first and deploy builds no deposit", () => {
+    expect(sizeHodlmmOption(dustY.sbtc, dustY.usdcx, 5000, "sBTC", "USDCx").tier).toBe("swap_first");
+    const ins = buildDeployInstructions("hodlmm", 5_000_000, "sbtc", scoutOf(dustY), "dlmm_1");
+    expect(ins.some(i => i.tool === "bitflow:add-liquidity-simple")).toBe(false);
+    expect(ins[0].description).toContain("no USDCx");
+  });
+
+  test("same wallet with allowOneSided: sBTC-only bins +1..+5, the USDCx dust is not paired", () => {
+    const ins = buildDeployInstructions("hodlmm", 5_000_000, "sbtc", scoutOf(dustY), "dlmm_1", true);
+    const add = ins.find(i => i.tool === "bitflow:add-liquidity-simple");
+    const bins = JSON.parse(String(add!.params.bins)) as Array<{ activeBinOffset: number; yAmount: string }>;
+    expect(bins.map(b => b.activeBinOffset)).toEqual([1, 2, 3, 4, 5]);
+    expect(bins.every(b => b.yAmount === "0")).toBe(true);
+  });
+
+  test("$5,000 sBTC + $100 USDCx (under 10%): refused with the swap amount", () => {
+    const ins = buildDeployInstructions("hodlmm", 5_000_000, "sbtc", scoutOf(lopsided), "dlmm_1");
+    expect(ins.some(i => i.tool === "bitflow:add-liquidity-simple")).toBe(false);
+    expect(ins[0].description).toContain("~$2450");
+  });
+
+  test("scan and deploy agree: deploy_now exactly when the deposit is not refused", () => {
+    const cases: Array<[Bal, Bal]> = [
+      [usd(1000), usd(800)], [usd(5000), usd(0.5)], [usd(5000), usd(100)], [usd(0, 12), usd(400)],
+      [usd(500), usd(50)], [usd(0), usd(0)], [usd(2), usd(1)],
+    ];
+    for (const [stx, usdcx] of cases) {
+      const scan = sizeHodlmmOption(stx, usdcx, stx.usd + usdcx.usd, "STX", "USDCx").tier === "deploy_now";
+      const deploy = hodlmmDeployRefusal("stx", scoutOf(wallet({ stx, usdcx })), "dlmm_3") === null;
+      expect([stx.usd, usdcx.usd, deploy]).toEqual([stx.usd, usdcx.usd, scan]);
+    }
+  });
+});
+
+describe("a refused HODLMM deposit returns status refused (#491 review 4)", () => {
+  const stxOnly = wallet({ stx: usd(1000) });
+  const row = option({ pool_id: "dlmm_3", tier: "swap_first" });
+  const deploy3 = { protocol: "hodlmm", token: "stx", amount: "1000000", poolId: "dlmm_3" };
+
+  test("STX only into STX-USDCx: status refused with the reason, no instructions", () => {
+    const plan = planDeploy(deploy3, scoutOf(stxOnly, [row]));
+    expect(plan.status).toBe("refused");
+    expect(reasons(plan)).toContain("Swap about half of the STX into USDCx");
+  });
+
+  test("--force alone does not allow the one-sided deposit (separate flag)", () => {
+    const plan = planDeploy({ ...deploy3, force: "true" }, scoutOf(stxOnly, [row]));
+    expect(plan.status).toBe("refused");
+    expect(reasons(plan)).toContain("--allow-one-sided");
+  });
+
+  test("--allow-one-sided builds it", () => {
+    const plan = planDeploy({ ...deploy3, allowOneSided: "true" }, scoutOf(stxOnly, [row]));
+    expect(plan.status).toBe("ok");
+    expect(tools(plan)).toEqual(["bitflow:add-liquidity-simple"]);
+  });
+});
+
+describe("sizeHodlmmOption: neither side held on a stablecoin pair quotes the stablecoin fee (#491 nit)", () => {
+  test("USDh/USDCx row, nothing in either side", () => {
+    const s = sizeHodlmmOption(usd(0), usd(0), 2000, "USDh", "USDCx", true);
+    expect(s.swapNote).toContain("~0.01% fee");
   });
 });
