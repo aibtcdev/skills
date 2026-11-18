@@ -24,6 +24,7 @@ import {
   resolveSponsoredPaymentTokenType,
   resolveDirectPaymentPolicy,
   resolvePaymentMode,
+  resolvePaymentRequestUrl,
   resolvePreferredAsset,
   spendableStx,
   selectStacksPaymentOption,
@@ -181,7 +182,8 @@ async function startFake(sender: string, opts: FakeOptions = {}): Promise<Fake> 
     }
 
     // --- paid endpoint ---
-    if (url.pathname === "/paid") {
+    // "/a/paid" and "/b/paid" let a test point two clients at different base paths.
+    if (/^(\/[ab])?\/paid$/.test(url.pathname)) {
       opts.seenHeaders?.push({ ...req.headers });
       const signature = req.headers[X402_HEADERS.PAYMENT_SIGNATURE];
       if (!signature) {
@@ -482,6 +484,20 @@ describe("resolveDirectPaymentPolicy", () => {
     expect(k1).toBe(k2);
     expect(generateDedupKey({ ...base, params: { a: 1 } })).not.toBe(generateDedupKey({ ...base, params: { a: 2 } }));
     expect(generateDedupKey({ ...base, amount: "2" })).not.toBe(generateDedupKey(base));
+  });
+
+  test("dedup key URL keeps the base path prefix, like axios (#493)", () => {
+    expect(resolvePaymentRequestUrl("/api/x", "https://h/a")).toBe("https://h/a/api/x");
+    expect(resolvePaymentRequestUrl("/api/x", "https://h/a/")).toBe("https://h/a/api/x");
+    expect(resolvePaymentRequestUrl("api/x", "https://h/a")).toBe("https://h/a/api/x");
+    expect(resolvePaymentRequestUrl("/api/x", "https://h/a")).not.toBe(resolvePaymentRequestUrl("/api/x", "https://h/b"));
+    // Origin-only bases resolve exactly as before, so existing ledger keys still match.
+    expect(resolvePaymentRequestUrl("/api/x", "https://h")).toBe(new URL("/api/x", "https://h").toString());
+    expect(resolvePaymentRequestUrl("/api/x", "https://h/")).toBe(new URL("/api/x", "https://h/").toString());
+    // An absolute request URL wins over the base unless absolute URLs are disallowed.
+    expect(resolvePaymentRequestUrl("https://o/p", "https://h/a")).toBe("https://o/p");
+    // Params are hashed separately and never appear in the URL part.
+    expect(resolvePaymentRequestUrl("/api/x", "https://h/a")).not.toContain("?");
   });
 });
 
@@ -809,6 +825,26 @@ describe("createApiClient payment modes", () => {
     const again = await createApiClient(f.origin, "test.direct-canonical-fail-2");
     await expect(again.request({ method: "GET", url: "/paid" })).rejects.toBeInstanceOf(DuplicatePaymentError);
     expect(f.paidRequests).toHaveLength(1);
+  });
+
+  test("a pending payment under one base path does not block another base path (#493)", async () => {
+    process.env.X402_PAYMENT_MODE = "direct";
+    const f = await up({ canonical: { status: "failed", terminalReason: "chain_abort" } });
+    // Leaves an armed dedup record for ${origin}/a/paid.
+    const first = await createApiClient(`${f.origin}/a`, "test.base-path-a");
+    await rejection(first.request({ method: "GET", url: "/paid" }));
+    expect(f.paidRequests).toHaveLength(1);
+
+    // Same base path: still a duplicate.
+    const sameBase = await createApiClient(`${f.origin}/a`, "test.base-path-a-2");
+    await expect(sameBase.request({ method: "GET", url: "/paid" })).rejects.toBeInstanceOf(DuplicatePaymentError);
+    expect(f.paidRequests).toHaveLength(1);
+
+    // Different base path, same relative URL: a different request, so not a duplicate.
+    const otherBase = await createApiClient(`${f.origin}/b`, "test.base-path-b");
+    const failure = await rejection(otherBase.request({ method: "GET", url: "/paid" }));
+    expect(failure).not.toBeInstanceOf(DuplicatePaymentError);
+    expect(f.paidRequests).toHaveLength(2);
   });
 
   test("direct mode refuses an over-cap amount before any paid request", async () => {
