@@ -33,7 +33,7 @@ Before calling `score`:
 1. Confirm wallet balance ≥ 100,000 microSTX (mainnet) or testnet STX present.
 2. If you've already called for the same symbol within the last 60 seconds, **skip the call** — Cloudflare edge cache returns the same upstream data anyway, and you'd be paying again for cached data. Cache the prior response in agent memory.
 3. If a paid call comes back with no usable data (`galaxy_score: null`, a `warning`, or an `UNKNOWN` oracle verdict), the output carries a `degraded` object: `paid: true`, the `reason`, and a `claim` (`txid`, `symbol`, `endpoint`, `network`, `paid_at`). The payment was still consumed. Treat it as no signal and skip downstream signal generation. Do not retry the symbol: the gap is usually per symbol, and the skill refuses to pay for the same endpoint + symbol again for an hour.
-4. To get a re-serve, send the `claim` (txid + symbol) to the provider, who has said they honour these by hand (issue #393). Never pay again as a substitute for a claim.
+4. For a manual re-serve, follow [Manual re-serve requests](#manual-re-serve-requests). Never pay again as a substitute for a claim.
 
 ## Cost guardrails
 
@@ -53,6 +53,16 @@ Before calling `score`:
 | `code: "LUNARCRUSH_GUARD"`, `kind: "breaker-open"` | Refused before paying: several symbols in a row returned no data. Nothing was paid. Pause the scan for `retry_after_seconds`. |
 | `400 invalid_symbol` | Did not consume payment. Symbol must be lowercase a-z + 0-9 only, max 16 chars. Check input. |
 | `5xx` from worker | Worker outage. Retry once after 30s. If persists, alert operator. |
+
+## Manual re-serve requests
+
+When `score` or `oracle` returns `degraded`, preserve `degraded.claim` and `degraded.reason`. Ask the operator to open a [follow-up issue](https://github.com/aibtcdev/skills/issues/new) referencing [#393](https://github.com/aibtcdev/skills/issues/393) with that evidence. A null field alone does not establish an upstream failure; the provider confirms eligibility from its logs. Share only the claim and reason, never wallet secrets or signed payment headers.
+
+If `claim.txid` is `null`, ask the operator to recover the original txid from wallet history or the original payment log. Keep the unresolved claim pending until the payment can be verified; never invent a txid or make a new paid call to obtain one.
+
+For a manual re-serve, the provider should verify that the original payment settled on the stated network for the correct recipient and amount, match it to the failed symbol and endpoint in server-side logs, and check whether it has already been re-served. Request at most one manual re-serve per verified payment txid, without an additional payment. The caller-side cooldown does not enforce this provider-side limit.
+
+This follows the provider's [interim manual offer](https://github.com/aibtcdev/skills/issues/393#issuecomment-4514154712) while automated retry-with-proof is unavailable. No response-time or delivery-time commitment is defined here.
 
 ## Safety checks
 
