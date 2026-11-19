@@ -33,10 +33,11 @@ description: "Autonomous yield executor that scans 6 tokens across 4 Stacks DeFi
 - PoR signal is RED, YELLOW, or DATA_UNAVAILABLE -> refuse all writes
 - Any price source (Tenero, Bitflow) unavailable -> refuse all writes
 - Rebalance cooldown not elapsed (4 hours) -> refuse rebalance
-- Target protocol APY is 0% -> refuse deploy (unless --force)
-- YTG unprofitable (7d yield < 3x gas cost) -> refuse deploy (unless --force)
-- HODLMM deploy to a pool with no scan row (APR 0, or the Bitflow pool list unavailable) -> refuse deploy (unless --force)
-- HODLMM deploy or migrate where one of the pool's two tokens is missing, under $1, or under 10% of the other -> refuse, suggest a swap first (unless --allow-one-sided). `migrate` checks this before planning the withdraw, so a refused migrate withdraws nothing
+- Target protocol APY is 0% -> refuse deploy/migrate (unless --force)
+- YTG unprofitable (7d yield < 3x gas cost) -> refuse deploy/migrate (unless --force)
+- HODLMM deploy/migrate to a pool with no scan row (APR 0, or the Bitflow pool list unavailable) -> refuse (unless --force)
+- HODLMM deploy or migrate where one of the pool's two tokens is missing, under $1, or under 10% of the other, or where the deposit itself (`--amount` plus the matched other side) is under $1 a side -> refuse, suggest a swap first (unless --allow-one-sided). `migrate` checks this before planning the withdraw, so a refused migrate withdraws nothing. It counts what the withdraw returns (Zest sBTC, Granite aeUSDC) as held
+- A held token with no USD price (price feed down) still counts as held: deploy refuses with the price reason (unless --allow-one-sided)
 - All refusals return `status: "refused"` with `refusal_reasons`; nothing to execute
 - Insufficient wallet balance for requested token/amount -> refuse deploy
 - Invalid wallet address -> refuse all operations
@@ -81,7 +82,7 @@ description: "Autonomous yield executor that scans 6 tokens across 4 Stacks DeFi
 - Add liquidity via `bitflow add-liquidity-simple`
 - Withdraw via `bitflow withdraw-liquidity-simple`
 - 8 pools covering sBTC, STX, USDCx, USDh, aeUSDC pairs
-- Deploy pairs both tokens at the active bin. With only one token held, `deploy` refuses and points to the swap: a one-sided deposit sits above/below the active bin and earns no fees until the price moves into it. `--allow-one-sided` places it anyway (X in bins +1..+5, Y in -5..-1); `--force` does not
+- Deploy pairs both tokens at the active bin: `--amount` of `--token`, plus the other token sized to the same USD value (capped at its balance), not the whole balance. With only one token held, `deploy` refuses and points to the swap: a one-sided deposit sits above/below the active bin and earns no fees until the price moves into it. `--allow-one-sided` places it anyway (X in bins +1..+5, Y in -5..-1); `--force` does not
 - Held sides: one rule for scan and deploy. A side worth under $1 counts as not held. Both sides are `deploy_now` (and deploy builds a paired deposit) only when the smaller is at least 10% of the larger; otherwise the row is `swap_first` with the amount to swap and its fee, and deploy refuses
 - Deploy gates (0% APY, YTG) check the row for the `--pool-id` being deployed to; no row means refuse
 

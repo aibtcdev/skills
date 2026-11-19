@@ -849,7 +849,8 @@ export function hodlmmYieldOptions(pools: BitflowPoolData[], balances: WalletBal
 }
 
 // -- HODLMM option sizing -----------------------------------------------------
-// A side worth less than this (or with no price) does not count as held.
+// A side worth less than this does not count as held (a side with a balance but
+// no price does: see hodlmmHeldSides).
 export const HODLMM_DUST_USD = 1;
 // A paired deposit is deploy_now only if the smaller side is at least this
 // share of the larger one. Below it, the paired deposit is a small fraction of
@@ -861,16 +862,20 @@ export interface HodlmmSizing { tier: YieldTier; capUsd: number; swapNote: strin
 // Which sides of a HODLMM pair the wallet holds, by USD value. The one rule the
 // scan (sizeHodlmmOption) and the deploy builder (hodlmmDeployRefusal) both use,
 // so a wallet the scan calls swap_first is never deployed as if paired.
-//   hasX / hasY: that side is worth at least HODLMM_DUST_USD (no price = not held)
-//   paired:      both held, and the smaller side is at least HODLMM_MIN_SIDE_RATIO
-//                of the larger one
-export interface HodlmmSides { hasX: boolean; hasY: boolean; paired: boolean }
+//   hasX / hasY: that side is worth at least HODLMM_DUST_USD, or has a balance
+//                but no USD value (price feed down: held, not empty)
+//   unpriced:    a held side has no USD value, so the ratio can't be judged
+//   paired:      both held and priced, and the smaller side is at least
+//                HODLMM_MIN_SIDE_RATIO of the larger one
+export interface HodlmmSides { hasX: boolean; hasY: boolean; paired: boolean; unpriced: boolean }
 export function hodlmmHeldSides(x: TokenBalance, y: TokenBalance): HodlmmSides {
-  const hasX = x.usd >= HODLMM_DUST_USD;
-  const hasY = y.usd >= HODLMM_DUST_USD;
+  const noPrice = (b: TokenBalance) => b.usd <= 0 && b.amount > 0;
+  const hasX = x.usd >= HODLMM_DUST_USD || noPrice(x);
+  const hasY = y.usd >= HODLMM_DUST_USD || noPrice(y);
+  const unpriced = noPrice(x) || noPrice(y);
   const small = Math.min(x.usd, y.usd);
   const big = Math.max(x.usd, y.usd);
-  return { hasX, hasY, paired: hasX && hasY && small >= big * HODLMM_MIN_SIDE_RATIO };
+  return { hasX, hasY, unpriced, paired: hasX && hasY && !unpriced && small >= big * HODLMM_MIN_SIDE_RATIO };
 }
 
 // One rule for every HODLMM row: capUsd is the capital that sits in the pool,
@@ -889,9 +894,9 @@ export function sizeHodlmmOption(
     // deposit can only be as large as the side that runs out first.
     return { tier: "deploy_now", capUsd: small * 2, swapNote: null };
   }
-  if (hasX || hasY) {
-    // One side only (or the other side is dust or far smaller), and this is
-    // NOT deploy_now.
+  if ((hasX || hasY) && big >= HODLMM_DUST_USD) {
+    // One side only (or the other side is dust, far smaller or has no price),
+    // and this is NOT deploy_now. Sized on the priced side(s) only.
     //
     // dlmm-core-v-1-1 holds the X asset only at bins at or above the active
     // bin, and Y only at or below it, so both assets are valid together
@@ -1385,13 +1390,39 @@ function buildDlmmSwapInstruction(
   };
 }
 
+// The paired active-bin deposit for `amount` (atomic) of `token`: the other side
+// is sized to the same USD value at the wallet's prices, capped at its balance,
+// not the whole balance. Without a price on either side it falls back to the
+// whole balance of the other side (only reachable with --allow-one-sided).
+// Atomic amounts for the bins; whole-token amounts and USD for hodlmmHeldSides.
+export function hodlmmPairedDeposit(pool: PoolDef, token: string, amount: number, x: TokenBalance, y: TokenBalance) {
+  const xScale = Math.pow(10, TOKENS[pool.tokenX]?.decimals ?? 6);
+  const yScale = Math.pow(10, TOKENS[pool.tokenY]?.decimals ?? 6);
+  const xPx = x.amount > 0 ? x.usd / x.amount : 0;
+  const yPx = y.amount > 0 ? y.usd / y.amount : 0;
+  const xBalAtomic = Math.floor(x.amount * xScale);
+  const yBalAtomic = Math.floor(y.amount * yScale);
+  let xAtomic: number, yAtomic: number;
+  if (token === pool.tokenX) {
+    xAtomic = amount;
+    yAtomic = xPx > 0 && yPx > 0 ? Math.min(yBalAtomic, Math.floor((amount / xScale) * xPx / yPx * yScale)) : yBalAtomic;
+  } else {
+    yAtomic = amount;
+    xAtomic = xPx > 0 && yPx > 0 ? Math.min(xBalAtomic, Math.floor((amount / yScale) * yPx / xPx * xScale)) : xBalAtomic;
+  }
+  const xAmt = xAtomic / xScale, yAmt = yAtomic / yScale;
+  return { xAtomic, yAtomic, xAmt, yAmt, xUsd: xAmt * xPx, yUsd: yAmt * yPx };
+}
+
 // Can a HODLMM deposit of `token` into `poolId` be built from this wallet?
 // Returns the refusal reason, or null. Checked by deploy and by migrate (before
 // the withdraw is planned), and by buildDeployInstructions itself. Held sides use
 // hodlmmHeldSides, the same rule as the scan, so a wallet the scan shows as
 // swap_first (one side, dust on the other, or very lopsided) is refused here
-// unless the caller passes --allow-one-sided.
-export function hodlmmDeployRefusal(token: string, scout: Pick<ScoutResult, "balances">, poolId: string, allowOneSided = false): string | null {
+// unless the caller passes --allow-one-sided. With `amount`, a paired wallet is
+// also checked on what the deposit itself puts in (hodlmmPairedDeposit): an
+// --amount that is dust, or one the other side can't match, is refused too.
+export function hodlmmDeployRefusal(token: string, scout: Pick<ScoutResult, "balances">, poolId: string, allowOneSided = false, amount?: number): string | null {
   const pool = HODLMM_POOLS.find(p => `dlmm_${p.id}` === poolId);
   if (!pool) {
     return `Unknown HODLMM pool ${poolId}. Known pools: ${HODLMM_POOLS.map(p => `dlmm_${p.id}`).join(", ")}.`;
@@ -1404,12 +1435,18 @@ export function hodlmmDeployRefusal(token: string, scout: Pick<ScoutResult, "bal
   const y = balances[pool.tokenY] ?? { amount: 0, usd: 0 };
   const xSym = TOKENS[pool.tokenX]?.symbol ?? pool.tokenX;
   const ySym = TOKENS[pool.tokenY]?.symbol ?? pool.tokenY;
-  const { hasX, hasY, paired } = hodlmmHeldSides(x, y);
+  const { hasX, hasY, paired, unpriced } = hodlmmHeldSides(x, y);
 
   if (!hasX && !hasY) {
     return `HODLMM deploy to ${poolId} (${pool.name}) requires ${xSym} and/or ${ySym} worth at least $${HODLMM_DUST_USD} in wallet — neither held.`;
   }
-  if (paired) return null;
+  if (paired) {
+    if (amount === undefined || allowOneSided) return null;
+    const d = hodlmmPairedDeposit(pool, token, amount, x, y);
+    if (hodlmmHeldSides({ amount: d.xAmt, usd: d.xUsd }, { amount: d.yAmt, usd: d.yUsd }).paired) return null;
+    const [tSym, cSym] = token === pool.tokenX ? [xSym, ySym] : [ySym, xSym];
+    return `HODLMM ${pool.name}: the deposit would be ~$${round(d.xUsd, 2)} ${xSym} + ~$${round(d.yUsd, 2)} ${ySym} at the active bin (--amount of ${tSym}, matched with ${cSym} from the wallet). Each side needs at least $${HODLMM_DUST_USD}, and the smaller side at least ${HODLMM_MIN_SIDE_RATIO * 100}% of the larger. Change --amount, or use --allow-one-sided to deposit it anyway.`;
+  }
 
   if (!(hasX && hasY)) {
     const held = hasX ? xSym : ySym;
@@ -1427,7 +1464,12 @@ export function hodlmmDeployRefusal(token: string, scout: Pick<ScoutResult, "bal
     return null;
   }
 
-  // Both held, but the smaller side is under HODLMM_MIN_SIDE_RATIO of the larger.
+  // Both held, but a side has no price (feed down), or the smaller side is under
+  // HODLMM_MIN_SIDE_RATIO of the larger.
+  if (!allowOneSided && unpriced) {
+    const noPrice = [x.usd <= 0 ? xSym : null, y.usd <= 0 ? ySym : null].filter(Boolean).join(" and ");
+    return `HODLMM ${pool.name}: wallet holds ${xSym} and ${ySym}, but the price feed returned no USD value for ${noPrice}, so the dust and ${HODLMM_MIN_SIDE_RATIO * 100}% side rules can't be checked. Re-run after prices recover, or use --allow-one-sided to deposit the balances as they are.`;
+  }
   if (!allowOneSided) {
     const xIsBig = x.usd >= y.usd;
     const swapUsd = round((Math.max(x.usd, y.usd) - Math.min(x.usd, y.usd)) / 2, 2);
@@ -1581,7 +1623,7 @@ export function buildDeployInstructions(protocol: Protocol, amount: number, toke
       // first and return status "refused") for an unknown pool, a token the pool
       // doesn't take, nothing held, or a one-sided/lopsided wallet without
       // --allow-one-sided.
-      const refusal = hodlmmDeployRefusal(token, scout, poolId, allowOneSided);
+      const refusal = hodlmmDeployRefusal(token, scout, poolId, allowOneSided, amount);
       if (refusal) {
         instructions.push({ tool: "info", params: {}, description: refusal });
         break;
@@ -1606,10 +1648,10 @@ export function buildDeployInstructions(protocol: Protocol, amount: number, toke
       if (hasX && hasY) {
         // Both tokens at active bin: dlmm-core allows both nonzero at bin-id == active-bin-id.
         // `amount` is interpreted as the chosen --token's atomic amount; the counter-token
-        // pairs the full available balance.
-        const xAmt = token === pool.tokenX ? amount : xBalAtomic;
-        const yAmt = token === pool.tokenY ? amount : yBalAtomic;
-        bins.push({ activeBinOffset: 0, xAmount: String(xAmt), yAmount: String(yAmt) });
+        // is sized to match it in USD, capped at its balance (hodlmmPairedDeposit).
+        const d = hodlmmPairedDeposit(pool, token, amount,
+          balances[pool.tokenX] ?? { amount: 0, usd: 0 }, balances[pool.tokenY] ?? { amount: 0, usd: 0 });
+        bins.push({ activeBinOffset: 0, xAmount: String(d.xAtomic), yAmount: String(d.yAtomic) });
       } else if (hasX) {
         // X-only deposit. Per dlmm-core-v-1-1 invariant (lines 1672-1674):
         //   (asserts! (or (>= bin-id active-bin-id) (is-eq x-amount u0)) ERR_INVALID_X_AMOUNT)
@@ -1766,6 +1808,25 @@ export type ExecutionPlan =
   | { status: "refused"; refusal_reasons: string[] }
   | { status: "error"; error: string };
 
+// Wallet balances once a migrate's withdraw from `from` has landed. Zest returns
+// the supplied sBTC; Granite at least `lp_shares` atomic aeUSDC (the redeem's
+// post-condition floor). Hermetica pays USDh only after the 7-day cooldown, so
+// it adds nothing a same-run deposit could use.
+export function withdrawnBalances(from: Protocol, scout: Pick<ScoutResult, "balances" | "positions" | "prices">): WalletBalances {
+  const add = (b: TokenBalance, amount: number, price: number): TokenBalance =>
+    ({ amount: b.amount + amount, usd: b.usd + amount * (price > 0 ? price : 0) });
+  const b = scout.balances;
+  if (from === "zest") {
+    const supplied = scout.positions?.zest?.supply_amount ?? 0;
+    if (supplied > 0) return { ...b, sbtc: add(b.sbtc, supplied, scout.prices?.sbtc ?? 0) };
+  }
+  if (from === "granite") {
+    const aeusdc = Number(scout.positions?.granite?.lp_shares ?? "0") / 1e6;
+    if (aeusdc > 0) return { ...b, aeusdc: add(b.aeusdc, aeusdc, scout.prices?.aeusdc ?? 0) };
+  }
+  return b;
+}
+
 // opts are the CLI options (commander camelCases --pool-id / --allow-one-sided).
 export function planDeploy(opts: Record<string, string>, scout: ScoutResult): ExecutionPlan {
   const protocol = opts.protocol as Protocol;
@@ -1790,7 +1851,7 @@ export function planDeploy(opts: Record<string, string>, scout: ScoutResult): Ex
 
   // HODLMM deposit that can't be built as a paired active-bin deposit (--allow-one-sided)
   if (protocol === "hodlmm") {
-    const refusal = hodlmmDeployRefusal(token, scout, poolId, allowOneSided);
+    const refusal = hodlmmDeployRefusal(token, scout, poolId, allowOneSided, amount);
     if (refusal) return { status: "refused", refusal_reasons: [refusal] };
   }
 
@@ -1809,20 +1870,28 @@ export function planMigrate(opts: Record<string, string>, scout: ScoutResult): E
   const amount = parseInt(opts.amount!, 10);
   const poolId = opts.poolId ?? "dlmm_1";
   const allowOneSided = Boolean(opts.allowOneSided);
+  const notStarted = (r: string) => `Migrate not started (nothing withdrawn from ${from}): ${r}`;
+
+  // Same 0% APY / YTG / no-scan-data gates as deploy (--force), before any withdraw.
+  const gate = deployGateRefusal(scout.options, to, poolId, Boolean(opts.force));
+  if (gate) return { status: "refused", refusal_reasons: [notStarted(gate)] };
 
   // Check the HODLMM deposit BEFORE planning the withdraw. Otherwise the plan
   // withdraws and then refuses the deposit, leaving the capital idle in the
-  // wallet. Like the deposit builder, this sees the wallet as it is now.
+  // wallet. The check and the deposit see the wallet as it will be after the
+  // withdraw (withdrawnBalances), so zest -> hodlmm with the sBTC in Zest and
+  // USDCx in the wallet is a paired deposit.
+  const after = to === "hodlmm" ? { ...scout, balances: withdrawnBalances(from, scout) } : scout;
   if (to === "hodlmm") {
-    const refusal = hodlmmDeployRefusal(token, scout, poolId, allowOneSided);
-    if (refusal) return { status: "refused", refusal_reasons: [`Migrate not started (nothing withdrawn from ${from}): ${refusal}`] };
+    const refusal = hodlmmDeployRefusal(token, after, poolId, allowOneSided, amount);
+    if (refusal) return { status: "refused", refusal_reasons: [notStarted(refusal)] };
   }
 
   return {
     status: "ok",
     instructions: [
       ...buildWithdrawInstructions(from, scout),
-      ...buildDeployInstructions(to, amount, token, scout, poolId, allowOneSided),
+      ...buildDeployInstructions(to, amount, token, after, poolId, allowOneSided),
     ],
     description: `Migrate from ${from} to ${to}`,
   };
@@ -2446,6 +2515,7 @@ program
   .option("--token <symbol>", "Token to deploy into target (default: inferred)")
   .option("--amount <value>", "Amount in smallest unit (default: all)")
   .option("--pool-id <id>", "HODLMM pool ID when --to=hodlmm (default: dlmm_1). Ignored otherwise.", "dlmm_1")
+  .option("--force", "Override the 0% APY, YTG and HODLMM no-scan-data refusals on the --to side")
   .option("--allow-one-sided", "When --to=hodlmm: deposit even when one side is missing, dust (under $1) or under 10% of the other")
   .option("--confirm", "Execute the transaction (without this flag, outputs a dry-run preview)")
   .action(async (opts: Record<string, string>) => {
