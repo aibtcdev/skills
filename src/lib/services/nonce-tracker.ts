@@ -30,6 +30,7 @@ import {
   renameSync,
   statSync,
   unlinkSync,
+  utimesSync,
 } from "node:fs";
 import path from "node:path";
 import os from "node:os";
@@ -105,7 +106,7 @@ export type FailureKind = "broadcast" | "rejected";
 
 const DEFAULT_STORAGE_DIR = path.join(os.homedir(), ".aibtc");
 const DEFAULT_NONCE_STATE_FILE = path.join(DEFAULT_STORAGE_DIR, "nonce-state.json");
-const LOCK_DIR = path.join(DEFAULT_STORAGE_DIR, "nonce-state.lock");
+let LOCK_DIR = path.join(DEFAULT_STORAGE_DIR, "nonce-state.lock");
 
 /** Mutable path — overridable via _testing.setStateFilePath() for test isolation. */
 let NONCE_STATE_FILE = DEFAULT_NONCE_STATE_FILE;
@@ -138,8 +139,9 @@ const LOCK_RETRY_DELAY_MS = 500;
 
 function tryAcquireLock(): boolean {
   try {
-    if (!existsSync(DEFAULT_STORAGE_DIR)) {
-      mkdirSync(DEFAULT_STORAGE_DIR, { recursive: true });
+    const lockParent = path.dirname(LOCK_DIR);
+    if (!existsSync(lockParent)) {
+      mkdirSync(lockParent, { recursive: true });
     }
     mkdirSync(LOCK_DIR);
     writeFileSync(path.resolve(LOCK_DIR, "pid"), process.pid.toString());
@@ -147,6 +149,49 @@ function tryAcquireLock(): boolean {
   } catch {
     return false;
   }
+}
+
+/**
+ * Is the pid recorded in the lock directory still running?
+ *
+ * Returns undefined when the pid cannot be read, so the caller can fall back
+ * to the mtime heuristic instead of stealing a lock it cannot judge.
+ */
+function lockHolderAlive(): boolean | undefined {
+  try {
+    const raw = readFileSync(path.resolve(LOCK_DIR, "pid"), "utf8").trim();
+    const pid = Number.parseInt(raw, 10);
+    if (!Number.isInteger(pid) || pid <= 0) return undefined;
+    // Signal 0 probes existence without delivering anything.
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ESRCH") return false;
+    return undefined;
+  }
+}
+
+/**
+ * Refresh the lock directory mtime while the critical section is held.
+ *
+ * The lock is judged stale purely by mtime, but holding it does not touch the
+ * directory, so any critical section longer than LOCK_STALE_MS looked
+ * abandoned and could be force-removed by a second process. That let two
+ * holders read the same state file and draw the same nonce.
+ */
+function startLockHeartbeat(): () => void {
+  const timer = setInterval(() => {
+    try {
+      const now = new Date();
+      utimesSync(LOCK_DIR, now, now);
+    } catch {
+      // Lock already released; the clearInterval in the caller handles it.
+    }
+  }, Math.max(1000, Math.floor(LOCK_STALE_MS / 3)));
+  // Never keep the process alive just to heartbeat a lock.
+  timer.unref?.();
+  return () => clearInterval(timer);
 }
 
 function releaseLockDir(): void {
@@ -171,13 +216,18 @@ function isLockStale(): boolean {
 async function withLock<T>(fn: () => Promise<T>): Promise<T> {
   for (let attempt = 0; attempt < LOCK_MAX_RETRIES; attempt++) {
     if (tryAcquireLock()) {
+      const stopHeartbeat = startLockHeartbeat();
       try {
         return await fn();
       } finally {
+        stopHeartbeat();
         releaseLockDir();
       }
     }
-    if (isLockStale()) {
+    // Only reclaim a lock when its holder is gone. A live holder whose critical
+    // section merely outlasted LOCK_STALE_MS must never be evicted: doing so
+    // breaks mutual exclusion and hands two callers the same nonce.
+    if (isLockStale() && lockHolderAlive() === false) {
       releaseLockDir();
       continue;
     }
@@ -483,6 +533,14 @@ export async function reloadFromDisk(): Promise<void> {
 
 export const _testing = {
   STALE_NONCE_MS,
+  LOCK_STALE_MS,
+  LOCK_DIR,
+  tryAcquireLock,
+  releaseLockDir,
+  isLockStale,
+  lockHolderAlive,
+  startLockHeartbeat,
+  withLock,
   MAX_PENDING_LOG,
   MAX_ADDRESSES,
   get NONCE_STATE_FILE() {
@@ -493,6 +551,12 @@ export const _testing = {
   },
   resetStateFilePath(): void {
     NONCE_STATE_FILE = DEFAULT_NONCE_STATE_FILE;
+  },
+  setLockDir(lockDir: string): void {
+    LOCK_DIR = lockDir;
+  },
+  resetLockDir(): void {
+    LOCK_DIR = path.join(DEFAULT_STORAGE_DIR, "nonce-state.lock");
   },
   clearMemory(): void {
     // No-op: no in-memory cache with file-lock model
