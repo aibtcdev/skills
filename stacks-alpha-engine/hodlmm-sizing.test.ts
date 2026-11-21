@@ -168,10 +168,11 @@ const none: Bal = { amount: 0, usd: 0 };
 function wallet(over: Partial<Record<"sbtc" | "stx" | "usdcx" | "usdh" | "aeusdc", Bal>>) {
   return { sbtc: none, stx: none, usdcx: none, usdh: none, susdh: none, aeusdc: none, ...over };
 }
-function scoutOf(balances: ReturnType<typeof wallet>, options: YieldOption[] = [], positions?: Record<string, unknown>): Scout {
+type Px = Record<"sbtc" | "stx" | "usdcx" | "usdh" | "aeusdc", number>;
+function scoutOf(balances: ReturnType<typeof wallet>, options: YieldOption[] = [], positions?: Record<string, unknown>, prices: Partial<Px> = {}): Scout {
   return {
     wallet: "SP000000000000000000002Q6VF78", balances, options, positions,
-    prices: { sbtc: 100000, stx: 1, usdcx: 1, usdh: 1, aeusdc: 1 },
+    prices: { sbtc: 100000, stx: 1, usdcx: 1, usdh: 1, aeusdc: 1, ...prices },
   } as unknown as Scout;
 }
 // A row of the Bitflow /pools response, as fetchBitflowPools returns it.
@@ -380,11 +381,13 @@ describe("migrate goes through the deploy gates (#491 review 2, point 3)", () =>
     expect(reasons(plan)).toContain("nothing withdrawn from zest");
   });
 
-  test("migrate to a pool that fails YTG: refused", () => {
+  test("migrate skips the YTG gate: the rows are sized before the withdraw (#491 review 3, point 1)", () => {
     const rows = [option({ pool_id: "dlmm_1", pool: "sBTC-USDCx-10bps", ytg_profitable: false, ytg_ratio: 0.4 })];
     const plan = planMigrate(migrate, scoutOf(paired, rows));
-    expect(plan.status).toBe("refused");
-    expect(reasons(plan)).toContain("YTG gate");
+    expect(plan.status).toBe("ok");
+    // deploy still applies it
+    const dep = planDeploy({ protocol: "hodlmm", token: "sbtc", amount: "100000", poolId: "dlmm_1" }, scoutOf(paired, rows));
+    expect(reasons(dep)).toContain("YTG gate");
   });
 
   test("migrate to a 0% APY protocol: refused", () => {
@@ -405,23 +408,27 @@ describe("price feed outage: a held token with no USD value still counts as held
   const stxNoPrice = wallet({ stx: { amount: 1000, usd: 0 }, usdcx: usd(1000) });
   const row = option({ pool_id: "dlmm_3", tier: "swap_first" });
   const deploy3 = { protocol: "hodlmm", token: "stx", amount: "100000000", poolId: "dlmm_3" };
+  const outage = { stx: 0 };
 
   test("deploy refuses with the price reason, not 'not held'", () => {
-    const plan = planDeploy(deploy3, scoutOf(stxNoPrice, [row]));
+    const plan = planDeploy(deploy3, scoutOf(stxNoPrice, [row], undefined, outage));
     expect(plan.status).toBe("refused");
     expect(reasons(plan)).toContain("no USD value for STX");
     expect(reasons(plan).includes("not held")).toBe(false);
     expect(reasons(plan).includes("but no STX")).toBe(false);
   });
 
-  test("--allow-one-sided gets past it and deposits the balances as they are", () => {
-    const plan = planDeploy({ ...deploy3, allowOneSided: "true" }, scoutOf(stxNoPrice, [row]));
+  test("--allow-one-sided deposits only --amount; the other side is not filled from the whole balance (#491 review 3, point 3)", () => {
+    const plan = planDeploy({ ...deploy3, allowOneSided: "true" }, scoutOf(stxNoPrice, [row], undefined, outage));
     expect(plan.status).toBe("ok");
-    expect(binsOf(plan)).toEqual([{ activeBinOffset: 0, xAmount: "100000000", yAmount: "1000000000" }]);
+    expect(binsOf(plan)).toEqual([{ activeBinOffset: 0, xAmount: "100000000", yAmount: "0" }]);
+    // the other way round: --token usdcx with STX unpriced puts in no STX (gas stays)
+    const y = planDeploy({ ...deploy3, token: "usdcx", amount: "50000000", allowOneSided: "true" }, scoutOf(stxNoPrice, [row], undefined, outage));
+    expect(binsOf(y)).toEqual([{ activeBinOffset: 0, xAmount: "0", yAmount: "50000000" }]);
   });
 
   test("an unpriced token on its own: one-sided with --allow-one-sided (the token is held)", () => {
-    const plan = planDeploy({ ...deploy3, allowOneSided: "true" }, scoutOf(wallet({ stx: { amount: 1000, usd: 0 } }), [row]));
+    const plan = planDeploy({ ...deploy3, allowOneSided: "true" }, scoutOf(wallet({ stx: { amount: 1000, usd: 0 } }), [row], undefined, outage));
     expect(plan.status).toBe("ok");
     expect(binsOf(plan).map(b => b.activeBinOffset)).toEqual([1, 2, 3, 4, 5]);
   });
@@ -430,5 +437,47 @@ describe("price feed outage: a held token with no USD value still counts as held
     const s = sizeHodlmmOption({ amount: 1000, usd: 0 }, usd(1000), 1000, "STX", "USDCx");
     expect(s.tier).toBe("swap_first");
     expect(s.capUsd).toBe(1000);
+  });
+});
+
+describe("third review of #491", () => {
+  const row = option({ pool_id: "dlmm_3", tier: "swap_first" });
+
+  test("point 2: leftover gas STX ($0.00 after rounding, STX priced) is dust, not an unpriced side", () => {
+    const gasDust = wallet({ stx: { amount: 0.004, usd: 0 }, usdcx: usd(1000) });
+    const plan = planDeploy({ protocol: "hodlmm", token: "usdcx", amount: "100000000", poolId: "dlmm_3" }, scoutOf(gasDust, [row]));
+    expect(plan.status).toBe("refused");
+    expect(reasons(plan)).toContain("but no STX");
+    expect(reasons(plan).includes("no USD value")).toBe(false);
+    // the scan says the same, given the prices
+    const rows = hodlmmYieldOptions([bitflowPool("dlmm_3", 12)], gasDust as never, { sbtc: 100000, stx: 1, usdcx: 1, usdh: 1, aeusdc: 1 });
+    expect(rows[0].tier).toBe("swap_first");
+  });
+
+  test("point 3: priced pair sizes the other side from scout.prices, not the rounded usd/amount", () => {
+    // the balance says $1/STX (50 STX = $50), scout.prices says $1.25: 0.002 STX is matched with 0.0025 USDCx
+    const d = buildDeployInstructions("hodlmm", 2000, "stx",
+      scoutOf(wallet({ stx: { amount: 50, usd: 50 }, usdcx: usd(50) }), [row], undefined, { stx: 1.25 }), "dlmm_3", true);
+    const add = d.find(i => i.tool === "bitflow:add-liquidity-simple");
+    expect(JSON.parse(String(add?.params.bins))).toEqual([{ activeBinOffset: 0, xAmount: "2000", yAmount: "2500" }]);
+  });
+
+  test("point 4: migrate refuses an --amount above the post-withdraw balance, before the withdraw", () => {
+    const rows = [option({ pool_id: "dlmm_1", pool: "sBTC-USDCx-10bps" })];
+    const positions = { zest: { has_position: true, detail: "", supply_amount: 0.05 } };
+    const plan = planMigrate(
+      { from: "zest", to: "hodlmm", token: "sbtc", amount: "10000000", poolId: "dlmm_1", allowOneSided: "true" },
+      scoutOf(wallet({ usdcx: usd(5000) }), rows, positions),
+    );
+    expect(plan.status).toBe("refused");
+    expect(tools(plan)).toEqual([]);
+    expect(reasons(plan)).toContain("Insufficient sbtc balance: have 5000000, requested 10000000");
+    expect(reasons(plan)).toContain("nothing withdrawn from zest");
+    // the withdrawn sBTC counts: 0.05 sBTC is enough
+    const ok = planMigrate(
+      { from: "zest", to: "hodlmm", token: "sbtc", amount: "5000000", poolId: "dlmm_1" },
+      scoutOf(wallet({ usdcx: usd(5000) }), rows, positions),
+    );
+    expect(ok.status).toBe("ok");
   });
 });
