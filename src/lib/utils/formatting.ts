@@ -15,19 +15,33 @@ export function formatStx(microStx: string | bigint): string {
 }
 
 /**
- * Format sBTC amount from sats to BTC
+ * Convert satoshis to an exact sBTC decimal string, without a unit suffix.
+ *
+ * Integer division truncates: 50_000_000n / 100_000_000n is 0n, so a half-sBTC
+ * balance renders as "0". This keeps every sat by splitting the value into a
+ * whole part and an 8-digit remainder, then trimming trailing zeros.
  */
-export function formatSbtc(sats: string | bigint): string {
+export function satsToSbtcString(sats: string | bigint): string {
   const value = BigInt(sats);
-  const btc = value / BigInt(100_000_000);
-  const remainder = value % BigInt(100_000_000);
+  const negative = value < BigInt(0);
+  const absolute = negative ? -value : value;
+  const btc = absolute / BigInt(100_000_000);
+  const remainder = absolute % BigInt(100_000_000);
+  const sign = negative ? "-" : "";
 
   if (remainder === BigInt(0)) {
-    return `${btc} sBTC`;
+    return `${sign}${btc}`;
   }
 
   const decimal = remainder.toString().padStart(8, "0").replace(/0+$/, "");
-  return `${btc}.${decimal} sBTC`;
+  return `${sign}${btc}.${decimal}`;
+}
+
+/**
+ * Format sBTC amount from sats to BTC
+ */
+export function formatSbtc(sats: string | bigint): string {
+  return `${satsToSbtcString(sats)} sBTC`;
 }
 
 /**
