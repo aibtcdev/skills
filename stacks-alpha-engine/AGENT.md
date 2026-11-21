@@ -34,7 +34,7 @@ description: "Autonomous yield executor that scans 6 tokens across 4 Stacks DeFi
 - Any price source (Tenero, Bitflow) unavailable -> refuse all writes
 - Rebalance cooldown not elapsed (4 hours) -> refuse rebalance
 - Target protocol APY is 0% -> refuse deploy/migrate (unless --force)
-- YTG unprofitable (7d yield < 3x gas cost) -> refuse deploy (unless --force). Not migrate: the scan sizes rows on the wallet before the withdraw. A migrate --amount above the post-withdraw balance is refused before anything is withdrawn
+- YTG unprofitable (7d yield < 3x gas cost) -> refuse deploy (unless --force). Migrate: the 7d yield of --amount at the target APY must exceed 3x the withdraw plus deposit gas (the scan row is sized on the wallet before the withdraw, so it is not used); an --amount with no price is refused (unless --force). A migrate --amount above the post-withdraw balance (from HODLMM: above the wallet plus the positions, in USD) is refused before anything is withdrawn
 - HODLMM deploy/migrate to a pool with no scan row (APR 0, or the Bitflow pool list unavailable) -> refuse (unless --force)
 - HODLMM deploy or migrate where one of the pool's two tokens is missing, under $1, or under 10% of the other, or where the deposit itself (`--amount` plus the matched other side) is under $1 a side -> refuse, suggest a swap first (unless --allow-one-sided). `migrate` checks this before planning the withdraw, so a refused migrate withdraws nothing. It counts what the withdraw returns (Zest sBTC, Granite aeUSDC) as held
 - A held token with no USD price (price feed down) still counts as held: deploy refuses with the price reason (unless --allow-one-sided)

@@ -169,10 +169,11 @@ function wallet(over: Partial<Record<"sbtc" | "stx" | "usdcx" | "usdh" | "aeusdc
   return { sbtc: none, stx: none, usdcx: none, usdh: none, susdh: none, aeusdc: none, ...over };
 }
 type Px = Record<"sbtc" | "stx" | "usdcx" | "usdh" | "aeusdc", number>;
+const PRICES: Px = { sbtc: 100000, stx: 1, usdcx: 1, usdh: 1, aeusdc: 1 };
 function scoutOf(balances: ReturnType<typeof wallet>, options: YieldOption[] = [], positions?: Record<string, unknown>, prices: Partial<Px> = {}): Scout {
   return {
     wallet: "SP000000000000000000002Q6VF78", balances, options, positions,
-    prices: { sbtc: 100000, stx: 1, usdcx: 1, usdh: 1, aeusdc: 1, ...prices },
+    prices: { ...PRICES, ...prices },
   } as unknown as Scout;
 }
 // A row of the Bitflow /pools response, as fetchBitflowPools returns it.
@@ -185,7 +186,7 @@ describe("deploy gate: a HODLMM pool with no scan row is refused (#491 review 1)
   const deploy3 = { protocol: "hodlmm", token: "stx", amount: "1000000", poolId: "dlmm_3" };
 
   test("zero-APR pool: the scan makes no row for it, so the deploy is refused", () => {
-    const rows = hodlmmYieldOptions([bitflowPool("dlmm_3", 0), bitflowPool("dlmm_1", 12)], stxUsdcx);
+    const rows = hodlmmYieldOptions([bitflowPool("dlmm_3", 0), bitflowPool("dlmm_1", 12)], stxUsdcx, PRICES);
     expect(rows.map(r => r.pool_id)).toEqual(["dlmm_1"]);
     const plan = planDeploy(deploy3, scoutOf(stxUsdcx, rows));
     expect(plan.status).toBe("refused");
@@ -193,7 +194,7 @@ describe("deploy gate: a HODLMM pool with no scan row is refused (#491 review 1)
   });
 
   test("Bitflow pool list unavailable (no HODLMM rows at all): refused", () => {
-    const plan = planDeploy(deploy3, scoutOf(stxUsdcx, hodlmmYieldOptions([], stxUsdcx)));
+    const plan = planDeploy(deploy3, scoutOf(stxUsdcx, hodlmmYieldOptions([], stxUsdcx, PRICES)));
     expect(plan.status).toBe("refused");
     expect(reasons(plan)).toContain("--force");
   });
@@ -381,11 +382,13 @@ describe("migrate goes through the deploy gates (#491 review 2, point 3)", () =>
     expect(reasons(plan)).toContain("nothing withdrawn from zest");
   });
 
-  test("migrate skips the YTG gate: the rows are sized before the withdraw (#491 review 3, point 1)", () => {
+  test("migrate sizes YTG on --amount, not on the pre-withdraw row (#491 review 5, point 1)", () => {
+    // The row (sized on the wallet before the withdraw) says unprofitable, but
+    // --amount ($100 sBTC + $100 USDCx at 600%) easily pays for the gas.
     const rows = [option({ pool_id: "dlmm_1", pool: "sBTC-USDCx-10bps", ytg_profitable: false, ytg_ratio: 0.4 })];
     const plan = planMigrate(migrate, scoutOf(paired, rows));
     expect(plan.status).toBe("ok");
-    // deploy still applies it
+    // deploy still reads the row
     const dep = planDeploy({ protocol: "hodlmm", token: "sbtc", amount: "100000", poolId: "dlmm_1" }, scoutOf(paired, rows));
     expect(reasons(dep)).toContain("YTG gate");
   });
@@ -479,5 +482,55 @@ describe("third review of #491", () => {
       scoutOf(wallet({ usdcx: usd(5000) }), rows, positions),
     );
     expect(ok.status).toBe("ok");
+  });
+});
+
+describe("fifth review of #491", () => {
+  const usdhRow = option({ protocol: "Hermetica", pool: "USDh Staking (sUSDh)", token_needed: "USDh" });
+  const zestRow = option({ protocol: "Zest", pool: "sBTC Supply (v2)", token_needed: "sBTC" });
+  const zestPos = { zest: { has_position: true, detail: "", supply_amount: 0.05 } };
+  const usdhWallet = wallet({ usdh: usd(1000) });
+  const toHermetica = (amount: string, over: Record<string, string> = {}) =>
+    planMigrate({ from: "zest", to: "hermetica", amount, ...over }, scoutOf(usdhWallet, [usdhRow], zestPos));
+
+  test("point 1: a dust --amount is refused by YTG before anything is withdrawn", () => {
+    const plan = toHermetica("2000"); // 0.00002 USDh
+    expect(plan.status).toBe("refused");
+    expect(tools(plan)).toEqual([]);
+    expect(reasons(plan)).toContain("YTG gate: 7d yield on --amount");
+    expect(reasons(plan)).toContain("nothing withdrawn from zest");
+    // --force still overrides it, and a sensible amount passes
+    expect(toHermetica("2000", { force: "true" }).status).toBe("ok");
+    expect(toHermetica("100000000000").status).toBe("ok"); // 1,000 USDh
+  });
+
+  test("point 1: the withdraw gas counts, not only the deposit gas", () => {
+    // 1.7 USDh at 600%: 7d yield ~$0.195. 3x the deposit gas alone (0.05 STX) is
+    // $0.15, which would pass; with Zest's withdraw (0.03 STX) it is $0.24.
+    const plan = toHermetica("170000000");
+    expect(plan.status).toBe("refused");
+    expect(reasons(plan)).toContain("0.08 STX, withdraw + deposit");
+  });
+
+  test("point 1: an --amount with no price can't be sized, so it is refused (--force overrides)", () => {
+    const s = scoutOf(usdhWallet, [usdhRow], zestPos, { usdh: 0 });
+    const plan = planMigrate({ from: "zest", to: "hermetica", amount: "100000000000" }, s);
+    expect(reasons(plan)).toContain("no USD value");
+    expect(planMigrate({ from: "zest", to: "hermetica", amount: "100000000000", force: "true" }, s).status).toBe("ok");
+  });
+
+  test("point 3: migrate from HODLMM refuses an --amount far above wallet + bins, before the withdraw", () => {
+    const positions = { hodlmm: { has_position: true, pools: [{ pool_id: 1, name: "sBTC-USDCx-10bps", estimated_value_usd: 500 }] } };
+    const over = planMigrate({ from: "hodlmm", to: "zest", amount: "100000000" }, scoutOf(wallet({}), [zestRow], positions)); // 1 sBTC = $100,000
+    expect(over.status).toBe("refused");
+    expect(tools(over)).toEqual([]);
+    expect(reasons(over)).toContain("plus all HODLMM positions ($500)");
+    expect(reasons(over)).toContain("nothing withdrawn from hodlmm");
+    // $100 of sBTC fits in the $500 of bins
+    const ok = planMigrate({ from: "hodlmm", to: "zest", amount: "100000" }, scoutOf(wallet({}), [zestRow], positions));
+    expect(ok.status).toBe("ok");
+    // no bin estimate: the bound is skipped rather than guessed
+    const unknown = { hodlmm: { has_position: true, pools: [{ pool_id: 1, name: "sBTC-USDCx-10bps", estimated_value_usd: null }] } };
+    expect(planMigrate({ from: "hodlmm", to: "zest", amount: "100000000" }, scoutOf(wallet({}), [zestRow], unknown)).status).toBe("ok");
   });
 });
