@@ -33,6 +33,7 @@ import {
 } from "node:fs";
 import path from "node:path";
 import os from "node:os";
+import { randomUUID } from "node:crypto";
 import { getHiroApi, type NonceInfo } from "./hiro-api.js";
 import { NETWORK } from "../config/networks.js";
 
@@ -105,7 +106,7 @@ export type FailureKind = "broadcast" | "rejected";
 
 const DEFAULT_STORAGE_DIR = path.join(os.homedir(), ".aibtc");
 const DEFAULT_NONCE_STATE_FILE = path.join(DEFAULT_STORAGE_DIR, "nonce-state.json");
-const LOCK_DIR = path.join(DEFAULT_STORAGE_DIR, "nonce-state.lock");
+let LOCK_DIR = path.join(DEFAULT_STORAGE_DIR, "nonce-state.lock");
 
 /** Mutable path — overridable via _testing.setStateFilePath() for test isolation. */
 let NONCE_STATE_FILE = DEFAULT_NONCE_STATE_FILE;
@@ -126,8 +127,8 @@ const MAX_ADDRESSES = 100;
 /** Lock timeout: stale locks older than this are force-removed. */
 const LOCK_STALE_MS = 30_000;
 
-/** Max retries to acquire file lock. */
-const LOCK_MAX_RETRIES = 6;
+/** Max time to wait for a live lock holder before giving up (ms). */
+let LOCK_MAX_WAIT_MS = 120_000;
 
 /** Delay between lock retries (ms). */
 const LOCK_RETRY_DELAY_MS = 500;
@@ -136,23 +137,78 @@ const LOCK_RETRY_DELAY_MS = 500;
 // Cross-process file locking (mkdir-based)
 // ---------------------------------------------------------------------------
 
-function tryAcquireLock(): boolean {
+function lockOwner(): { pid: number; token: string } | null {
   try {
-    if (!existsSync(DEFAULT_STORAGE_DIR)) {
-      mkdirSync(DEFAULT_STORAGE_DIR, { recursive: true });
-    }
-    mkdirSync(LOCK_DIR);
-    writeFileSync(path.resolve(LOCK_DIR, "pid"), process.pid.toString());
-    return true;
+    const raw = readFileSync(path.resolve(LOCK_DIR, "owner"), "utf8").trim();
+    const sep = raw.indexOf(":");
+    if (sep <= 0) return null;
+    const pid = Number.parseInt(raw.slice(0, sep), 10);
+    const token = raw.slice(sep + 1);
+    if (!Number.isInteger(pid) || pid <= 0 || !token) return null;
+    return { pid, token };
   } catch {
-    return false;
+    return null;
   }
 }
 
-function releaseLockDir(): void {
+function lockHolderPid(): number | null {
+  const owner = lockOwner();
+  if (owner) return owner.pid;
+  // Legacy locks only wrote a pid file.
   try {
-    const pidFile = path.resolve(LOCK_DIR, "pid");
-    if (existsSync(pidFile)) unlinkSync(pidFile);
+    const raw = readFileSync(path.resolve(LOCK_DIR, "pid"), "utf8").trim();
+    const pid = Number.parseInt(raw, 10);
+    return Number.isInteger(pid) && pid > 0 ? pid : null;
+  } catch {
+    return null;
+  }
+}
+
+function lockHolderAlive(): boolean | undefined {
+  const pid = lockHolderPid();
+  if (pid === null) return undefined;
+  try {
+    // Signal 0 probes existence without delivering anything.
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ESRCH") return false;
+    if (code === "EPERM") return true;
+    return undefined;
+  }
+}
+
+function tryAcquireLock(): string | null {
+  try {
+    const lockParent = path.dirname(LOCK_DIR);
+    if (!existsSync(lockParent)) {
+      mkdirSync(lockParent, { recursive: true });
+    }
+    mkdirSync(LOCK_DIR);
+    const token = randomUUID();
+    // Owner first: a contender that only sees `pid` cannot mistake this for a
+    // legacy lock, and safe release requires the matching token below.
+    writeFileSync(path.resolve(LOCK_DIR, "owner"), `${process.pid}:${token}`);
+    writeFileSync(path.resolve(LOCK_DIR, "pid"), process.pid.toString());
+    return token;
+  } catch {
+    return null;
+  }
+}
+
+function releaseLockDir(expectedOwner?: string): void {
+  try {
+    if (expectedOwner !== undefined) {
+      // Only the acquisition that created this lock may remove it. If the lock
+      // was reclaimed by another process, its owner token will differ and we
+      // must leave it alone.
+      if (lockOwner()?.token !== expectedOwner) return;
+    }
+    for (const name of ["owner", "pid"]) {
+      const file = path.resolve(LOCK_DIR, name);
+      if (existsSync(file)) unlinkSync(file);
+    }
     rmdirSync(LOCK_DIR);
   } catch {
     // Best effort
@@ -169,21 +225,29 @@ function isLockStale(): boolean {
 }
 
 async function withLock<T>(fn: () => Promise<T>): Promise<T> {
-  for (let attempt = 0; attempt < LOCK_MAX_RETRIES; attempt++) {
-    if (tryAcquireLock()) {
+  const deadline = Date.now() + LOCK_MAX_WAIT_MS;
+  for (;;) {
+    const token = tryAcquireLock();
+    if (token !== null) {
       try {
         return await fn();
       } finally {
-        releaseLockDir();
+        releaseLockDir(token);
       }
     }
-    if (isLockStale()) {
+    // Reclaim only when the recorded holder is gone (or unreadable). A live
+    // holder may legitimately hold the lock longer than LOCK_STALE_MS while it
+    // waits on Hiro; evicting it is what let two callers draw the same nonce.
+    if (isLockStale() && lockHolderAlive() !== true) {
       releaseLockDir();
       continue;
     }
-    await new Promise((r) => setTimeout(r, LOCK_RETRY_DELAY_MS));
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) {
+      throw new Error(`Failed to acquire nonce lock after ${LOCK_MAX_WAIT_MS}ms`);
+    }
+    await new Promise((r) => setTimeout(r, Math.min(LOCK_RETRY_DELAY_MS, remaining)));
   }
-  throw new Error(`Failed to acquire nonce lock after ${LOCK_MAX_RETRIES} attempts`);
 }
 
 // ---------------------------------------------------------------------------
@@ -483,8 +547,12 @@ export async function reloadFromDisk(): Promise<void> {
 
 export const _testing = {
   STALE_NONCE_MS,
+  LOCK_STALE_MS,
   MAX_PENDING_LOG,
   MAX_ADDRESSES,
+  get LOCK_DIR() {
+    return LOCK_DIR;
+  },
   get NONCE_STATE_FILE() {
     return NONCE_STATE_FILE;
   },
@@ -494,6 +562,26 @@ export const _testing = {
   resetStateFilePath(): void {
     NONCE_STATE_FILE = DEFAULT_NONCE_STATE_FILE;
   },
+  setLockDir(lockDir: string): void {
+    LOCK_DIR = lockDir;
+  },
+  resetLockDir(): void {
+    LOCK_DIR = path.join(DEFAULT_STORAGE_DIR, "nonce-state.lock");
+  },
+  setLockMaxWaitMs(ms: number): void {
+    LOCK_MAX_WAIT_MS = ms;
+  },
+  resetLockMaxWaitMs(): void {
+    LOCK_MAX_WAIT_MS = 120_000;
+  },
+  tryAcquireLock,
+  releaseLockDir,
+  forceReleaseLockDir(): void {
+    releaseLockDir();
+  },
+  isLockStale,
+  lockHolderAlive,
+  withLock,
   clearMemory(): void {
     // No-op: no in-memory cache with file-lock model
   },
