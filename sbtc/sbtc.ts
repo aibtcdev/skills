@@ -15,6 +15,7 @@ import { getSbtcDepositService } from "@aibtc/skills/src/lib/services/sbtc-depos
 import { MempoolApi, getMempoolTxUrl } from "@aibtc/skills/src/lib/services/mempool-api.js";
 import { resolveFee } from "@aibtc/skills/src/lib/utils/fee.js";
 import { printJson, handleError } from "@aibtc/skills/src/lib/utils/cli.js";
+import { satsToSbtcString } from "@aibtc/skills/src/lib/utils/formatting.js";
 
 // ---------------------------------------------------------------------------
 // Program
@@ -111,7 +112,7 @@ program
           opts.sponsored
         );
 
-        const btcAmount = (BigInt(opts.amount) / BigInt(100_000_000)).toString();
+        const btcAmount = satsToSbtcString(opts.amount);
 
         printJson({
           success: true,
@@ -325,7 +326,7 @@ program
           depositResult.vout
         );
 
-        const btcAmount = (amountSats / 100_000_000).toFixed(8);
+        const btcAmount = satsToSbtcString(amountSats);
 
         printJson({
           success: true,
