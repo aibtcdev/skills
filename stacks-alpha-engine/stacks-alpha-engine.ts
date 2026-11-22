@@ -977,14 +977,15 @@ export function findDeployGateOption(options: YieldOption[], protocol: string, p
 // with APR 0, or for any pool when the Bitflow pool list could not be read, and
 // those are the deploys the gates are there to stop. --force overrides all three.
 // By default YTG reads the row, which the scan sized on the wallet as it is now.
-// With `sized` (migrate), YTG is sized on the deposit instead: the yield of
-// `sized.usd` at the row's APY against the row's entry gas plus `extraGasStx`
-// (the withdraw). Migrate needs this because its row is sized before the
-// withdraw (with no idle sBTC the Zest row is acquire_to_unlock at $0/day),
-// while the withdraw is what funds the deposit. A deposit with no USD value
-// (no price) can't be sized and is refused. The 0% APY and no-scan-row
-// refusals are the same either way.
-export interface AmountYtg { usd: number; extraGasStx: number; stxPrice: number }
+// With `sized` (migrate), YTG is the net 7-day change instead: the yield of
+// `sized.usd` at the row's APY, minus `sourceYield7d` (what the withdrawn
+// position stops earning, see migrateSourceYield), against the row's entry gas
+// plus `extraGasStx` (the withdraw). Migrate needs this because its row is
+// sized before the withdraw (with no idle sBTC the Zest row is
+// acquire_to_unlock at $0/day), while the withdraw takes the whole position.
+// A deposit with no USD value, or no STX price for the gas, can't be weighed
+// and is refused. The 0% APY and no-scan-row refusals are the same either way.
+export interface AmountYtg { usd: number; extraGasStx: number; stxPrice: number; sourceYield7d?: number }
 export function deployGateRefusal(options: YieldOption[], protocol: string, poolId: string, force = false, sized?: AmountYtg): string | null {
   if (force) return null;
   const targetOpt = findDeployGateOption(options, protocol, poolId);
@@ -999,12 +1000,16 @@ export function deployGateRefusal(options: YieldOption[], protocol: string, pool
     if (!(sized.usd > 0)) {
       return `YTG gate: --amount has no USD value (no price), so the yield can't be weighed against gas. Use --force to override.`;
     }
-    const yield7d = dailyUsd(sized.usd, targetOpt.apy_pct) * 7;
+    if (!(sized.stxPrice > 0)) {
+      return `YTG gate: no STX price, so the gas can't be weighed against the yield. Use --force to override.`;
+    }
+    const gained = dailyUsd(sized.usd, targetOpt.apy_pct) * 7;
+    const lost = sized.sourceYield7d ?? 0;
+    const net = gained - lost;
     const gasStx = targetOpt.gas_to_enter_stx + sized.extraGasStx;
     const gasUsd = gasStx * sized.stxPrice;
-    if (!(yield7d > gasUsd * 3)) {
-      const ratio = gasUsd > 0 ? round(yield7d / gasUsd, 2) : 0;
-      return `YTG gate: 7d yield on --amount (~$${round(sized.usd, 2)} at ${targetOpt.apy_pct}% APY: $${round(yield7d, 4)}) < 3x gas cost (${round(gasStx, 4)} STX, withdraw + deposit). Ratio: ${ratio}x. Use --force to override.`;
+    if (!(net > gasUsd * 3)) {
+      return `YTG gate: net 7d yield change $${round(net, 4)} (--amount ~$${round(sized.usd, 2)} at ${targetOpt.apy_pct}% APY: +$${round(gained, 4)}; withdrawn position stops earning: -$${round(lost, 4)}) < 3x gas cost ($${round(gasUsd * 3, 4)}; ${round(gasStx, 4)} STX, withdraw + deposit). Ratio: ${round(net / gasUsd, 2)}x. Use --force to override.`;
     }
     return null;
   }
@@ -1914,19 +1919,73 @@ export function withdrawGasStx(from: Protocol, scout: Pick<ScoutResult, "positio
   return 0;
 }
 
+// What the migrate's withdraw takes out of `from` and the yield it stops
+// earning. The withdraw takes the whole position (Zest "max", all Granite
+// shares, all sUSDh, all HODLMM bins), whatever --amount is, so the YTG gate
+// charges this against the target yield: a small --amount out of a large
+// position idles the rest. APY from the position (Zest/Granite supply APY,
+// Hermetica estimate), or for HODLMM the scan row of each pool (none = 0).
+// A position that is there but can't be valued (no price, no bin estimate)
+// is a refusal, as an unpriced --amount is.
+export function migrateSourceYield(
+  from: Protocol, scout: Pick<ScoutResult, "balances" | "positions" | "prices" | "options">,
+): { usd: number; yield7d: number } | { refusal: string } {
+  const pos = scout.positions;
+  const px = scout.prices ?? ({} as Partial<TokenPrices>);
+  const row = (protocol: string, poolId = "") => findDeployGateOption(scout.options ?? [], protocol, poolId)?.apy_pct ?? 0;
+  const week = (usd: number, apy: number) => ({ usd, yield7d: dailyUsd(usd, apy) * 7 });
+  const unvalued = (what: string) => ({ refusal: `can't value the ${what} position the withdraw takes (no price or estimate), so the yield it gives up is unknown` });
+  switch (from) {
+    case "zest": {
+      const amt = pos?.zest?.supply_amount ?? 0;
+      if (!(amt > 0)) return { usd: 0, yield7d: 0 };
+      if (!((px.sbtc ?? 0) > 0)) return unvalued("Zest");
+      return week(amt * px.sbtc!, pos.zest.supply_apy_pct ?? row("zest"));
+    }
+    case "granite": {
+      const amt = Number(pos?.granite?.lp_shares ?? "0") / 1e6;
+      if (!(amt > 0)) return { usd: 0, yield7d: 0 };
+      if (!((px.aeusdc ?? 0) > 0)) return unvalued("Granite");
+      return week(amt * px.aeusdc!, pos.granite.supply_apy_pct ?? row("granite"));
+    }
+    case "hermetica": {
+      const s = scout.balances?.susdh;
+      if (!s || !(s.amount > 0)) return { usd: 0, yield7d: 0 };
+      if (!(s.usd > 0)) return unvalued("Hermetica");
+      return week(s.usd, pos?.hermetica?.apy_estimate_pct ?? row("hermetica"));
+    }
+    case "hodlmm": {
+      const pools = pos?.hodlmm?.pools ?? [];
+      if (pools.some(p => p.estimated_value_usd === null)) return unvalued("HODLMM");
+      let usd = 0, yield7d = 0;
+      for (const p of pools) {
+        const w = week(p.estimated_value_usd ?? 0, row("hodlmm", `dlmm_${p.pool_id}`));
+        usd += w.usd; yield7d += w.yield7d;
+      }
+      return { usd, yield7d };
+    }
+  }
+  return { usd: 0, yield7d: 0 };
+}
+
 // Migrate from HODLMM: the scan has only a USD estimate of the bins, so --amount
 // is bounded in USD: no more than the token already in the wallet plus
 // everything the withdraw can return. Catches gross overshoots before the
 // withdraw; the exact token split is only known once the bins are redeemed.
-// Skipped when a price or a bin estimate is missing.
+// Only pools that hold `token` count, and each counts at its whole value (the
+// split between its two tokens is unknown until redeemed), so this is an upper
+// bound. Skipped when a price, or the estimate of one of those pools, is missing.
 export function hodlmmMigrateOvershoot(token: string, amount: number, scout: Pick<ScoutResult, "balances" | "positions" | "prices">): string | null {
   const wantUsd = tokenUsd(token, amount, scout.prices);
-  const pools = scout.positions?.hodlmm?.pools ?? [];
+  const pools = (scout.positions?.hodlmm?.pools ?? []).filter(p => {
+    const def = HODLMM_POOLS.find(d => d.id === p.pool_id);
+    return def !== undefined && (def.tokenX === token || def.tokenY === token);
+  });
   if (!(wantUsd > 0) || pools.some(p => p.estimated_value_usd === null)) return null;
   const binsUsd = pools.reduce((s, p) => s + (p.estimated_value_usd ?? 0), 0);
   const walletUsd = (scout.balances as unknown as Record<string, TokenBalance>)[token]?.usd ?? 0;
   if (wantUsd <= walletUsd + binsUsd) return null;
-  return `--amount of ${token} is ~$${round(wantUsd, 2)}, more than the ${token} in the wallet ($${round(walletUsd, 2)}) plus all HODLMM positions ($${round(binsUsd, 2)})`;
+  return `--amount of ${token} is ~$${round(wantUsd, 2)}, more than the ${token} in the wallet ($${round(walletUsd, 2)}) plus the HODLMM positions in pools with ${token} ($${round(binsUsd, 2)})`;
 }
 
 // opts are the CLI options (commander camelCases --pool-id / --allow-one-sided).
@@ -1974,15 +2033,23 @@ export function planMigrate(opts: Record<string, string>, scout: ScoutResult): E
   const after = { ...scout, balances: withdrawnBalances(from, scout) };
 
   // Same 0% APY / no-scan-data / YTG gates as deploy (--force), before any
-  // withdraw. YTG is sized on what --amount deposits, against the deposit gas
-  // plus the withdraw gas: the scan row is sized on the wallet before the
-  // withdraw, so it would refuse ordinary migrates.
-  const gate = deployGateRefusal(scout.options, to, poolId, Boolean(opts.force), {
-    usd: depositUsd(to, token, amount, after, poolId),
-    extraGasStx: withdrawGasStx(from, scout),
-    stxPrice: scout.prices?.stx ?? 0,
-  });
-  if (gate) return { status: "refused", refusal_reasons: [notStarted(gate)] };
+  // withdraw. YTG is the net 7-day change: the target yield on what --amount
+  // deposits, minus what the whole withdrawn position stops earning, against
+  // the deposit gas plus the withdraw gas. (The scan row is sized on the wallet
+  // before the withdraw, so it would refuse ordinary migrates.)
+  if (!opts.force) {
+    const source = migrateSourceYield(from, scout);
+    if ("refusal" in source) {
+      return { status: "refused", refusal_reasons: [notStarted(`YTG gate: ${source.refusal}. Use --force to override.`)] };
+    }
+    const gate = deployGateRefusal(scout.options, to, poolId, false, {
+      usd: depositUsd(to, token, amount, after, poolId),
+      extraGasStx: withdrawGasStx(from, scout),
+      stxPrice: scout.prices?.stx ?? 0,
+      sourceYield7d: source.yield7d,
+    });
+    if (gate) return { status: "refused", refusal_reasons: [notStarted(gate)] };
+  }
 
   // --amount against the wallet after the withdraw, as deploy checks it against
   // the wallet now. Otherwise the withdraw lands and the deposit fails on chain.
