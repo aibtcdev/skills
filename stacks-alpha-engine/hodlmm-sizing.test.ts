@@ -170,9 +170,16 @@ function wallet(over: Partial<Record<"sbtc" | "stx" | "usdcx" | "usdh" | "aeusdc
 }
 type Px = Record<"sbtc" | "stx" | "usdcx" | "usdh" | "aeusdc", number>;
 const PRICES: Px = { sbtc: 100000, stx: 1, usdcx: 1, usdh: 1, aeusdc: 1 };
+// Every protocol read OK with nothing held, unless a test passes its own.
+const READ_OK = {
+  zest: { has_position: false, detail: "", supply_apy_pct: 0 },
+  granite: { has_position: false, detail: "", supply_apy_pct: 0, accepted_token: "aeUSDC", lp_shares: "0" },
+  hermetica: { has_position: false, detail: "", susdh_balance: 0, exchange_rate: 1, apy_estimate_pct: 0, staking_enabled: true },
+  hodlmm: { has_position: false, pools: [] },
+};
 function scoutOf(balances: ReturnType<typeof wallet>, options: YieldOption[] = [], positions?: Record<string, unknown>, prices: Partial<Px> = {}): Scout {
   return {
-    wallet: "SP000000000000000000002Q6VF78", balances, options, positions,
+    wallet: "SP000000000000000000002Q6VF78", balances, options, positions: { ...READ_OK, ...positions },
     prices: { ...PRICES, ...prices },
   } as unknown as Scout;
 }
@@ -223,9 +230,11 @@ describe("migrate checks the HODLMM deposit before withdrawing (#491 review 2)",
     expect(tools(plan)).toEqual(["zest_withdraw", "bitflow:add-liquidity-simple"]);
   });
 
-  test("--allow-one-sided: withdraw, then the one-sided deposit", () => {
+  test("--allow-one-sided: the one-sided deposit earns nothing, so YTG refuses it; with --force, withdraw then deposit", () => {
     const plan = planMigrate({ ...migrate, allowOneSided: "true" }, scoutOf(sbtcOnly, rows));
-    expect(tools(plan)).toEqual(["zest_withdraw", "bitflow:add-liquidity-simple"]);
+    expect(reasons(plan)).toContain("one-sided so outside the active bin: earns $0");
+    const forced = planMigrate({ ...migrate, allowOneSided: "true", force: "true" }, scoutOf(sbtcOnly, rows));
+    expect(tools(forced)).toEqual(["zest_withdraw", "bitflow:add-liquidity-simple"]);
   });
 });
 
@@ -311,7 +320,7 @@ describe("migrate sees the wallet after the withdraw (#491 review 2, point 1)", 
 
   test("zest -> hodlmm, sBTC supplied in Zest, USDCx in the wallet, 0 sBTC in the wallet: withdraw + paired deposit", () => {
     const usdcxOnly = wallet({ usdcx: usd(5000) });
-    const positions = { zest: { has_position: true, detail: "", supply_amount: 0.05 } };
+    const positions = { zest: { has_position: true, detail: "", supply_amount: 0.05, supply_apy_pct: 1 } };
     const plan = planMigrate(
       { from: "zest", to: "hodlmm", token: "sbtc", amount: "100000", poolId: "dlmm_1" },
       scoutOf(usdcxOnly, rows, positions),
@@ -323,7 +332,7 @@ describe("migrate sees the wallet after the withdraw (#491 review 2, point 1)", 
   });
 
   test("granite -> hodlmm aeUSDC-USDCx: the redeemed aeUSDC counts as held", () => {
-    const positions = { granite: { has_position: true, detail: "", accepted_token: "aeUSDC", lp_shares: "5000000000" } };
+    const positions = { granite: { has_position: true, detail: "", accepted_token: "aeUSDC", lp_shares: "5000000000", supply_apy_pct: 1 } };
     const plan = planMigrate(
       { from: "granite", to: "hodlmm", token: "aeusdc", amount: "1000000000", poolId: "dlmm_7" },
       scoutOf(wallet({ usdcx: usd(5000) }), rows, positions),
@@ -467,7 +476,7 @@ describe("third review of #491", () => {
 
   test("point 4: migrate refuses an --amount above the post-withdraw balance, before the withdraw", () => {
     const rows = [option({ pool_id: "dlmm_1", pool: "sBTC-USDCx-10bps" })];
-    const positions = { zest: { has_position: true, detail: "", supply_amount: 0.05 } };
+    const positions = { zest: { has_position: true, detail: "", supply_amount: 0.05, supply_apy_pct: 1 } };
     const plan = planMigrate(
       { from: "zest", to: "hodlmm", token: "sbtc", amount: "10000000", poolId: "dlmm_1", allowOneSided: "true" },
       scoutOf(wallet({ usdcx: usd(5000) }), rows, positions),
@@ -488,7 +497,7 @@ describe("third review of #491", () => {
 describe("fifth review of #491", () => {
   const usdhRow = option({ protocol: "Hermetica", pool: "USDh Staking (sUSDh)", token_needed: "USDh" });
   const zestRow = option({ protocol: "Zest", pool: "sBTC Supply (v2)", token_needed: "sBTC" });
-  const zestPos = { zest: { has_position: true, detail: "", supply_amount: 0.05 } };
+  const zestPos = { zest: { has_position: true, detail: "", supply_amount: 0.00001, supply_apy_pct: 1 } }; // $1 at 1%: ~$0.0002/week
   const usdhWallet = wallet({ usdh: usd(1000) });
   const toHermetica = (amount: string, over: Record<string, string> = {}) =>
     planMigrate({ from: "zest", to: "hermetica", amount, ...over }, scoutOf(usdhWallet, [usdhRow], zestPos));
@@ -521,13 +530,13 @@ describe("fifth review of #491", () => {
 
   test("point 3: migrate from HODLMM refuses an --amount far above wallet + bins, before the withdraw", () => {
     const positions = { hodlmm: { has_position: true, pools: [{ pool_id: 1, name: "sBTC-USDCx-10bps", estimated_value_usd: 500 }] } };
-    const over = planMigrate({ from: "hodlmm", to: "zest", amount: "100000000" }, scoutOf(wallet({}), [zestRow], positions)); // 1 sBTC = $100,000
+    const over = planMigrate({ from: "hodlmm", to: "zest", amount: "100000000" }, scoutOf(wallet({}), [zestRow, option({ pool_id: "dlmm_1", apy_pct: 1 }), option({ pool_id: "dlmm_3", apy_pct: 1 })], positions)); // 1 sBTC = $100,000
     expect(over.status).toBe("refused");
     expect(tools(over)).toEqual([]);
     expect(reasons(over)).toContain("plus the HODLMM positions in pools with sbtc ($500)");
     expect(reasons(over)).toContain("nothing withdrawn from hodlmm");
     // $100 of sBTC fits in the $500 of bins
-    const ok = planMigrate({ from: "hodlmm", to: "zest", amount: "100000" }, scoutOf(wallet({}), [zestRow], positions));
+    const ok = planMigrate({ from: "hodlmm", to: "zest", amount: "100000" }, scoutOf(wallet({}), [zestRow, option({ pool_id: "dlmm_1", apy_pct: 1 }), option({ pool_id: "dlmm_3", apy_pct: 1 })], positions));
     expect(ok.status).toBe("ok");
     // no bin estimate: the bound is skipped rather than guessed (the YTG gate
     // refuses an unvalued position, see the sixth review, so --force here)
@@ -563,7 +572,7 @@ describe("sixth review of #491", () => {
 
   test("point 1: a position that can't be valued is refused, --force overrides", () => {
     const plan = migrate(usdh(100), [herm(6)], zest10k(5), { sbtc: 0 });
-    expect(reasons(plan)).toContain("can't value the Zest position");
+    expect(reasons(plan)).toContain("no USD price for the Zest position");
     const forced = planMigrate({ from: "zest", to: "hermetica", amount: usdh(100), force: "true" },
       scoutOf(wallet({ usdh: usd(20000) }), [herm(6)], zest10k(5), { sbtc: 0 }));
     expect(forced.status).toBe("ok");
@@ -579,8 +588,50 @@ describe("sixth review of #491", () => {
       { pool_id: 1, name: "sBTC-USDCx-10bps", estimated_value_usd: 500 },
       { pool_id: 3, name: "STX-USDCx-10bps", estimated_value_usd: 10000 },
     ] } };
-    const plan = planMigrate({ from: "hodlmm", to: "zest", amount: "1000000" }, scoutOf(wallet({}), [zestRow], positions)); // 0.01 sBTC = $1,000
+    const plan = planMigrate({ from: "hodlmm", to: "zest", amount: "1000000" }, scoutOf(wallet({}), [zestRow, option({ pool_id: "dlmm_1", apy_pct: 1 }), option({ pool_id: "dlmm_3", apy_pct: 1 })], positions)); // 0.01 sBTC = $1,000
     expect(plan.status).toBe("refused");
     expect(reasons(plan)).toContain("pools with sbtc ($500)");
+  });
+});
+
+describe("seventh review of #491: an unknown source yield is refused, not $0", () => {
+  const herm = option({ protocol: "Hermetica", pool: "USDh Staking (sUSDh)", token_needed: "USDh", apy_pct: 6 });
+  const toHerm = (positions: Record<string, unknown>, over: Record<string, string> = {}) =>
+    planMigrate({ from: "zest", to: "hermetica", amount: String(1000 * 1e8), ...over }, scoutOf(wallet({ usdh: usd(20000) }), [herm], positions));
+
+  test("Zest read failed (no fields): refused, --force overrides", () => {
+    const failed = { zest: { has_position: false, detail: "Zest read failed" } };
+    expect(reasons(toHerm(failed))).toContain("the Zest position could not be read");
+    expect(toHerm(failed, { force: "true" }).status).toBe("ok");
+  });
+
+  test("Zest held with APY 0 (a failed rate read also reads 0): refused", () => {
+    expect(reasons(toHerm({ zest: { has_position: true, detail: "", supply_amount: 0.1, supply_apy_pct: 0 } }))).toContain("Zest APY reads 0");
+  });
+
+  test("Zest read OK, nothing held: $0 lost, the migrate goes ahead", () => {
+    expect(toHerm({}).status).toBe("ok");
+  });
+
+  test("Granite read failed (no lp_shares): refused", () => {
+    const plan = planMigrate({ from: "granite", to: "hermetica", amount: String(1000 * 1e8) },
+      scoutOf(wallet({ usdh: usd(20000) }), [herm], { granite: { has_position: false, detail: "Granite read failed", supply_apy_pct: 0, accepted_token: "aeUSDC" } }));
+    expect(reasons(plan)).toContain("the Granite position could not be read");
+  });
+
+  test("HODLMM pool held with no scan row: refused, as the deploy gate refuses it", () => {
+    const zestRow = option({ protocol: "Zest", pool: "sBTC Supply (v2)", token_needed: "sBTC" });
+    const positions = { hodlmm: { has_position: true, pools: [{ pool_id: 1, name: "sBTC-USDCx-10bps", estimated_value_usd: 500 }] } };
+    const plan = planMigrate({ from: "hodlmm", to: "zest", amount: "100000" }, scoutOf(wallet({}), [zestRow], positions));
+    expect(reasons(plan)).toContain("no scan row (APR) for HODLMM sBTC-USDCx-10bps");
+  });
+
+  test("review pass: sUSDh is valued at exchange_rate USDh, not 1:1", () => {
+    // 1,000 sUSDh at 1.5 USDh each = $1,500 at 10%: ~$2.877/week stops earning
+    const zest5 = option({ protocol: "Zest", pool: "sBTC Supply (v2)", token_needed: "sBTC", apy_pct: 5 });
+    const plan = planMigrate({ from: "hermetica", to: "zest", amount: "100000" },
+      scoutOf(wallet({ sbtc: usd(1000, 0.01), susdh: usd(1000) } as never), [zest5],
+        { hermetica: { has_position: true, detail: "", susdh_balance: 1000, exchange_rate: 1.5, apy_estimate_pct: 10, staking_enabled: true } }));
+    expect(reasons(plan)).toContain("stops earning: -$2.877");
   });
 });
