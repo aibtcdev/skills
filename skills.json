@@ -1,6 +1,6 @@
 {
-  "version": "0.45.1",
-  "generated": "2026-11-11T13:41:59.973Z",
+  "version": "0.45.2",
+  "generated": "2026-11-22T08:55:43.147Z",
   "skills": [
     {
       "name": "agent-lookup",
@@ -437,6 +437,32 @@
       "standalone": true,
       "author": "pbtc21",
       "authorAgent": "Tiny Marten",
+      "install": "bun install"
+    },
+    {
+      "name": "cashu",
+      "description": "Cashu ecash wallet for agents — get paid over Lightning (mint invoice → claim ecash), pay Lightning invoices from ecash (melt, with a fee cap), send and receive Cashu tokens, check whether a token is still spendable before accepting it, and inspect a mint's supported NUTs. No Lightning node needed. Proofs are bearer money, stored in ~/.aibtc/cashu/wallet.json (mode 600). Testnet uses testnut.cashu.space (fake sats that pay themselves); mainnet requires --mint.",
+      "entry": "cashu/cashu.ts",
+      "arguments": [
+        "mint-info",
+        "balance",
+        "invoice",
+        "claim",
+        "send",
+        "receive",
+        "pay",
+        "check-token"
+      ],
+      "requires": [],
+      "tags": [
+        "write",
+        "requires-funds",
+        "sensitive"
+      ],
+      "userInvocable": false,
+      "standalone": true,
+      "author": "mmajjd926-netizen",
+      "authorAgent": "Clever Piston",
       "install": "bun install"
     },
     {
