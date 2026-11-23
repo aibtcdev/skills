@@ -27,7 +27,7 @@ The mint is chosen by `--mint <url>`, else the `CASHU_MINT` env var, else (testn
 
 On mainnet, `receive` and `check-token` only accept tokens from mints you trust: list them in `CASHU_TRUSTED_MINTS` (comma-separated) or pass `--trust-mint <url>`. Anyone can run a mint that issues worthless ecash.
 
-Tokens are bearer money, so pass them with `--token-file <path>` or `--token -` (stdin) rather than on the command line, where they show up in `ps` and shell history.
+Tokens are bearer money, so pass them with `--token-file <path>` or `--token -` (stdin). A raw token on the command line is refused: it would show up in `ps` and shell history.
 
 ## Subcommands
 

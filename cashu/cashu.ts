@@ -49,7 +49,7 @@ const plain = (ps: Proof[]): Proof[] => ps.map((p) => ({ ...p, amount: num(p.amo
 /** testnut and its variants (any scheme, port or subdomain) hand out fake sats. */
 function isTestMint(url: string): boolean {
   try {
-    const host = new URL(url).hostname.toLowerCase();
+    const host = new URL(url).hostname.toLowerCase().replace(/\.$/, "");
     return host === "testnut.cashu.space" || host.endsWith(".testnut.cashu.space");
   } catch {
     return false;
@@ -87,7 +87,7 @@ async function readWallet(): Promise<WalletFile> {
   try {
     return JSON.parse(raw) as WalletFile;
   } catch {
-    throw new Error(`${WALLET_FILE} is not valid JSON. Nothing was changed; restore it from ${WALLET_FILE}.bak if needed.`);
+    throw new Error(`${WALLET_FILE} is not valid JSON. Nothing was changed; restore it from ${WALLET_FILE}.bak if needed (the .bak is the version before the last write, so it may miss the last operation).`);
   }
 }
 
@@ -95,17 +95,29 @@ async function readWallet(): Promise<WalletFile> {
 async function writeWallet(w: WalletFile): Promise<void> {
   await fs.mkdir(path.dirname(WALLET_FILE), { recursive: true, mode: 0o700 });
   const tmp = `${WALLET_FILE}.${process.pid}.${Date.now()}.tmp`;
-  const fh = await fs.open(tmp, "w", 0o600);
   try {
-    await fh.writeFile(JSON.stringify(w, null, 2));
-    await fh.sync();
-  } finally {
-    await fh.close();
+    const fh = await fs.open(tmp, "w", 0o600);
+    try {
+      await fh.writeFile(JSON.stringify(w, null, 2));
+      await fh.sync();
+    } finally {
+      await fh.close();
+    }
+    await fs.copyFile(WALLET_FILE, WALLET_FILE + ".bak").catch((e: NodeJS.ErrnoException) => {
+      if (e.code !== "ENOENT") throw e;
+    });
+    await fs.rename(tmp, WALLET_FILE);
+  } catch (e) {
+    await fs.unlink(tmp).catch(() => {});
+    throw e;
   }
-  await fs.copyFile(WALLET_FILE, WALLET_FILE + ".bak").catch((e: NodeJS.ErrnoException) => {
-    if (e.code !== "ENOENT") throw e;
-  });
-  await fs.rename(tmp, WALLET_FILE);
+  // make the rename itself durable
+  const dir = await fs.open(path.dirname(WALLET_FILE), "r");
+  try {
+    await dir.sync();
+  } finally {
+    await dir.close();
+  }
 }
 
 /** Is a process with this pid alive on this host? */
@@ -193,6 +205,9 @@ async function withMint<T>(mint: string, fn: (st: MintState, w: Wallet, save: Sa
 /** Read a bearer token from --token-file, or from stdin when the value is "-", so it stays out of `ps` and shell history. */
 async function readToken(opts: { token?: string; tokenFile?: string }): Promise<string> {
   let t = opts.token;
+  if (t !== undefined && t !== "-" && !opts.tokenFile) {
+    throw new Error("Pass the token with --token-file <path> or --token - (stdin), not as a plain argument: argv is visible to other processes and shell history.");
+  }
   if (opts.tokenFile) t = await fs.readFile(opts.tokenFile, "utf8");
   else if (t === "-") {
     const chunks: Buffer[] = [];
@@ -320,7 +335,14 @@ program
         if (!todo.length) throw new Error(opts.quote ? `Unknown quote ${opts.quote} at ${mint}` : `No pending invoices at ${mint}`);
         const results = [];
         for (const q of todo) {
-          const cur = await w.checkMintQuoteBolt11(q.quote);
+          let cur;
+          try {
+            cur = await w.checkMintQuoteBolt11(q.quote);
+          } catch (e) {
+            // one purged or unknown quote must not stop the others from being minted
+            results.push({ quote: q.quote, state: "ERROR", minted: 0, error: e instanceof Error ? e.message : String(e) });
+            continue;
+          }
           if (cur.state === MintQuoteState.UNPAID) {
             results.push({ quote: q.quote, state: "UNPAID", minted: 0 });
             continue;
@@ -550,15 +572,25 @@ program
         const ps = st.pendingSends!.find((x) => x.id === opts.sendId);
         if (!ps) throw new Error(`No unredeemed send ${opts.sendId} at ${mint}`);
         const states = await w.checkProofsStates(ps.proofs);
-        const unspent = ps.proofs.filter((_, i) => upper(states[i]?.state) === "UNSPENT");
+        const stateOf = (i: number) => upper(states[i]?.state);
+        const unspent = ps.proofs.filter((_, i) => stateOf(i) === "UNSPENT");
+        const pending = ps.proofs.filter((_, i) => stateOf(i) === "PENDING");
+        const redeemed = sum(ps.proofs) - sum(unspent) - sum(pending);
         let reclaimed = 0;
         if (unspent.length) {
           const fresh = await w.receive(getEncodedToken({ mint, proofs: unspent }));
           st.proofs.push(...fresh);
           reclaimed = sum(fresh);
         }
-        st.pendingSends = st.pendingSends!.filter((x) => x !== ps);
-        return { mint, sendId: ps.id, reclaimed, alreadyRedeemedSats: sum(ps.proofs) - sum(unspent), balance: sum(st.proofs) };
+        // proofs the receiver is melting right now may come back UNSPENT if that melt fails: keep tracking them
+        if (pending.length) ps.proofs = pending;
+        else st.pendingSends = st.pendingSends!.filter((x) => x !== ps);
+        return {
+          mint, sendId: ps.id, reclaimed, pendingSats: sum(pending),
+          alreadyRedeemedSats: redeemed,
+          balance: sum(st.proofs),
+          ...(pending.length ? { next: `Some proofs are PENDING at the mint; run reclaim again later: bun run cashu/cashu.ts reclaim --send-id ${ps.id} --mint ${mint}` } : {}),
+        };
       });
       printJson(out);
     } catch (e) {
