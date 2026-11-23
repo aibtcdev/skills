@@ -20,7 +20,11 @@ description: Deterministic generative-art seed packs, 512x512 SVG previews, and 
   It must not include query, fragment, or credentials. Every request — including
   the signed transfer — goes to that base instead of the production worker.
   `payTo` stays pinned to `SP3F9T1HAHTMK5AV29Q9DK1VNHCQFH3F5T5FXKQAC`.
-  Unset or empty uses the default production worker.
+  Unset uses the default production worker; an empty or whitespace-only value
+  is rejected.
+- Paid subcommands need an `@aibtc/skills` release that supports `beforePay`
+  and `paymentMode`. On an older install the CLI refuses to pay instead of
+  skipping its checks; run `bun update @aibtc/skills` in the skill folder.
 
 ## When to invoke
 
@@ -88,7 +92,8 @@ description: Deterministic generative-art seed packs, 512x512 SVG previews, and 
 | --- | --- | --- |
 | `--prompt` / `--piece-version` / `--hash` / `--palette` validation messages (required, whitespace, length, empty segments, at most 16, bad color) | Local input validation failed before wallet access | Fix CLI arguments; nothing was signed or spent |
 | `TALLFENN_ART_URL` errors (empty when set, https, origin-only, query, fragment, credentials) | Invalid custom worker base URL before any network or wallet use | Fix or unset `TALLFENN_ART_URL`; nothing was signed or spent |
-| `Refusing payment:` … `Nothing was signed or paid` | The 402 quote failed the route price, payTo, asset, or network check | Do not retry until the quote matches the published price and recipient. Nothing was signed |
+| `Refusing payment:` … `Nothing was signed or paid` (error `code` `PAYMENT_REFUSED`) | The 402 quote failed the route price, payTo, asset, or network check. The message starts with `Refusing payment:`; it is not prefixed with `x402 payment failed` | Do not retry until the quote matches the published price and recipient. Nothing was signed |
+| `Refusing payment: the installed @aibtc/skills predates beforePay/paymentMode support` | The standalone install resolved an older shared library that would skip the quote checks | Run `bun update @aibtc/skills` in the skill folder. Nothing was signed |
 | `DuplicatePaymentError` | A prior attempt may have sent a transfer within `X402_DEDUP_TTL_SECONDS` (default 900s) | Read the earlier txid in the error and check Hiro before paying again |
 | `SpendLimitError` | The quote would pass the wallet's daily sBTC or STX cap | Wait for the next day or raise the cap. Nothing was signed |
 | `x402 paid request failed after the signed transfer was sent` | The signed transfer left the process and settlement is ambiguous | Read the txid in the error and check Hiro before paying again |

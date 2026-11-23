@@ -158,8 +158,11 @@ asset as the canonical sBTC contract id
 The price check runs on the same 402 that is signed. It refuses a quote above
 the route's price (100 or 150 sats), whose `payTo` is not the address above,
 whose asset is not the canonical sBTC contract id, or whose network is not
-`stacks:1`. Nothing is signed when that check throws. The client is constructed
+`stacks:1`. Nothing is signed when that check throws; the error reaches the
+caller as `Refusing payment: …` with `code: "PAYMENT_REFUSED"`. The client is constructed
 with `paymentMode: "direct"`, so `X402_PAYMENT_MODE` does not choose the mode.
+Both options need a current `@aibtc/skills`: if a standalone install resolves an
+older release that would ignore them, the CLI refuses to pay instead.
 The shared per-payment cap (`X402_MAX_SATS_PER_PAYMENT`) still applies on top
 of the route price table.
 
@@ -169,7 +172,8 @@ only unless you intentionally pay mainnet sBTC through the relay). No path
 prefix, query, fragment, or credentials. It replaces the worker host for every
 request, including the POST that carries the signed transfer. `payTo` is still pinned
 to the address above: a host that names a different recipient is refused
-before anything is signed. Leave the variable unset to use the production worker.
+before anything is signed. Leave the variable unset to use the production worker;
+an empty or whitespace-only value is rejected.
 
 A successful paid call leaves no duplicate record, so running the same command
 again is a new payment. After a failure or timeout where the transfer may have

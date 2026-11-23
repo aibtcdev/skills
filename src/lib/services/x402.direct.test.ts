@@ -28,7 +28,9 @@ import {
   spendableStx,
   selectStacksPaymentOption,
   findStacksNetworkMismatch,
+  PaymentRefusedError,
   SpendLimitError,
+  X402_CLIENT_OPTIONS_SUPPORTED,
 } from "./x402.service.js";
 
 const TEST_MNEMONIC =
@@ -658,6 +660,51 @@ describe("createApiClient payment modes", () => {
     expect(f.paidRequests).toHaveLength(0);
     expect(existsSync(process.env.X402_DEDUP_STATE_FILE!)).toBe(false);
     expect(existsSync(process.env.X402_SPEND_STATE_FILE!)).toBe(false);
+  });
+
+  test("a beforePay error reaches the caller unchanged, not wrapped as a payment failure", async () => {
+    const f = await up();
+    const refusal = new PaymentRefusedError("Refusing payment: payTo mismatch.");
+    const api = await createApiClient(f.origin, "test.before-pay-passthrough", {
+      paymentMode: "direct",
+      beforePay: async () => {
+        throw refusal;
+      },
+    });
+    const err = await rejection(api.request({ method: "GET", url: "/paid" }));
+    expect(err).toBe(refusal);
+    expect(err.message).not.toMatch(/x402 payment failed/);
+    expect((err as PaymentRefusedError).code).toBe("PAYMENT_REFUSED");
+    expect(f.paidRequests).toHaveLength(0);
+  });
+
+  test("beforePay receives a frozen copy, so it cannot change what is signed", async () => {
+    const f = await up();
+    let seen: Readonly<PaymentRequirementsV2> | undefined;
+    const api = await createApiClient(f.origin, "test.before-pay-frozen", {
+      paymentMode: "direct",
+      beforePay: async (accept) => {
+        seen = accept;
+        expect(() => {
+          (accept as PaymentRequirementsV2).payTo = "SP000000000000000000002Q6VF78";
+        }).toThrow();
+      },
+    });
+    await api.request({ method: "GET", url: "/paid" });
+    expect(Object.isFrozen(seen)).toBe(true);
+    expect(f.paidRequests).toHaveLength(1);
+  });
+
+  test("exports the client-options support marker", () => {
+    expect(X402_CLIENT_OPTIONS_SUPPORTED).toBe(true);
+  });
+
+  test("an invalid paymentMode option names the option, not the environment variable", async () => {
+    await expect(
+      createApiClient("http://127.0.0.1:1", "test.bad-mode-option", {
+        paymentMode: "auto" as unknown as "direct",
+      })
+    ).rejects.toThrow(/Invalid paymentMode option "auto"/);
   });
 
   test("options.paymentMode direct overrides X402_PAYMENT_MODE sponsored", async () => {

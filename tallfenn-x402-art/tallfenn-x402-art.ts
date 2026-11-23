@@ -10,11 +10,9 @@
  */
 
 import { Command } from "commander";
-import {
-  createApiClient,
-  getDirectPaymentMetadata,
-  resolveDirectPaymentAsset,
-} from "@aibtc/skills/src/lib/services/x402.service.js";
+// Namespace import so a missing export reads as undefined instead of failing
+// at link time; the support marker is checked before any wallet access.
+import * as x402 from "@aibtc/skills/src/lib/services/x402.service.js";
 import { decodePaymentResponse, type PaymentRequirementsV2 } from "@aibtc/skills/src/lib/utils/x402-protocol.js";
 import { printJson, handleError } from "@aibtc/skills/src/lib/utils/cli.js";
 
@@ -28,11 +26,11 @@ function isLocalDevHost(hostname: string): boolean {
   return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]";
 }
 
-/** Origin only (no path prefix) until shared x402 dedup keys include the full request URL. */
+/** Origin only (no path prefix) until shared x402 dedup keys include the full request URL (#493). */
 function resolveBaseUrl(): string {
   const raw = process.env.TALLFENN_ART_URL;
   if (raw === undefined) {
-    return DEFAULT_BASE_URL.replace(/\/+$/, "");
+    return DEFAULT_BASE_URL;
   }
   if (raw.trim() === "") {
     throw new Error(
@@ -46,7 +44,7 @@ function resolveBaseUrl(): string {
   }
   let parsed: URL;
   try {
-    parsed = new URL(raw.trim());
+    parsed = new URL(raw);
   } catch {
     throw new Error(
       "TALLFENN_ART_URL must be a valid absolute URL (e.g. https://your-worker.workers.dev). Nothing was signed or paid."
@@ -67,8 +65,7 @@ function resolveBaseUrl(): string {
       "TALLFENN_ART_URL must not include query or fragment (nothing was signed or paid)."
     );
   }
-  const pathOnly = parsed.pathname.replace(/\/+$/, "");
-  if (pathOnly.length > 0 && pathOnly !== "/") {
+  if (parsed.pathname.replace(/\/+$/, "") !== "") {
     throw new Error(
       "TALLFENN_ART_URL must be an origin only (no path prefix). Base-path overrides share x402 dedup keys incorrectly until fixed in the shared client. Nothing was signed or paid."
     );
@@ -80,6 +77,9 @@ function resolveBaseUrl(): string {
 // Payment verification before signing (local guard for the 402 quote)
 // ---------------------------------------------------------------------------
 
+// The worker settles on mainnet only; both names come from this one place.
+const NETWORK = "mainnet";
+const STACKS_CHAIN_ID = "stacks:1";
 const EXPECTED_PAY_TO = "SP3F9T1HAHTMK5AV29Q9DK1VNHCQFH3F5T5FXKQAC";
 const ROUTE_PRICE_SATS: Record<string, number> = {
   "/api/art/seed-pack": 100,
@@ -88,49 +88,49 @@ const ROUTE_PRICE_SATS: Record<string, number> = {
   "/api/art/full-bundle": 150,
 };
 
-function assertAcceptedQuote(path: string, selected: PaymentRequirementsV2): void {
-  const expectedPrice = ROUTE_PRICE_SATS[path];
-  if (expectedPrice === undefined) {
+function refuse(reason: string, cause?: unknown): never {
+  throw new x402.PaymentRefusedError(`Refusing payment: ${reason} Nothing was signed or paid.`, { cause });
+}
+
+function assertClientOptionsSupported(): void {
+  if (x402.X402_CLIENT_OPTIONS_SUPPORTED !== true || typeof x402.PaymentRefusedError !== "function") {
     throw new Error(
-      `Refusing payment: paid route ${path} has no locally configured price. Nothing was signed or paid.`
+      "Refusing payment: the installed @aibtc/skills predates beforePay/paymentMode support, so the payTo, " +
+        "price and asset checks would be skipped. Run `bun update @aibtc/skills` in this skill folder. " +
+        "Nothing was signed or paid."
     );
   }
+}
+
+function assertAcceptedQuote(path: string, selected: Readonly<PaymentRequirementsV2>): void {
+  const expectedPrice = ROUTE_PRICE_SATS[path];
+  if (expectedPrice === undefined) {
+    refuse(`paid route ${path} has no locally configured price.`);
+  }
   if (selected.payTo !== EXPECTED_PAY_TO) {
-    throw new Error(
-      `Refusing payment: payTo ${selected.payTo} does not match expected ${EXPECTED_PAY_TO}. Nothing was signed or paid.`
-    );
+    refuse(`payTo ${selected.payTo} does not match expected ${EXPECTED_PAY_TO}.`);
   }
   // Same allowlist the direct builder uses: native STX or the canonical
   // mainnet sBTC contract id. Bare "sBTC" is refused here, before signing.
   let assetKind: "STX" | "sBTC";
   try {
-    assetKind = resolveDirectPaymentAsset(selected.asset, "mainnet").kind;
+    assetKind = x402.resolveDirectPaymentAsset(selected.asset, NETWORK).kind;
   } catch (error) {
-    const reason = error instanceof Error ? error.message : String(error);
-    throw new Error(`Refusing payment: ${reason} Nothing was signed or paid.`);
+    refuse(error instanceof Error ? error.message : String(error), error);
   }
   if (assetKind !== "sBTC") {
-    throw new Error(
-      `Refusing payment: quoted asset ${selected.asset} is not the canonical sBTC contract. Nothing was signed or paid.`
-    );
+    refuse(`quoted asset ${selected.asset} is not the canonical sBTC contract.`);
   }
-  // Defence in depth; the shared client usually rejects network mismatch before beforePay.
-  if (selected.network !== "stacks:1") {
-    throw new Error(
-      `Refusing payment: quoted network ${selected.network} is not stacks:1. Nothing was signed or paid.`
-    );
+  // Defence in depth: the shared client rejects a network mismatch before beforePay runs.
+  if (selected.network !== STACKS_CHAIN_ID) {
+    refuse(`quoted network ${selected.network} is not ${STACKS_CHAIN_ID}.`);
   }
   const amountStr = String(selected.amount ?? "");
   if (!/^[1-9]\d*$/.test(amountStr)) {
-    throw new Error("Refusing payment: invalid quoted amount. Nothing was signed or paid.");
+    refuse("invalid quoted amount.");
   }
-  const quotedAmount = BigInt(amountStr);
-  const knownPrice = BigInt(expectedPrice);
-  if (quotedAmount > knownPrice) {
-    throw new Error(
-      `Refusing payment: quoted amount ${selected.amount} sats exceeds the expected ${expectedPrice} sats for ${path}. ` +
-        `Nothing was signed or paid.`
-    );
+  if (BigInt(amountStr) > BigInt(expectedPrice)) {
+    refuse(`quoted amount ${amountStr} sats exceeds the expected ${expectedPrice} sats for ${path}.`);
   }
 }
 
@@ -222,21 +222,12 @@ function validatePalette(raw: string | undefined): string[] | undefined {
 // HTTP helpers
 // ---------------------------------------------------------------------------
 
-async function fetchFree(baseUrl: string, path: string): Promise<Record<string, unknown>> {
-  const url = `${baseUrl}${path}`;
-  const res = await fetch(url, {
-    method: "GET",
+async function getFree(baseUrl: string, path: string): Promise<Record<string, unknown>> {
+  // Plain client: a 402 on a free route fails instead of paying.
+  const response = await x402.createPlainClient(baseUrl).get(path, {
     headers: { Accept: "application/json" },
-    signal: AbortSignal.timeout(15_000),
   });
-  if (!res.ok) {
-    throw new Error(`HTTP ${res.status} from ${url}`);
-  }
-  return (await res.json()) as Record<string, unknown>;
-}
-
-function wrapFreeOutput(data: Record<string, unknown>, endpoint: string): Record<string, unknown> {
-  return { result: data, endpoint };
+  return { result: response.data, endpoint: `${baseUrl}${path}` };
 }
 
 async function paidPost(
@@ -245,10 +236,11 @@ async function paidPost(
   body: Record<string, unknown>,
   tool: string
 ): Promise<Record<string, unknown>> {
+  assertClientOptionsSupported();
   // The relay settles a self-paid transfer and refuses a fee-0 sponsor slot.
   // paymentMode is an option, not an environment mutation: beforePay runs on
   // the same 402 the client then signs.
-  const api = await createApiClient(baseUrl, tool, {
+  const api = await x402.createApiClient(baseUrl, tool, {
     paymentMode: "direct",
     preferredAsset: "sBTC",
     beforePay: async (accept) => {
@@ -270,8 +262,8 @@ async function paidPost(
   const output: Record<string, unknown> = {
     result: workerBody,
     endpoint: `${baseUrl}${path}`,
-    network: "mainnet",
-    ...getDirectPaymentMetadata(response),
+    network: NETWORK,
+    ...x402.getDirectPaymentMetadata(response),
   };
   const receiptHeader = response.headers?.["payment-response"];
   const receipt =
@@ -294,57 +286,29 @@ program
   )
   .version("1.2.0");
 
-program
-  .command("meta")
-  .description("Free. Service metadata, discovery URLs, and endpoint pricing catalog. No wallet needed.")
-  .action(async () => {
-    try {
-      const baseUrl = resolveBaseUrl();
-      const data = await fetchFree(baseUrl, "/");
-      printJson(wrapFreeOutput(data, `${baseUrl}/`));
-    } catch (error) {
-      handleError(error);
-    }
-  });
+const FREE_COMMANDS: ReadonlyArray<[name: string, path: string, description: string]> = [
+  ["meta", "/", "Free. Service metadata, discovery URLs, and endpoint pricing catalog. No wallet needed."],
+  ["health", "/health", "Free. Worker liveness check. No wallet needed."],
+  [
+    "teaser",
+    "/api/art/teaser",
+    "Free. One fixed deterministic seed pack to inspect the schema before paying. No wallet needed.",
+  ],
+  ["samples", "/api/art/samples", "Free. Three fixed seed packs from the Tall Fenn series. No wallet needed."],
+];
 
-program
-  .command("health")
-  .description("Free. Worker liveness check. No wallet needed.")
-  .action(async () => {
-    try {
-      const baseUrl = resolveBaseUrl();
-      const data = await fetchFree(baseUrl, "/health");
-      printJson(wrapFreeOutput(data, `${baseUrl}/health`));
-    } catch (error) {
-      handleError(error);
-    }
-  });
-
-program
-  .command("teaser")
-  .description("Free. One fixed deterministic seed pack to inspect the schema before paying. No wallet needed.")
-  .action(async () => {
-    try {
-      const baseUrl = resolveBaseUrl();
-      const data = await fetchFree(baseUrl, "/api/art/teaser");
-      printJson(wrapFreeOutput(data, `${baseUrl}/api/art/teaser`));
-    } catch (error) {
-      handleError(error);
-    }
-  });
-
-program
-  .command("samples")
-  .description("Free. Three fixed seed packs from the Tall Fenn series. No wallet needed.")
-  .action(async () => {
-    try {
-      const baseUrl = resolveBaseUrl();
-      const data = await fetchFree(baseUrl, "/api/art/samples");
-      printJson(wrapFreeOutput(data, `${baseUrl}/api/art/samples`));
-    } catch (error) {
-      handleError(error);
-    }
-  });
+for (const [name, path, description] of FREE_COMMANDS) {
+  program
+    .command(name)
+    .description(description)
+    .action(async () => {
+      try {
+        printJson(await getFree(resolveBaseUrl(), path));
+      } catch (error) {
+        handleError(error);
+      }
+    });
+}
 
 program
   .command("seed-pack")
