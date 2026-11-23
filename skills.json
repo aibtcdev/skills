@@ -1,6 +1,6 @@
 {
   "version": "0.45.2",
-  "generated": "2026-11-22T08:55:43.147Z",
+  "generated": "2026-11-23T11:44:52.234Z",
   "skills": [
     {
       "name": "agent-lookup",
@@ -451,7 +451,9 @@
         "send",
         "receive",
         "pay",
-        "check-token"
+        "check-token",
+        "reconcile",
+        "reclaim"
       ],
       "requires": [],
       "tags": [
