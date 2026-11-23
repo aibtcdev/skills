@@ -10,6 +10,7 @@
 import { Command } from "commander";
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { randomUUID } from "node:crypto";
 import {
   Wallet,
   MintQuoteState,
@@ -107,32 +108,62 @@ async function writeWallet(w: WalletFile): Promise<void> {
   await fs.rename(tmp, WALLET_FILE);
 }
 
-/** Exclusive lock around read, operate and write, so two runs can't overwrite each other's proofs. */
+/** Is a process with this pid alive on this host? */
+function alive(pid: number): boolean {
+  if (!Number.isInteger(pid) || pid <= 0) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (e) {
+    return (e as NodeJS.ErrnoException).code === "EPERM";
+  }
+}
+
+/**
+ * Exclusive lock around read, operate and write, so two runs can't overwrite each other's proofs.
+ * The lock file holds "<pid> <nonce>"; its mtime is refreshed every 20 s while we hold it. It is taken over
+ * only when its pid is dead or its heartbeat stopped for 2 minutes, by renaming it to a unique name and
+ * checking that we renamed the lock we inspected; on exit we remove it only if it still holds our nonce.
+ */
 async function withLock<T>(fn: () => Promise<T>): Promise<T> {
   await fs.mkdir(path.dirname(LOCK_FILE), { recursive: true, mode: 0o700 });
+  const mine = `${process.pid} ${randomUUID()}`;
   const deadline = Date.now() + 60_000;
   for (;;) {
     try {
       const fh = await fs.open(LOCK_FILE, "wx", 0o600);
-      await fh.writeFile(String(process.pid));
+      await fh.writeFile(mine);
       await fh.close();
       break;
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
-      const st = await fs.stat(LOCK_FILE).catch(() => null);
-      // a lock older than 10 minutes belongs to a crashed run
-      if (st && Date.now() - st.mtimeMs > 10 * 60_000) {
-        await fs.unlink(LOCK_FILE).catch(() => {});
+      const [seen, st] = await Promise.all([fs.readFile(LOCK_FILE, "utf8").catch(() => null), fs.stat(LOCK_FILE).catch(() => null)]);
+      if (seen !== null && st && (!alive(Number(seen.split(" ")[0])) || Date.now() - st.mtimeMs > 120_000)) {
+        const grave = `${LOCK_FILE}.stale-${randomUUID()}`;
+        const moved = await fs.rename(LOCK_FILE, grave).then(() => true, () => false);
+        if (moved) {
+          const got = await fs.readFile(grave, "utf8").catch(() => null);
+          // we grabbed a lock someone else just took: put it back if the slot is still free
+          if (got !== seen) await fs.link(grave, LOCK_FILE).catch(() => {});
+          await fs.unlink(grave).catch(() => {});
+        }
         continue;
       }
       if (Date.now() > deadline) throw new Error(`Wallet is locked by another run (${LOCK_FILE}). If no other run is active, delete that file.`);
       await new Promise((r) => setTimeout(r, 250));
     }
   }
+  const beat = setInterval(() => {
+    const now = new Date();
+    fs.utimes(LOCK_FILE, now, now).catch(() => {});
+  }, 20_000);
+  beat.unref();
   try {
     return await fn();
   } finally {
-    await fs.unlink(LOCK_FILE).catch(() => {});
+    clearInterval(beat);
+    const cur = await fs.readFile(LOCK_FILE, "utf8").catch(() => null);
+    if (cur === mine) await fs.unlink(LOCK_FILE).catch(() => {});
   }
 }
 
@@ -326,9 +357,12 @@ program
       const amount = Number(opts.amount);
       if (!Number.isInteger(amount) || amount <= 0) throw new Error("--amount must be a positive whole number of sats");
       const mint = pickMint(opts.mint);
-      const out = await withMint(mint, async (st, w) => {
+      const out = await withMint(mint, async (st, w, save) => {
         if (sum(st.proofs) < amount) throw new Error(`Not enough ecash at ${mint}: have ${sum(st.proofs)}, need ${amount} plus fees`);
         const { keep, send } = await w.ops.send(amount, st.proofs).includeFees(true).run();
+        // the swap may have spent the old proofs: take keep + send into the wallet before anything else can throw
+        st.proofs = [...keep, ...send];
+        await save();
         const token = getEncodedToken({ mint, proofs: plain(send), memo: opts.memo });
         st.proofs = keep;
         // keep a copy until the receiver redeems it, so a lost stdout doesn't lose the money (`reclaim` swaps it back)
@@ -385,11 +419,20 @@ program
         const reserve = num(q.fee_reserve);
         const before = sum(st.proofs);
         if (before < amount + reserve) throw new Error(`Not enough ecash at ${mint}: have ${before}, need ${amount} + fee reserve ${reserve}`);
+        // the cap covers everything this payment can cost: the Lightning fee reserve, the input fee of a swap
+        // (if one is needed) and the melt's input fee. Check what we can before touching the mint.
+        if (maxFee !== undefined && reserve > maxFee) {
+          throw new Error(`Fee reserve ${reserve} sats is above --max-fee ${maxFee}`);
+        }
         const { keep, send } = await w.ops.send(amount + reserve, st.proofs).includeFees(true).run();
-        // the cap covers everything this payment can cost: the Lightning fee reserve plus the mint's input fee
+        // the swap may have spent the old proofs: put keep + send in the wallet and save before anything can throw
+        st.proofs = [...keep, ...send];
+        await save();
+        const swapFee = before - sum(keep) - sum(send);
         const inputFee = num(w.getFeesForProofs(send));
-        if (maxFee !== undefined && reserve + inputFee > maxFee) {
-          throw new Error(`Fee reserve ${reserve} + input fee ${inputFee} sats is above --max-fee ${maxFee}`);
+        if (maxFee !== undefined && reserve + swapFee + inputFee > maxFee) {
+          // nothing is lost: the swapped proofs are already in the wallet
+          throw new Error(`Fee reserve ${reserve} + swap fee ${swapFee} + input fee ${inputFee} sats is above --max-fee ${maxFee}; the wallet keeps the swapped proofs (balance ${sum(st.proofs)})`);
         }
         // Record the inputs as an in-flight melt and save BEFORE contacting the mint: if anything below
         // fails or the process dies, they are still on disk and `reconcile` can settle them.
@@ -403,7 +446,11 @@ program
         } catch (e) {
           // unknown outcome: return what the mint says is UNSPENT, keep PENDING (or unknown) inputs recorded
           const settled = await settleMelt(st, w, rec).catch(() => null);
-          const tail = settled === null ? " Could not check the inputs; they are kept as a pending melt. Run `reconcile` later." : settled.pending ? ` ${settled.pending} sats are still PENDING at the mint; run \`reconcile\` later.` : "";
+          let tail = settled === null ? " Could not check the inputs; they are kept as a pending melt. Run `reconcile` later." : settled.pending ? ` ${settled.pending} sats are still PENDING at the mint; run \`reconcile\` later.` : "";
+          if (settled && settled.spent > 0) {
+            const qs = await w.checkMeltQuoteBolt11(q.quote).then((x) => upper(x.state)).catch(() => "unknown");
+            tail += ` The mint marked ${settled.spent} sats of inputs SPENT (melt quote state ${qs}): the invoice was most likely paid. Do NOT retry; check the invoice first.`;
+          }
           throw new Error(`${e instanceof Error ? e.message : String(e)}.${tail}`);
         }
         const state = upper(res.quote.state);
