@@ -104,11 +104,14 @@ export type X402PaymentMode = "sponsored" | "direct";
 
 const PAYMENT_MODES: ReadonlySet<string> = new Set(["sponsored", "direct"]);
 
-export function resolvePaymentMode(raw = process.env.X402_PAYMENT_MODE): X402PaymentMode {
+export function resolvePaymentMode(
+  raw = process.env.X402_PAYMENT_MODE,
+  source = "X402_PAYMENT_MODE"
+): X402PaymentMode {
   const value = (raw ?? "").trim().toLowerCase() || "sponsored";
   if (!PAYMENT_MODES.has(value)) {
     throw new Error(
-      `Invalid X402_PAYMENT_MODE "${raw}". Allowed values: sponsored (default), direct.`
+      `Invalid ${source} "${raw}". Allowed values: sponsored (default), direct.`
     );
   }
   return value as X402PaymentMode;
@@ -139,6 +142,34 @@ type X402RequestConfig = { x402ObligationId?: string };
 export interface CreateApiClientOptions {
   /** Pay with this asset when the challenge offers it; unset = first Stacks option. */
   preferredAsset?: X402PaymentAsset;
+  /**
+   * Runs on a frozen copy of the 402 option that is about to be signed. Throw
+   * to refuse: nothing is signed, and the thrown error reaches the caller
+   * unchanged (not wrapped as "x402 payment failed").
+   */
+  beforePay?: (accept: Readonly<PaymentRequirementsV2>) => Promise<void>;
+  /**
+   * Overrides X402_PAYMENT_MODE for this client. Resolved before any await,
+   * so a caller cannot lose the mode by restoring the environment later.
+   */
+  paymentMode?: X402PaymentMode;
+}
+
+/**
+ * True in releases whose createApiClient honours `beforePay` and
+ * `paymentMode`. A skill that relies on either must refuse to pay when this is
+ * missing: an older `@aibtc/skills` silently ignores unknown options.
+ */
+export const X402_CLIENT_OPTIONS_SUPPORTED = true;
+
+/** A caller policy refused the 402 quote before anything was signed. */
+export class PaymentRefusedError extends Error {
+  readonly code = "PAYMENT_REFUSED";
+
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, options);
+    this.name = "PaymentRefusedError";
+  }
 }
 
 export function resolvePreferredAsset(raw: string | undefined): X402PaymentAsset | undefined {
@@ -1290,7 +1321,10 @@ export async function createApiClient(
   // Resolved once per client so a bad value fails here, not mid-payment —
   // the mode, the preferred asset and, in direct mode, every cap, fee and
   // ledger setting.
-  const paymentMode = resolvePaymentMode();
+  const paymentMode =
+    options.paymentMode === undefined
+      ? resolvePaymentMode()
+      : resolvePaymentMode(options.paymentMode, "paymentMode option");
   const preferredAsset = resolvePreferredAsset(options.preferredAsset);
   const directPolicy = paymentMode === "direct" ? resolveDirectPaymentPolicy() : null;
 
@@ -1478,6 +1512,14 @@ export async function createApiClient(
           return Promise.reject(
             new Error(networkMismatchMessage(paymentNetwork, account.network))
           );
+        }
+
+        if (options.beforePay) {
+          try {
+            await options.beforePay(Object.freeze({ ...selectedOption }));
+          } catch (hookError) {
+            return Promise.reject(hookError);
+          }
         }
 
         let transaction: StacksTransactionWire;

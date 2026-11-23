@@ -1,6 +1,6 @@
 {
-  "version": "0.45.1",
-  "generated": "2026-11-11T13:41:59.973Z",
+  "version": "0.45.2",
+  "generated": "2026-11-23T22:28:16.609Z",
   "skills": [
     {
       "name": "agent-lookup",
@@ -2421,6 +2421,35 @@
         "styx_status",
         "styx_history"
       ],
+      "install": "bun install"
+    },
+    {
+      "name": "tallfenn-x402-art",
+      "description": "Deterministic generative-art seed packs, 512x512 SVG previews, and keyframed motion timelines via x402 v2 on Stacks — free teaser/samples plus sBTC pay-per-call generation.",
+      "entry": "tallfenn-x402-art/tallfenn-x402-art.ts",
+      "arguments": [
+        "meta",
+        "health",
+        "teaser",
+        "samples",
+        "seed-pack",
+        "svg-preview",
+        "motion-timeline",
+        "full-bundle"
+      ],
+      "requires": [
+        "wallet"
+      ],
+      "tags": [
+        "l2",
+        "write",
+        "mainnet-only",
+        "requires-funds"
+      ],
+      "userInvocable": false,
+      "standalone": true,
+      "author": "Luis-Cwk",
+      "authorAgent": "Tall Fenn",
       "install": "bun install"
     },
     {
