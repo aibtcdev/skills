@@ -8,6 +8,10 @@ import {
   hodlmmDeployRefusal,
   planDeploy,
   planMigrate,
+  migrateYtgRefusal,
+  migrateSourceYield,
+  scoutZest,
+  scoutGranite,
   type YieldOption,
 } from "./stacks-alpha-engine";
 
@@ -293,8 +297,9 @@ describe("a refused HODLMM deposit returns status refused (#491 review 4)", () =
     expect(reasons(plan)).toContain("--allow-one-sided");
   });
 
-  test("--allow-one-sided builds it", () => {
-    const plan = planDeploy({ ...deploy3, allowOneSided: "true" }, scoutOf(stxOnly, [row]));
+  test("--allow-one-sided builds it (with --force: the one-sided bins earn $0, so YTG refuses it otherwise)", () => {
+    expect(reasons(planDeploy({ ...deploy3, allowOneSided: "true" }, scoutOf(stxOnly, [row])))).toContain("YTG gate");
+    const plan = planDeploy({ ...deploy3, allowOneSided: "true", force: "true" }, scoutOf(stxOnly, [row]));
     expect(plan.status).toBe("ok");
     expect(tools(plan)).toEqual(["bitflow:add-liquidity-simple"]);
   });
@@ -439,8 +444,8 @@ describe("price feed outage: a held token with no USD value still counts as held
     expect(binsOf(y)).toEqual([{ activeBinOffset: 0, xAmount: "0", yAmount: "50000000" }]);
   });
 
-  test("an unpriced token on its own: one-sided with --allow-one-sided (the token is held)", () => {
-    const plan = planDeploy({ ...deploy3, allowOneSided: "true" }, scoutOf(wallet({ stx: { amount: 1000, usd: 0 } }), [row], undefined, outage));
+  test("an unpriced token on its own: one-sided with --allow-one-sided (the token is held; --force for the $0 YTG)", () => {
+    const plan = planDeploy({ ...deploy3, allowOneSided: "true", force: "true" }, scoutOf(wallet({ stx: { amount: 1000, usd: 0 } }), [row], undefined, outage));
     expect(plan.status).toBe("ok");
     expect(binsOf(plan).map(b => b.activeBinOffset)).toEqual([1, 2, 3, 4, 5]);
   });
@@ -633,5 +638,107 @@ describe("seventh review of #491: an unknown source yield is refused, not $0", (
       scoutOf(wallet({ sbtc: usd(1000, 0.01), susdh: usd(1000) } as never), [zest5],
         { hermetica: { has_position: true, detail: "", susdh_balance: 1000, exchange_rate: 1.5, apy_estimate_pct: 10, staking_enabled: true } }));
     expect(reasons(plan)).toContain("stops earning: -$2.877");
+  });
+});
+
+describe("eighth review of #491", () => {
+  const zestRow = (apy: number) => option({ protocol: "Zest", pool: "sBTC Supply (v2)", token_needed: "sBTC", apy_pct: apy });
+  const readFailed = { zest: { has_position: false, detail: "Zest read failed" } };
+
+  test("secret-mars 1: a source refusal is kept when the target has no scan row", () => {
+    expect(migrateYtgRefusal([], "granite", "dlmm_1", { refusal: "the Zest position could not be read" })).toContain("could not be read");
+  });
+
+  test("secret-mars 1: a non-HODLMM target with no scan row (Granite at 0%) is refused, --force overrides", () => {
+    const aeusdc = wallet({ aeusdc: usd(1000) });
+    const plan = planMigrate({ from: "zest", to: "granite", token: "aeusdc", amount: "1000000" }, scoutOf(aeusdc, [], readFailed));
+    expect(plan.status).toBe("refused");
+    expect(reasons(plan)).toContain("No scan data for granite");
+    expect(reasons(plan)).toContain("nothing withdrawn from zest");
+    const dep = planDeploy({ protocol: "granite", token: "aeusdc", amount: "1000000" }, scoutOf(aeusdc, []));
+    expect(reasons(dep)).toContain("No scan data for granite");
+    expect(planDeploy({ protocol: "granite", token: "aeusdc", amount: "1000000", force: "true" }, scoutOf(aeusdc, [])).status).toBe("ok");
+  });
+
+  test("secret-mars 2: a lopsided deposit with --allow-one-sided goes in the active bin, so it earns", () => {
+    // after the withdraw: $5,000 sBTC + $300 USDCx; the builder pairs them at the active bin
+    const positions = { zest: { has_position: true, detail: "", supply_amount: 0.05, supply_apy_pct: 1 } };
+    const plan = planMigrate(
+      { from: "zest", to: "hodlmm", token: "sbtc", amount: "5000000", poolId: "dlmm_1", allowOneSided: "true" },
+      scoutOf(wallet({ usdcx: usd(300) }), [option({ pool_id: "dlmm_1", pool: "sBTC-USDCx-10bps" })], positions),
+    );
+    expect(plan.status).toBe("ok");
+    expect(binsOf(plan)).toEqual([{ activeBinOffset: 0, xAmount: "5000000", yAmount: "300000000" }]);
+  });
+
+  test("secret-mars 3: an out-of-range HODLMM source earns nothing, so it is not charged the pool's APR", () => {
+    const pool = (in_range: boolean) => ({ hodlmm: { has_position: true, pools: [{ pool_id: 1, name: "sBTC-USDCx-10bps", in_range, estimated_value_usd: 500 }] } });
+    const rows = [zestRow(50), option({ pool_id: "dlmm_1", apy_pct: 600 })];
+    const migrate = (in_range: boolean) => planMigrate({ from: "hodlmm", to: "zest", amount: "100000" }, scoutOf(wallet({}), rows, pool(in_range)));
+    expect(migrate(false).status).toBe("ok");
+    // in range it earns 600% on $500, more than $100 at 50% gains
+    expect(reasons(migrate(true))).toContain("withdrawn position stops earning");
+  });
+
+  test("biwasxyz 1: deploy --allow-one-sided with one side only earns $0, so YTG refuses it; --force builds it", () => {
+    const sbtcOnly = wallet({ sbtc: usd(5000, 0.05) });
+    const row = option({ pool_id: "dlmm_1", pool: "sBTC-USDCx-10bps", tier: "swap_first" }); // ytg_profitable: sized as if swapped
+    const deploy = { protocol: "hodlmm", token: "sbtc", amount: "5000000", poolId: "dlmm_1", allowOneSided: "true" };
+    const plan = planDeploy(deploy, scoutOf(sbtcOnly, [row]));
+    expect(plan.status).toBe("refused");
+    expect(reasons(plan)).toContain("outside the active bin");
+    expect(reasons(plan)).toContain("--force");
+    expect(binsOf(planDeploy({ ...deploy, force: "true" }, scoutOf(sbtcOnly, [row]))).map(b => b.activeBinOffset)).toEqual([1, 2, 3, 4, 5]);
+    // both sides held, however lopsided: active bin, the row decides as before
+    expect(planDeploy(deploy, scoutOf(wallet({ sbtc: usd(5000, 0.05), usdcx: usd(300) }), [row])).status).toBe("ok");
+  });
+
+  test("biwasxyz 2: a held side with no price gets a price note, not a swap amount", () => {
+    const one = sizeHodlmmOption({ amount: 12, usd: 0 }, usd(400), 400, "STX", "USDCx", false, { x: 0, y: 1 });
+    expect(one.tier).toBe("swap_first");
+    expect(one.swapNote).toContain("no USD price for STX");
+    expect(one.swapNote!.includes("Swap ~$")).toBe(false);
+    const both = sizeHodlmmOption({ amount: 12, usd: 0 }, { amount: 400, usd: 0 }, 5000, "STX", "USDCx", false, { x: 0, y: 0 });
+    expect(both.swapNote).toContain("no USD price for STX and USDCx");
+    expect(both.capUsd).toBe(0);
+  });
+});
+
+// The scouts against a stubbed Hiro: call-read answers 200 with okay: false on a failed call.
+describe("scout read-failed flag (#491 eighth review)", () => {
+  const W = "SP000000000000000000002Q6VF78";
+  const u128 = (n: number) => "0x01" + n.toString(16).padStart(32, "0");
+  async function withHiro<T>(answers: Record<string, { okay: boolean; result?: string }>, run: () => Promise<T>): Promise<T> {
+    const real = globalThis.fetch;
+    globalThis.fetch = (async (url: string) => {
+      const fn = String(url).split("/").pop()!;
+      return { ok: true, status: 200, json: async () => answers[fn] ?? { okay: false } };
+    }) as unknown as typeof fetch;
+    try { return await run(); } finally { globalThis.fetch = real; }
+  }
+  const herm = [option({ protocol: "Hermetica", pool: "USDh Staking (sUSDh)", token_needed: "USDh", apy_pct: 6 })];
+  const sourceOf = (from: "zest" | "granite", positions: Record<string, unknown>) =>
+    JSON.stringify(migrateSourceYield(from, scoutOf(wallet({}), herm, positions)));
+
+  test("Zest get-balance okay: false is a failed read, not $0", async () => {
+    const z = await withHiro({ "get-utilization": { okay: true, result: u128(5000) }, "get-interest-rate": { okay: true, result: u128(1000) } }, () => scoutZest(W));
+    expect(z.position.supply_apy_pct).toBeUndefined();
+    expect(sourceOf("zest", { zest: z.position })).toContain("the Zest position could not be read");
+  });
+
+  test("Zest held at 0% utilization (rate reads OK) is a real 0%: $0 lost, not refused", async () => {
+    const reads = { "get-balance": { okay: true, result: u128(5_000_000) }, "get-utilization": { okay: true, result: u128(0) }, "get-interest-rate": { okay: true, result: u128(1000) } };
+    const z = await withHiro(reads, () => scoutZest(W));
+    expect(z.position.supply_apy_pct).toBe(0);
+    expect(sourceOf("zest", { zest: z.position })).toBe(JSON.stringify({ usd: 5000, yield7d: 0 }));
+    // the same position with the rate read failing is refused
+    const failed = await withHiro({ ...reads, "get-interest-rate": { okay: false } }, () => scoutZest(W));
+    expect(sourceOf("zest", { zest: failed.position })).toContain("Zest APY reads 0");
+  });
+
+  test("Granite get-user-position okay: false is a failed read, not $0", async () => {
+    const g = await withHiro({}, () => scoutGranite(W));
+    expect(g.position.lp_shares).toBeUndefined();
+    expect(sourceOf("granite", { granite: g.position })).toContain("the Granite position could not be read");
   });
 });

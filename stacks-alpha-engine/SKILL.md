@@ -141,7 +141,7 @@ layer enforce the same safety invariants.
 
 ### Additional safety notes
 
-- Override flags are separate: `deploy`/`migrate --force` overrides the 0% APY, YTG (on `migrate`, the net 7-day change of `--amount` in the target minus the whole withdrawn position's yield, against the withdraw plus deposit gas, because the scan rows are sized before the withdraw) and HODLMM no-scan-data refusals only. `deploy`/`migrate --allow-one-sided` lets a HODLMM deposit go ahead when one side is missing, under $1, or under 10% of the other (that side lands outside the active bin and earns no fees until the price moves into it). Refused deposits return `status: "refused"`; a refused `migrate` withdraws nothing.
+- Override flags are separate: `deploy`/`migrate --force` overrides the 0% APY, YTG (on `migrate`, the net 7-day change of `--amount` in the target minus the whole withdrawn position's yield, against the withdraw plus deposit gas, because the scan rows are sized before the withdraw) and no-scan-data refusals only. `deploy`/`migrate --allow-one-sided` lets a HODLMM deposit go ahead when one side is missing, under $1, or under 10% of the other (that side lands outside the active bin and earns no fees until the price moves into it). With only one of the pool's tokens held, the YTG gate counts that deposit as earning $0, so it also needs `--force`. Refused deposits return `status: "refused"`; a refused `migrate` withdraws nothing.
 - Swap slippage budget (min-received on DLMM swaps): stable→stable 0.5%, volatile 3%. Configurable per-call. Independent of the guardian divergence gate.
 - Hermetica unstake has 7-day cooldown — engine warns and provides claim instructions.
 - Granite LP accepts **aeUSDC only** (not sBTC). Engine correctly routes aeUSDC to Granite.

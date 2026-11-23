@@ -129,10 +129,12 @@ interface WalletBalances {
   usdh: TokenBalance; susdh: TokenBalance; aeusdc: TokenBalance;
 }
 
-interface ZestPosition { has_position: boolean; detail: string; supply_amount?: number; supply_apy_pct?: number; utilization_pct?: number }
+// apy_read_failed: a rate read failed, so a supply_apy_pct of 0 is unknown, not a
+// real 0% (migrateSourceYield refuses it). false: the reads succeeded.
+interface ZestPosition { has_position: boolean; detail: string; supply_amount?: number; supply_apy_pct?: number; utilization_pct?: number; apy_read_failed?: boolean }
 interface GranitePosition {
   has_position: boolean; detail: string;
-  supply_apy_pct?: number; borrow_apr_pct?: number; utilization_pct?: number;
+  supply_apy_pct?: number; borrow_apr_pct?: number; utilization_pct?: number; apy_read_failed?: boolean;
   accepted_token: string; // "aeUSDC" — NOT sBTC
   lp_shares?: string; // raw share count from on-chain position
 }
@@ -507,12 +509,16 @@ async function scoutWallet(wallet: string): Promise<ScoutResult> {
 }
 
 // -- Scout: Zest --------------------------------------------------------------
-async function scoutZest(wallet: string): Promise<{ position: ZestPosition; sources: string[] }> {
+// Hiro's call-read answers a failed call with 200 and okay: false. A failed
+// balance read is a failed position read (no supply_apy_pct), not a $0 balance;
+// a failed rate read sets apy_read_failed (see ZestPosition).
+export async function scoutZest(wallet: string): Promise<{ position: ZestPosition; sources: string[] }> {
   const sources: string[] = [];
   try {
     const balResult = await callReadOnly(ZEST_VAULT_SBTC, "get-balance", [cvPrincipal(wallet)], wallet);
     sources.push("zest-v2-vault");
-    const balance = balResult.okay && balResult.result ? parseUint128Hex(balResult.result) : 0n;
+    if (!balResult.okay || !balResult.result) return { position: { has_position: false, detail: "Zest read failed (get-balance)" }, sources };
+    const balance = parseUint128Hex(balResult.result);
 
     const [utilResult, rateResult] = await Promise.all([
       callReadOnly(ZEST_VAULT_SBTC, "get-utilization", []),
@@ -520,15 +526,16 @@ async function scoutZest(wallet: string): Promise<{ position: ZestPosition; sour
     ]);
     const utilRaw = utilResult.okay && utilResult.result ? Number(parseUint128Hex(utilResult.result)) : 0;
     const rateRaw = rateResult.okay && rateResult.result ? Number(parseUint128Hex(rateResult.result)) : 0;
+    const apyReadFailed = !(utilResult.okay && utilResult.result && rateResult.okay && rateResult.result);
     const utilPct = utilRaw / 100;
     const borrowRatePct = rateRaw / 100;
     const supplyApyPct = round(borrowRatePct * (utilPct / 100) * 0.9, 2);
     sources.push("zest-apy-live");
 
     if (balance > 0n) {
-      return { position: { has_position: true, detail: `Active sBTC supply on Zest v2: ${Number(balance) / 1e8} sBTC`, supply_amount: Number(balance) / 1e8, supply_apy_pct: supplyApyPct, utilization_pct: round(utilPct, 2) }, sources };
+      return { position: { has_position: true, detail: `Active sBTC supply on Zest v2: ${Number(balance) / 1e8} sBTC`, supply_amount: Number(balance) / 1e8, supply_apy_pct: supplyApyPct, utilization_pct: round(utilPct, 2), apy_read_failed: apyReadFailed }, sources };
     }
-    return { position: { has_position: false, detail: "No sBTC supply on Zest v2", supply_apy_pct: supplyApyPct, utilization_pct: round(utilPct, 2) }, sources };
+    return { position: { has_position: false, detail: "No sBTC supply on Zest v2", supply_apy_pct: supplyApyPct, utilization_pct: round(utilPct, 2), apy_read_failed: apyReadFailed }, sources };
   } catch {
     return { position: { has_position: false, detail: "Zest read failed" }, sources };
   }
@@ -586,7 +593,9 @@ async function scoutHermetica(wallet: string): Promise<{ position: HermeticaPosi
 }
 
 // -- Scout: Granite -----------------------------------------------------------
-async function scoutGranite(wallet: string): Promise<{ position: GranitePosition; sources: string[] }> {
+// As scoutZest: a failed get-user-position is a failed position read (no
+// lp_shares), not 0 shares; a failed rate read sets apy_read_failed.
+export async function scoutGranite(wallet: string): Promise<{ position: GranitePosition; sources: string[] }> {
   const sources: string[] = [];
   const IR_SCALE = 1e12;
   try {
@@ -597,6 +606,7 @@ async function scoutGranite(wallet: string): Promise<{ position: GranitePosition
       callReadOnly(GRANITE_STATE, "get-user-position", [cvPrincipal(wallet)]),
     ]);
     sources.push("granite-on-chain");
+    const apyReadFailed = !(lpResult.okay && lpResult.result && debtResult.okay && debtResult.result && irResult.okay && irResult.result);
 
     let supplyApy = 0, borrowApr = 0, utilization = 0;
 
@@ -625,6 +635,7 @@ async function scoutGranite(wallet: string): Promise<{ position: GranitePosition
 
     let hasPosition = false;
     let lpShares = 0n;
+    const posReadOk = Boolean(userPos.okay && userPos.result);
     if (userPos.okay && userPos.result) {
       const parsed = parseClarityHex(userPos.result);
       if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
@@ -639,11 +650,12 @@ async function scoutGranite(wallet: string): Promise<{ position: GranitePosition
     return {
       position: {
         has_position: hasPosition,
-        detail: hasPosition ? `Active aeUSDC supply on Granite LP (${lpShares} shares)` : "No aeUSDC supply on Granite LP",
+        detail: hasPosition ? `Active aeUSDC supply on Granite LP (${lpShares} shares)`
+          : posReadOk ? "No aeUSDC supply on Granite LP" : "Granite read failed (get-user-position)",
         supply_apy_pct: round(supplyApy, 2), borrow_apr_pct: round(borrowApr, 2),
-        utilization_pct: round(utilization, 2),
+        utilization_pct: round(utilization, 2), apy_read_failed: apyReadFailed,
         accepted_token: "aeUSDC",
-        lp_shares: lpShares.toString(),
+        ...(posReadOk ? { lp_shares: lpShares.toString() } : {}),
       }, sources,
     };
   } catch {
@@ -899,7 +911,7 @@ export function sizeHodlmmOption(
   x: TokenBalance, y: TokenBalance, totalUsd: number, xSym: string, ySym: string, stablePair = false, px?: PairPrices,
 ): HodlmmSizing {
   const feeNote = stablePair ? "~0.01% fee, stablecoin pair" : "~0.1-0.3% fee + gas";
-  const { hasX, hasY, paired } = hodlmmHeldSides(x, y, px);
+  const { hasX, hasY, paired, unpriced } = hodlmmHeldSides(x, y, px);
   const big = Math.max(x.usd, y.usd);
   const small = Math.min(x.usd, y.usd);
 
@@ -908,9 +920,20 @@ export function sizeHodlmmOption(
     // deposit can only be as large as the side that runs out first.
     return { tier: "deploy_now", capUsd: small * 2, swapNote: null };
   }
+  if (unpriced) {
+    // A held side has no price (feed down): the side ratio, and so any swap
+    // amount, can't be judged (deploy refuses for the same reason, see
+    // hodlmmDeployRefusal). Sized on the priced side(s) only.
+    const noPrice = [lacksPrice(x, px?.x) ? xSym : null, lacksPrice(y, px?.y) ? ySym : null].filter(Boolean).join(" and ");
+    return {
+      tier: "swap_first",
+      capUsd: big + small,
+      swapNote: `The price feed returned no USD price for ${noPrice}, so the side ratio and swap amount can't be judged. Re-scan once prices recover`,
+    };
+  }
   if ((hasX || hasY) && big >= HODLMM_DUST_USD) {
-    // One side only (or the other side is dust, far smaller or has no price),
-    // and this is NOT deploy_now. Sized on the priced side(s) only.
+    // One side only (or the other side is dust or far smaller), and this is
+    // NOT deploy_now.
     //
     // dlmm-core-v-1-1 holds the X asset only at bins at or above the active
     // bin, and Y only at or below it, so both assets are valid together
@@ -973,9 +996,11 @@ export function findDeployGateOption(options: YieldOption[], protocol: string, p
 }
 
 // The 0% APY and YTG gates for a deploy. Returns the refusal reason, or null.
-// A HODLMM pool with no scan row is refused too: the scan has no row for a pool
-// with APR 0, or for any pool when the Bitflow pool list could not be read, and
-// those are the deploys the gates are there to stop. --force overrides all three.
+// A target with no scan row is refused too: the scan has no row for a HODLMM
+// pool with APR 0, or for any pool when the Bitflow pool list could not be read;
+// none for Granite at 0% APY, Hermetica with staking off, or Zest when its rate
+// read throws. Those are the deploys the gates are there to stop. --force
+// overrides all three.
 // ytg "row" (deploy) reads the row's YTG, which the scan sized on the wallet as
 // it is now. ytg "skip" (migrate) leaves YTG out: migrate checks it last with
 // migrateYtgRefusal, sized on the move itself, once the cheaper refusals with
@@ -986,7 +1011,7 @@ export function deployGateRefusal(options: YieldOption[], protocol: string, pool
   if (!targetOpt) {
     return protocol === "hodlmm"
       ? `No scan data for ${poolId} (APR 0 or pool data unavailable). Use --force to override.`
-      : null;
+      : `No scan data for ${protocol} (APY 0, not open, or its read failed). Use --force to override.`;
   }
   if (targetOpt.apy_pct === 0) return `${protocol} APY is 0%. Use --force to override.`;
   // YTG profit gate: 7d yield must exceed 3x gas cost
@@ -1004,12 +1029,13 @@ export function deployGateRefusal(options: YieldOption[], protocol: string, pool
 // withdraw). The scan row's own YTG is not used: it is sized on the wallet
 // before the withdraw (with no idle sBTC the Zest row is acquire_to_unlock at
 // $0/day). Anything that can't be priced (the deposit, the source, the STX for
-// gas) is a refusal, never $0. No target row: nothing to weigh (as deploy).
+// gas) is a refusal, never $0. A source refusal stands even with no target row;
+// otherwise no target row means nothing to weigh (deployGateRefusal refuses it).
 export interface AmountYtg { usd: number; earningUsd?: number; extraGasStx: number; stxPrice: number; sourceYield7d: number }
 export function migrateYtgRefusal(options: YieldOption[], protocol: string, poolId: string, sized: AmountYtg | { refusal: string }): string | null {
+  if ("refusal" in sized) return `YTG gate: ${sized.refusal}. Use --force to override.`;
   const targetOpt = findDeployGateOption(options, protocol, poolId);
   if (!targetOpt) return null;
-  if ("refusal" in sized) return `YTG gate: ${sized.refusal}. Use --force to override.`;
   if (!(sized.usd > 0)) {
     return `YTG gate: --amount has no USD value (no price), so the yield can't be weighed against gas. Use --force to override.`;
   }
@@ -1467,6 +1493,20 @@ export function hodlmmPairedDeposit(pool: PoolDef, token: string, amount: number
   return { xAtomic, yAtomic, xAmt, yAmt, xUsd: xAmt * xPx, yUsd: yAmt * yPx };
 }
 
+// Does the builder put a HODLMM deposit into `pool` at the active bin? Yes when
+// the wallet holds both of its tokens (hodlmmHeldSides, any ratio: a lopsided
+// wallet goes in with --allow-one-sided). Otherwise the deposit sits in bins on
+// one side of it and earns no fees until the price moves in. One rule for the
+// builder and for the YTG gates of deploy and migrate (depositUsd).
+export function hodlmmActiveBinDeposit(pool: PoolDef, scout: Pick<ScoutResult, "balances" | "prices">): boolean {
+  const balances = scout.balances as unknown as Record<string, TokenBalance>;
+  const { hasX, hasY } = hodlmmHeldSides(
+    balances[pool.tokenX] ?? { amount: 0, usd: 0 }, balances[pool.tokenY] ?? { amount: 0, usd: 0 },
+    pairPrices(scout.prices, pool.tokenX, pool.tokenY),
+  );
+  return hasX && hasY;
+}
+
 // Can a HODLMM deposit of `token` into `poolId` be built from this wallet?
 // Returns the refusal reason, or null. Checked by deploy and by migrate (before
 // the withdraw is planned), and by buildDeployInstructions itself. Held sides use
@@ -1694,13 +1734,13 @@ export function buildDeployInstructions(protocol: Protocol, amount: number, toke
       const xBalAtomic = Math.floor((balances[pool.tokenX]?.amount ?? 0) * Math.pow(10, xMeta?.decimals ?? 6));
       const yBalAtomic = Math.floor((balances[pool.tokenY]?.amount ?? 0) * Math.pow(10, yMeta?.decimals ?? 6));
       const px = pairPrices(scout.prices, pool.tokenX, pool.tokenY);
-      const { hasX, hasY } = hodlmmHeldSides(
+      const { hasX } = hodlmmHeldSides(
         balances[pool.tokenX] ?? { amount: 0, usd: 0 }, balances[pool.tokenY] ?? { amount: 0, usd: 0 }, px,
       );
 
       const bins: Array<{ activeBinOffset: number; xAmount: string; yAmount: string }> = [];
 
-      if (hasX && hasY) {
+      if (hodlmmActiveBinDeposit(pool, scout)) {
         // Both tokens at active bin: dlmm-core allows both nonzero at bin-id == active-bin-id.
         // `amount` is interpreted as the chosen --token's atomic amount; the counter-token
         // is sized to match it in USD, capped at its balance (hodlmmPairedDeposit).
@@ -1900,10 +1940,10 @@ function tokenUsd(token: string, amount: number, prices: TokenPrices | undefined
 
 // USD a deposit of `amount` (atomic) of `token` puts into `to`, and how much of
 // it earns the target APY. HODLMM: both sides of the paired deposit
-// (hodlmmPairedDeposit, the same sizing the builder uses). A deposit that is
-// not paired by the scan's rule (--allow-one-sided) lands outside the active
-// bin and earns nothing until the price moves into it, so it earns $0. Both 0
-// without a price.
+// (hodlmmPairedDeposit, the same sizing the builder uses). A deposit the
+// builder places outside the active bin (one side held, --allow-one-sided; see
+// hodlmmActiveBinDeposit) earns nothing until the price moves into it, so it
+// earns $0. Both 0 without a price.
 export function depositUsd(to: Protocol, token: string, amount: number, scout: Pick<ScoutResult, "balances" | "prices">, poolId: string): { usd: number; earningUsd: number } {
   if (to === "hodlmm") {
     const pool = HODLMM_POOLS.find(p => `dlmm_${p.id}` === poolId);
@@ -1914,8 +1954,7 @@ export function depositUsd(to: Protocol, token: string, amount: number, scout: P
     if (!px || !((token === pool.tokenX ? px.x : px.y) > 0)) return { usd: 0, earningUsd: 0 };
     const d = hodlmmPairedDeposit(pool, token, amount, balances[pool.tokenX] ?? { amount: 0, usd: 0 }, balances[pool.tokenY] ?? { amount: 0, usd: 0 }, px);
     const usd = d.xUsd + d.yUsd;
-    const paired = hodlmmHeldSides({ amount: d.xAmt, usd: d.xUsd }, { amount: d.yAmt, usd: d.yUsd }, px).paired;
-    return { usd, earningUsd: paired ? usd : 0 };
+    return { usd, earningUsd: hodlmmActiveBinDeposit(pool, scout) ? usd : 0 };
   }
   const usd = tokenUsd(token, amount, scout.prices);
   return { usd, earningUsd: usd };
@@ -1946,8 +1985,11 @@ export function withdrawGasStx(from: Protocol, scout: Pick<ScoutResult, "positio
 //   held, value and APY known (> 0)    -> charged
 //   read failed (field missing)        -> refusal: a position may be there
 //   held, but no price / no estimate   -> refusal
-//   held, APY reads 0                  -> refusal: the scanner reads a failed
-//                                         rate call as 0, so 0 is not known
+//   held, APY reads 0, rate reads OK   -> $0 lost (Zest/Granite with
+//                                         apy_read_failed false: a real 0%)
+//   held, APY reads 0, otherwise       -> refusal: a failed rate read also
+//                                         reads 0, so 0 is not known
+//   HODLMM pool held, out of range     -> $0 lost: its bins earn no fees
 //   HODLMM pool held with no scan row  -> refusal, as the deploy gate does
 // --force skips the whole gate, these included.
 export function migrateSourceYield(
@@ -1957,7 +1999,8 @@ export function migrateSourceYield(
   const px = (scout.prices ?? {}) as Partial<TokenPrices>;
   const none = { usd: 0, yield7d: 0 };
   const unknown = (why: string) => ({ refusal: `the yield the withdraw gives up is unknown: ${why}` });
-  const charge = (name: string, usd: number, apy: number | undefined) => {
+  const charge = (name: string, usd: number, apy: number | undefined, zeroIsReal = false) => {
+    if (apy === 0 && zeroIsReal) return { usd, yield7d: 0 };
     if (!(usd > 0)) return unknown(`no USD price for the ${name} position`);
     if (!(apy !== undefined && apy > 0)) return unknown(`${name} APY reads ${apy ?? "nothing"} (a failed rate read also reads 0)`);
     return { usd, yield7d: dailyUsd(usd, apy) * 7 };
@@ -1968,7 +2011,7 @@ export function migrateSourceYield(
       if (!z || z.supply_apy_pct === undefined) return unknown("the Zest position could not be read");
       const amt = z.supply_amount ?? 0;
       if (!(amt > 0)) return none;
-      return charge("Zest", amt * (px.sbtc ?? 0), z.supply_apy_pct);
+      return charge("Zest", amt * (px.sbtc ?? 0), z.supply_apy_pct, z.apy_read_failed === false);
     }
     case "granite": {
       const g = pos?.granite;
@@ -1977,7 +2020,7 @@ export function migrateSourceYield(
       // interest makes the real value higher, so this under-charges slightly.
       const amt = Number(g.lp_shares) / 1e6;
       if (!(amt > 0)) return none;
-      return charge("Granite", amt * (px.aeusdc ?? 0), g.supply_apy_pct);
+      return charge("Granite", amt * (px.aeusdc ?? 0), g.supply_apy_pct, g.apy_read_failed === false);
     }
     case "hermetica": {
       const s = scout.balances?.susdh;
@@ -1994,6 +2037,7 @@ export function migrateSourceYield(
       let usd = 0, yield7d = 0;
       for (const p of h.pools) {
         if (p.estimated_value_usd === null) return unknown(`no value estimate for HODLMM ${p.name}`);
+        if (p.in_range === false) { usd += p.estimated_value_usd; continue; }
         const row = findDeployGateOption(scout.options ?? [], "hodlmm", `dlmm_${p.pool_id}`);
         if (!row) return unknown(`no scan row (APR) for HODLMM ${p.name}`);
         const c = charge(`HODLMM ${p.name}`, p.estimated_value_usd, row.apy_pct);
@@ -2046,6 +2090,13 @@ export function planDeploy(opts: Record<string, string>, scout: ScoutResult): Ex
   if (protocol === "hodlmm") {
     const refusal = hodlmmDeployRefusal(token, scout, poolId, allowOneSided, amount);
     if (refusal) return { status: "refused", refusal_reasons: [refusal] };
+    // YTG (--force) for a deposit outside the active bin: the row is sized as if
+    // the swap in its note were done, but --allow-one-sided skips the swap and
+    // these bins earn $0, as migrate counts them (depositUsd).
+    const pool = HODLMM_POOLS.find(p => `dlmm_${p.id}` === poolId)!;
+    if (!opts.force && !hodlmmActiveBinDeposit(pool, scout)) {
+      return { status: "refused", refusal_reasons: [`YTG gate: a one-sided deposit lands outside the active bin and earns $0 until the price moves into it, so 7d yield ($0) < 3x gas cost. Swap first for a paired deposit, or use --force to override.`] };
+    }
   }
 
   return {
@@ -2664,7 +2715,7 @@ program
   .requiredOption("--amount <value>", "Amount in smallest unit (sats for sBTC, micro for stablecoins)")
   .option("--token <symbol>", "Token to deploy (default: inferred from protocol)")
   .option("--pool-id <id>", "HODLMM pool ID for protocol=hodlmm (default: dlmm_1). Ignored for other protocols.", "dlmm_1")
-  .option("--force", "Override the 0% APY, YTG and HODLMM no-scan-data refusals")
+  .option("--force", "Override the 0% APY, YTG and no-scan-data refusals")
   .option("--allow-one-sided", "HODLMM only: deposit even when one side is missing, dust (under $1) or under 10% of the other (one side goes outside the active bin)")
   .option("--confirm", "Execute the transaction (without this flag, outputs a dry-run preview)")
   .action(async (opts: Record<string, string>) => {
@@ -2734,7 +2785,7 @@ program
   .option("--token <symbol>", "Token to deploy into target (default: inferred)")
   .option("--amount <value>", "Amount of --token to deposit, in its smallest unit (required)")
   .option("--pool-id <id>", "HODLMM pool ID when --to=hodlmm (default: dlmm_1). Ignored otherwise.", "dlmm_1")
-  .option("--force", "Override the 0% APY and HODLMM no-scan-data refusals on the --to side")
+  .option("--force", "Override the 0% APY, YTG and no-scan-data refusals (YTG includes what the withdrawn position stops earning)")
   .option("--allow-one-sided", "When --to=hodlmm: deposit even when one side is missing, dust (under $1) or under 10% of the other")
   .option("--confirm", "Execute the transaction (without this flag, outputs a dry-run preview)")
   .action(async (opts: Record<string, string>) => {
