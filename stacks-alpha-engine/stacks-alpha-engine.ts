@@ -110,6 +110,11 @@ export const TOKENS: Record<string, TokenMeta> = {
   aeusdc: { symbol: "aeUSDC", contract: AEUSDC_TOKEN, decimals: 6, ftSuffix: "::aeUSDC" },
 };
 
+// Dollar stablecoins (TOKENS keys). A pool of two of them swaps at stablecoin fees
+// (scan notes) and with the tighter slippage budget (swaps). One list for both.
+const STABLE_TOKENS = new Set(["usdcx", "usdh", "aeusdc"]);
+const STABLE_CONTRACTS = new Set([...STABLE_TOKENS].map(k => TOKENS[k].contract));
+
 // Reverse lookup: token contract principal → TokenMeta. Used to derive asset_name + decimals
 // from on-chain route data (xToken/yToken/xForY) when building DLMM swap post-conditions.
 const TOKENS_BY_CONTRACT: Record<string, TokenMeta> = Object.fromEntries(
@@ -124,10 +129,12 @@ interface WalletBalances {
   usdh: TokenBalance; susdh: TokenBalance; aeusdc: TokenBalance;
 }
 
-interface ZestPosition { has_position: boolean; detail: string; supply_amount?: number; supply_apy_pct?: number; utilization_pct?: number }
+// apy_read_failed: a rate read failed, so a supply_apy_pct of 0 is unknown, not a
+// real 0% (migrateSourceYield refuses it). false: the reads succeeded.
+interface ZestPosition { has_position: boolean; detail: string; supply_amount?: number; supply_apy_pct?: number; utilization_pct?: number; apy_read_failed?: boolean }
 interface GranitePosition {
   has_position: boolean; detail: string;
-  supply_apy_pct?: number; borrow_apr_pct?: number; utilization_pct?: number;
+  supply_apy_pct?: number; borrow_apr_pct?: number; utilization_pct?: number; apy_read_failed?: boolean;
   accepted_token: string; // "aeUSDC" — NOT sBTC
   lp_shares?: string; // raw share count from on-chain position
 }
@@ -145,7 +152,8 @@ interface HodlmmPositions { has_position: boolean; pools: HodlmmUserPool[] }
 
 type YieldTier = "deploy_now" | "swap_first" | "acquire_to_unlock";
 
-interface YieldOption {
+export interface YieldOption {
+  pool_id?: string;        // HODLMM rows only: "dlmm_<id>", as passed to deploy --pool-id
   tier: YieldTier;
   protocol: string; pool: string; token_needed: string; apy_pct: number;
   daily_usd: number; monthly_usd: number; gas_to_enter_stx: number;
@@ -482,19 +490,8 @@ async function scoutWallet(wallet: string): Promise<ScoutResult> {
 
   // -- Best move --------------------------------------------------------------
   const walletUsd = balances.sbtc.usd + balances.stx.usd + balances.usdcx.usd + balances.usdh.usd + balances.susdh.usd + balances.aeusdc.usd;
-  const deployNow = options.filter(o => o.tier === "deploy_now");
-  const bestOpt = deployNow[0];
-  let recommendation = "No yield opportunities available for your current holdings.";
-  let opportunityCost = 0;
-
   const outOfRange = hodlmm.positions.pools.filter(p => !p.in_range);
-  if (outOfRange.length > 0) {
-    recommendation = `WARNING: ${outOfRange.length} HODLMM position(s) OUT OF RANGE (${outOfRange.map(p => p.name).join(", ")}). Consider rebalancing.`;
-    opportunityCost = bestOpt?.daily_usd ?? 0;
-  } else if (bestOpt && bestOpt.apy_pct > 0 && walletUsd > 10) {
-    opportunityCost = round((walletUsd * bestOpt.apy_pct / 100) / 365, 4);
-    recommendation = `Best option: ${bestOpt.protocol} ${bestOpt.pool} (${bestOpt.token_needed}) at ${bestOpt.apy_pct}% APY (~$${opportunityCost}/day missed).`;
-  }
+  const { recommendation, opportunityCost } = computeBestMove(options, walletUsd, outOfRange.map(p => p.name));
 
   // -- Break prices -----------------------------------------------------------
   const { breakPrices, sources: bpSrc } = await getBreakPrices(hodlmm.positions, prices.sbtc);
@@ -512,12 +509,16 @@ async function scoutWallet(wallet: string): Promise<ScoutResult> {
 }
 
 // -- Scout: Zest --------------------------------------------------------------
-async function scoutZest(wallet: string): Promise<{ position: ZestPosition; sources: string[] }> {
+// Hiro's call-read answers a failed call with 200 and okay: false. A failed
+// balance read is a failed position read (no supply_apy_pct), not a $0 balance;
+// a failed rate read sets apy_read_failed (see ZestPosition).
+export async function scoutZest(wallet: string): Promise<{ position: ZestPosition; sources: string[] }> {
   const sources: string[] = [];
   try {
     const balResult = await callReadOnly(ZEST_VAULT_SBTC, "get-balance", [cvPrincipal(wallet)], wallet);
     sources.push("zest-v2-vault");
-    const balance = balResult.okay && balResult.result ? parseUint128Hex(balResult.result) : 0n;
+    if (!balResult.okay || !balResult.result) return { position: { has_position: false, detail: "Zest read failed (get-balance)" }, sources };
+    const balance = parseUint128Hex(balResult.result);
 
     const [utilResult, rateResult] = await Promise.all([
       callReadOnly(ZEST_VAULT_SBTC, "get-utilization", []),
@@ -525,15 +526,16 @@ async function scoutZest(wallet: string): Promise<{ position: ZestPosition; sour
     ]);
     const utilRaw = utilResult.okay && utilResult.result ? Number(parseUint128Hex(utilResult.result)) : 0;
     const rateRaw = rateResult.okay && rateResult.result ? Number(parseUint128Hex(rateResult.result)) : 0;
+    const apyReadFailed = !(utilResult.okay && utilResult.result && rateResult.okay && rateResult.result);
     const utilPct = utilRaw / 100;
     const borrowRatePct = rateRaw / 100;
     const supplyApyPct = round(borrowRatePct * (utilPct / 100) * 0.9, 2);
     sources.push("zest-apy-live");
 
     if (balance > 0n) {
-      return { position: { has_position: true, detail: `Active sBTC supply on Zest v2: ${Number(balance) / 1e8} sBTC`, supply_amount: Number(balance) / 1e8, supply_apy_pct: supplyApyPct, utilization_pct: round(utilPct, 2) }, sources };
+      return { position: { has_position: true, detail: `Active sBTC supply on Zest v2: ${Number(balance) / 1e8} sBTC`, supply_amount: Number(balance) / 1e8, supply_apy_pct: supplyApyPct, utilization_pct: round(utilPct, 2), apy_read_failed: apyReadFailed }, sources };
     }
-    return { position: { has_position: false, detail: "No sBTC supply on Zest v2", supply_apy_pct: supplyApyPct, utilization_pct: round(utilPct, 2) }, sources };
+    return { position: { has_position: false, detail: "No sBTC supply on Zest v2", supply_apy_pct: supplyApyPct, utilization_pct: round(utilPct, 2), apy_read_failed: apyReadFailed }, sources };
   } catch {
     return { position: { has_position: false, detail: "Zest read failed" }, sources };
   }
@@ -591,7 +593,9 @@ async function scoutHermetica(wallet: string): Promise<{ position: HermeticaPosi
 }
 
 // -- Scout: Granite -----------------------------------------------------------
-async function scoutGranite(wallet: string): Promise<{ position: GranitePosition; sources: string[] }> {
+// As scoutZest: a failed get-user-position is a failed position read (no
+// lp_shares), not 0 shares; a failed rate read sets apy_read_failed.
+export async function scoutGranite(wallet: string): Promise<{ position: GranitePosition; sources: string[] }> {
   const sources: string[] = [];
   const IR_SCALE = 1e12;
   try {
@@ -602,6 +606,7 @@ async function scoutGranite(wallet: string): Promise<{ position: GranitePosition
       callReadOnly(GRANITE_STATE, "get-user-position", [cvPrincipal(wallet)]),
     ]);
     sources.push("granite-on-chain");
+    const apyReadFailed = !(lpResult.okay && lpResult.result && debtResult.okay && debtResult.result && irResult.okay && irResult.result);
 
     let supplyApy = 0, borrowApr = 0, utilization = 0;
 
@@ -630,6 +635,7 @@ async function scoutGranite(wallet: string): Promise<{ position: GranitePosition
 
     let hasPosition = false;
     let lpShares = 0n;
+    const posReadOk = Boolean(userPos.okay && userPos.result);
     if (userPos.okay && userPos.result) {
       const parsed = parseClarityHex(userPos.result);
       if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
@@ -644,11 +650,12 @@ async function scoutGranite(wallet: string): Promise<{ position: GranitePosition
     return {
       position: {
         has_position: hasPosition,
-        detail: hasPosition ? `Active aeUSDC supply on Granite LP (${lpShares} shares)` : "No aeUSDC supply on Granite LP",
+        detail: hasPosition ? `Active aeUSDC supply on Granite LP (${lpShares} shares)`
+          : posReadOk ? "No aeUSDC supply on Granite LP" : "Granite read failed (get-user-position)",
         supply_apy_pct: round(supplyApy, 2), borrow_apr_pct: round(borrowApr, 2),
-        utilization_pct: round(utilization, 2),
+        utilization_pct: round(utilization, 2), apy_read_failed: apyReadFailed,
         accepted_token: "aeUSDC",
-        lp_shares: lpShares.toString(),
+        ...(posReadOk ? { lp_shares: lpShares.toString() } : {}),
       }, sources,
     };
   } catch {
@@ -730,9 +737,6 @@ async function getYieldOptions(
   const sources: string[] = [];
   const options: YieldOption[] = [];
 
-  // Helper: compute daily USD from capital and APY
-  const dailyUsd = (capitalUsd: number, apyPct: number) => round((capitalUsd * apyPct / 100) / 365, 4);
-
   // --- Tier 1: Deploy Now (user holds the token) ---
 
   // Zest sBTC supply
@@ -791,67 +795,9 @@ async function getYieldOptions(
     const pools = await fetchBitflowPools();
     if (pools.length > 0) {
       sources.push("bitflow-hodlmm-apr");
-      for (const bp of pools) {
-        if (bp.apr24h <= 0) continue;
-        const def = HODLMM_POOLS.find(p => `dlmm_${p.id}` === bp.poolId);
-        if (!def) continue;
-
-        // Determine which token the user needs for this pool
-        const tokenXMeta = TOKENS[def.tokenX];
-        const tokenYMeta = TOKENS[def.tokenY];
-        if (!tokenXMeta || !tokenYMeta) continue;
-
-        const hasX = (balances as unknown as Record<string, TokenBalance>)[def.tokenX]?.amount > 0;
-        const hasY = (balances as unknown as Record<string, TokenBalance>)[def.tokenY]?.amount > 0;
-
-        let tier: YieldTier;
-        let capUsd: number;
-        let swapNote: string | null = null;
-
-        const xUsd = (balances as unknown as Record<string, TokenBalance>)[def.tokenX]?.usd ?? 0;
-        const yUsd = (balances as unknown as Record<string, TokenBalance>)[def.tokenY]?.usd ?? 0;
-
-        if (hasX && hasY) {
-          // Both sides held. Bounded by the SMALLER side, doubled: a paired
-          // deposit can only be as large as the side that runs out first.
-          tier = "deploy_now";
-          capUsd = Math.min(xUsd, yUsd) * 2;
-        } else if (hasX || hasY) {
-          // One side only, and this is NOT deploy_now.
-          //
-          // dlmm-core-v-1-1 holds the X asset only at bins at or above the active
-          // bin, and Y only at or below it, so both assets are valid together
-          // ONLY at the active bin. A deposit funded from one side lands outside
-          // it, which is outside the range where fees accrue. Reporting the
-          // pool's APY and a daily figure against that describes income the
-          // depositor does not receive.
-          tier = "swap_first";
-          capUsd = Math.max(xUsd, yUsd);
-          swapNote = `Swap part of your ${hasX ? tokenXMeta.symbol : tokenYMeta.symbol} into ${hasX ? tokenYMeta.symbol : tokenXMeta.symbol} on Bitflow first`;
-        } else {
-          // Check if user has any token that could be swapped
-          const totalUsd = balances.sbtc.usd + balances.stx.usd + balances.usdcx.usd + balances.usdh.usd + balances.aeusdc.usd;
-          if (totalUsd > 10) {
-            tier = "swap_first";
-            capUsd = totalUsd * 0.5; // conservative: assume half could be swapped
-            swapNote = `Swap to ${tokenXMeta.symbol} or ${tokenYMeta.symbol} on Bitflow first`;
-          } else {
-            tier = "acquire_to_unlock";
-            capUsd = 0;
-          }
-        }
-
-        const d = dailyUsd(capUsd, bp.apr24h);
-        options.push({
-          tier, protocol: "HODLMM", pool: def.name, token_needed: `${tokenXMeta.symbol}/${tokenYMeta.symbol}`,
-          apy_pct: round(bp.apr24h, 2), daily_usd: d, monthly_usd: round(d * 30, 2),
-          gas_to_enter_stx: 0.05, swap_cost_note: swapNote,
-          note: `Fee-based LP. TVL: $${Math.round(bp.tvlUsd).toLocaleString()}.`,
-          ytg_ratio: 0, ytg_profitable: false,
-        });
-      }
+      options.push(...hodlmmYieldOptions(pools, balances, prices));
     }
-  } catch { /* unavailable */ }
+  } catch { /* unavailable: no HODLMM rows, so the deploy gate refuses HODLMM deploys */ }
 
   // YTG (Yield-to-Gas) profit gate: 7d projected yield must exceed 3x gas cost
   const stxPriceUsd = prices.stx;
@@ -870,6 +816,243 @@ async function getYieldOptions(
   });
 
   return { options, sources };
+}
+
+// Daily USD from capital and APY.
+function dailyUsd(capitalUsd: number, apyPct: number): number {
+  return round((capitalUsd * apyPct / 100) / 365, 4);
+}
+
+// -- HODLMM rows from the Bitflow pool list -------------------------------------
+// One row per known pool with a positive 24h APR. A pool with APR 0 (or missing
+// from the list) gets no row; the deploy gate refuses a HODLMM deploy to a pool
+// without a row (see deployGateRefusal).
+export function hodlmmYieldOptions(pools: BitflowPoolData[], balances: WalletBalances, prices: TokenPrices): YieldOption[] {
+  const options: YieldOption[] = [];
+  const byKey = balances as unknown as Record<string, TokenBalance>;
+  const totalUsd = balances.sbtc.usd + balances.stx.usd + balances.usdcx.usd + balances.usdh.usd + balances.aeusdc.usd;
+  for (const bp of pools) {
+    if (bp.apr24h <= 0) continue;
+    const def = HODLMM_POOLS.find(p => `dlmm_${p.id}` === bp.poolId);
+    if (!def) continue;
+
+    // Determine which token the user needs for this pool
+    const tokenXMeta = TOKENS[def.tokenX];
+    const tokenYMeta = TOKENS[def.tokenY];
+    if (!tokenXMeta || !tokenYMeta) continue;
+
+    const { tier, capUsd, swapNote } = sizeHodlmmOption(
+      byKey[def.tokenX] ?? { amount: 0, usd: 0 }, byKey[def.tokenY] ?? { amount: 0, usd: 0 },
+      totalUsd, tokenXMeta.symbol, tokenYMeta.symbol,
+      STABLE_TOKENS.has(def.tokenX) && STABLE_TOKENS.has(def.tokenY),
+      pairPrices(prices, def.tokenX, def.tokenY),
+    );
+
+    const d = dailyUsd(capUsd, bp.apr24h);
+    options.push({
+      pool_id: `dlmm_${def.id}`,
+      tier, protocol: "HODLMM", pool: def.name, token_needed: `${tokenXMeta.symbol}/${tokenYMeta.symbol}`,
+      apy_pct: round(bp.apr24h, 2), daily_usd: d, monthly_usd: round(d * 30, 2),
+      gas_to_enter_stx: 0.05, swap_cost_note: swapNote,
+      note: `Fee-based LP. TVL: $${Math.round(bp.tvlUsd).toLocaleString()}.`,
+      ytg_ratio: 0, ytg_profitable: false,
+    });
+  }
+  return options;
+}
+
+// -- HODLMM option sizing -----------------------------------------------------
+// A side worth less than this does not count as held (a side with a balance but
+// no price does: see hodlmmHeldSides).
+export const HODLMM_DUST_USD = 1;
+// A paired deposit is deploy_now only if the smaller side is at least this
+// share of the larger one. Below it, the paired deposit is a small fraction of
+// what swapping to balance the sides would put in range.
+export const HODLMM_MIN_SIDE_RATIO = 0.1;
+
+export interface HodlmmSizing { tier: YieldTier; capUsd: number; swapNote: string | null }
+
+// Which sides of a HODLMM pair the wallet holds, by USD value. The one rule the
+// scan (sizeHodlmmOption) and the deploy builder (hodlmmDeployRefusal) both use,
+// so a wallet the scan calls swap_first is never deployed as if paired.
+//   hasX / hasY: that side is worth at least HODLMM_DUST_USD, or has a balance
+//                but no price (price feed down: held, not empty)
+//   unpriced:    a held side has no price, so the ratio can't be judged
+// "No price" means the token's price is 0 (scout.prices), when the caller has
+// it. The balance `usd` is rounded to cents, so 0.004 STX of gas reads $0.00
+// although STX is priced: that is dust, not an unpriced side. Without prices
+// it falls back to usd <= 0; the production paths (hodlmmYieldOptions,
+// hodlmmDeployRefusal) take prices as required, so only a direct call of these
+// sizing helpers (unit tests) reaches that fallback.
+//   paired:      both held and priced, and the smaller side is at least
+//                HODLMM_MIN_SIDE_RATIO of the larger one
+export interface HodlmmSides { hasX: boolean; hasY: boolean; paired: boolean; unpriced: boolean }
+type TokenPrices = { sbtc: number; stx: number; usdcx: number; usdh: number; aeusdc: number };
+export interface PairPrices { x: number; y: number }
+function pairPrices(prices: TokenPrices | undefined, tokenX: string, tokenY: string): PairPrices | undefined {
+  if (!prices) return undefined;
+  const p = prices as unknown as Record<string, number | undefined>;
+  return { x: p[tokenX] ?? 0, y: p[tokenY] ?? 0 };
+}
+const lacksPrice = (b: TokenBalance, px?: number) => b.amount > 0 && (px === undefined ? b.usd <= 0 : !(px > 0));
+export function hodlmmHeldSides(x: TokenBalance, y: TokenBalance, px?: PairPrices): HodlmmSides {
+  const hasX = x.usd >= HODLMM_DUST_USD || lacksPrice(x, px?.x);
+  const hasY = y.usd >= HODLMM_DUST_USD || lacksPrice(y, px?.y);
+  const unpriced = lacksPrice(x, px?.x) || lacksPrice(y, px?.y);
+  const small = Math.min(x.usd, y.usd);
+  const big = Math.max(x.usd, y.usd);
+  return { hasX, hasY, unpriced, paired: hasX && hasY && !unpriced && small >= big * HODLMM_MIN_SIDE_RATIO };
+}
+
+// One rule for every HODLMM row: capUsd is the capital that sits in the pool,
+// at the active bin, once the swap named in swapNote is done. The swap fee is
+// stated in the note, as for the other swap_first options, not deducted.
+export function sizeHodlmmOption(
+  x: TokenBalance, y: TokenBalance, totalUsd: number, xSym: string, ySym: string, stablePair = false, px?: PairPrices,
+): HodlmmSizing {
+  const feeNote = stablePair ? "~0.01% fee, stablecoin pair" : "~0.1-0.3% fee + gas";
+  const { hasX, hasY, paired, unpriced } = hodlmmHeldSides(x, y, px);
+  const big = Math.max(x.usd, y.usd);
+  const small = Math.min(x.usd, y.usd);
+
+  if (paired) {
+    // Both sides held. Bounded by the SMALLER side, doubled: a paired
+    // deposit can only be as large as the side that runs out first.
+    return { tier: "deploy_now", capUsd: small * 2, swapNote: null };
+  }
+  if (unpriced) {
+    // A held side has no price (feed down): the side ratio, and so any swap
+    // amount, can't be judged (deploy refuses for the same reason, see
+    // hodlmmDeployRefusal). Sized on the priced side(s) only.
+    const noPrice = [lacksPrice(x, px?.x) ? xSym : null, lacksPrice(y, px?.y) ? ySym : null].filter(Boolean).join(" and ");
+    return {
+      tier: "swap_first",
+      capUsd: big + small,
+      swapNote: `The price feed returned no USD price for ${noPrice}, so the side ratio and swap amount can't be judged. Re-scan once prices recover`,
+    };
+  }
+  if ((hasX || hasY) && big >= HODLMM_DUST_USD) {
+    // One side only (or the other side is dust or far smaller), and this is
+    // NOT deploy_now.
+    //
+    // dlmm-core-v-1-1 holds the X asset only at bins at or above the active
+    // bin, and Y only at or below it, so both assets are valid together
+    // ONLY at the active bin. A deposit funded from one side lands outside
+    // it, which is outside the range where fees accrue. Reporting the
+    // pool's APY and a daily figure against that describes income the
+    // depositor does not receive.
+    //
+    // Swapping half the difference evens the sides, so both are then worth
+    // (big + small) / 2 and the whole pair can go in at the active bin.
+    const xIsBig = x.usd >= y.usd;
+    const swapUsd = round((big - small) / 2, 2);
+    return {
+      tier: "swap_first",
+      capUsd: big + small,
+      swapNote: `Swap ~$${swapUsd} of your ${xIsBig ? xSym : ySym} into ${xIsBig ? ySym : xSym} on Bitflow first, so both sides match (${feeNote})`,
+    };
+  }
+  // Neither side held. Conservative: assume half the other holdings get swapped
+  // into the pair, split evenly between the two sides.
+  if (totalUsd > 10) {
+    const capUsd = totalUsd * 0.5;
+    const perSide = round(capUsd / 2, 2);
+    return {
+      tier: "swap_first",
+      capUsd,
+      swapNote: `Swap ~$${perSide} into ${xSym} and ~$${perSide} into ${ySym} on Bitflow first (${feeNote})`,
+    };
+  }
+  return { tier: "acquire_to_unlock", capUsd: 0, swapNote: null };
+}
+
+// -- Best move ----------------------------------------------------------------
+export function computeBestMove(
+  options: YieldOption[], walletUsd: number, outOfRangeNames: string[],
+): { recommendation: string; opportunityCost: number } {
+  const bestOpt = options.filter(o => o.tier === "deploy_now")[0];
+  let recommendation = "No yield opportunities available for your current holdings.";
+  let opportunityCost = 0;
+
+  if (outOfRangeNames.length > 0) {
+    recommendation = `WARNING: ${outOfRangeNames.length} HODLMM position(s) OUT OF RANGE (${outOfRangeNames.join(", ")}). Consider rebalancing.`;
+    opportunityCost = bestOpt?.daily_usd ?? 0;
+  } else if (bestOpt && bestOpt.apy_pct > 0 && walletUsd > 10) {
+    // The option's own daily figure, sized on the capital it can actually take
+    // (e.g. a paired HODLMM deposit is bounded by its smaller side), not the
+    // whole wallet at that option's APY.
+    opportunityCost = bestOpt.daily_usd;
+    recommendation = `Best option: ${bestOpt.protocol} ${bestOpt.pool} (${bestOpt.token_needed}) at ${bestOpt.apy_pct}% APY (~$${opportunityCost}/day missed).`;
+  }
+  return { recommendation, opportunityCost };
+}
+
+// -- Deploy gate: which scout option a deploy is checked against ----------------
+// HODLMM has one row per pool, so match the pool being deployed to; the first
+// HODLMM row belongs to whichever pool sorts first. Other protocols have one row.
+export function findDeployGateOption(options: YieldOption[], protocol: string, poolId: string): YieldOption | undefined {
+  if (protocol === "hodlmm") return options.find(o => o.protocol.toLowerCase() === "hodlmm" && o.pool_id === poolId);
+  return options.find(o => o.protocol.toLowerCase() === protocol);
+}
+
+// The 0% APY and YTG gates for a deploy. Returns the refusal reason, or null.
+// A target with no scan row is refused too: the scan has no row for a HODLMM
+// pool with APR 0, or for any pool when the Bitflow pool list could not be read;
+// none for Granite at 0% APY, Hermetica with staking off, or Zest when its rate
+// read throws. Those are the deploys the gates are there to stop. --force
+// overrides all three.
+// ytg "row" (deploy) reads the row's YTG, which the scan sized on the wallet as
+// it is now. ytg "skip" (migrate) leaves YTG out: migrate checks it last with
+// migrateYtgRefusal, sized on the move itself, once the cheaper refusals with
+// more specific reasons (balance, HODLMM sides) have had their turn.
+export function deployGateRefusal(options: YieldOption[], protocol: string, poolId: string, force = false, ytg: "row" | "skip" = "row"): string | null {
+  if (force) return null;
+  const targetOpt = findDeployGateOption(options, protocol, poolId);
+  if (!targetOpt) {
+    return protocol === "hodlmm"
+      ? `No scan data for ${poolId} (APR 0 or pool data unavailable). Use --force to override.`
+      : `No scan data for ${protocol} (APY 0, not open, or its read failed). Use --force to override.`;
+  }
+  if (targetOpt.apy_pct === 0) return `${protocol} APY is 0%. Use --force to override.`;
+  // YTG profit gate: 7d yield must exceed 3x gas cost
+  if (ytg === "row" && !targetOpt.ytg_profitable) {
+    return `YTG gate: 7d yield ($${round(targetOpt.daily_usd * 7, 4)}) < 3x gas cost. Ratio: ${targetOpt.ytg_ratio}x. Use --force to override.`;
+  }
+  return null;
+}
+
+// Migrate's YTG gate: the net 7-day change against the gas. Gained: the yield of
+// `earningUsd` (default `usd`) at the target row's APY; `earningUsd` is 0 for a
+// one-sided HODLMM deposit, whose bins sit outside the active bin. Lost:
+// `sourceYield7d`, what the whole withdrawn position stops earning (see
+// migrateSourceYield). Gas: the row's entry gas plus `extraGasStx` (the
+// withdraw). The scan row's own YTG is not used: it is sized on the wallet
+// before the withdraw (with no idle sBTC the Zest row is acquire_to_unlock at
+// $0/day). Anything that can't be priced (the deposit, the source, the STX for
+// gas) is a refusal, never $0. A source refusal stands even with no target row;
+// otherwise no target row means nothing to weigh (deployGateRefusal refuses it).
+export interface AmountYtg { usd: number; earningUsd?: number; extraGasStx: number; stxPrice: number; sourceYield7d: number }
+export function migrateYtgRefusal(options: YieldOption[], protocol: string, poolId: string, sized: AmountYtg | { refusal: string }): string | null {
+  if ("refusal" in sized) return `YTG gate: ${sized.refusal}. Use --force to override.`;
+  const targetOpt = findDeployGateOption(options, protocol, poolId);
+  if (!targetOpt) return null;
+  if (!(sized.usd > 0)) {
+    return `YTG gate: --amount has no USD value (no price), so the yield can't be weighed against gas. Use --force to override.`;
+  }
+  if (!(sized.stxPrice > 0)) {
+    return `YTG gate: no STX price, so the gas can't be weighed against the yield. Use --force to override.`;
+  }
+  const earning = sized.earningUsd ?? sized.usd;
+  const gained = dailyUsd(earning, targetOpt.apy_pct) * 7;
+  const lost = sized.sourceYield7d;
+  const net = gained - lost;
+  const gasStx = targetOpt.gas_to_enter_stx + sized.extraGasStx;
+  const gasUsd = gasStx * sized.stxPrice;
+  if (net > gasUsd * 3) return null;
+  const deposit = earning < sized.usd
+    ? `--amount ~$${round(sized.usd, 2)}, one-sided so outside the active bin: earns $0`
+    : `--amount ~$${round(sized.usd, 2)} at ${targetOpt.apy_pct}% APY`;
+  return `YTG gate: net 7d yield change $${round(net, 4)} (${deposit}: +$${round(gained, 4)}; withdrawn position stops earning: -$${round(lost, 4)}) < 3x gas cost ($${round(gasUsd * 3, 4)}; ${round(gasStx, 4)} STX, withdraw + deposit). Ratio: ${round(net / gasUsd, 2)}x. Use --force to override.`;
 }
 
 // -- Break prices -------------------------------------------------------------
@@ -1149,8 +1332,7 @@ function getDlmmSwapRoute(tokenIn: string, tokenOut: string): DlmmSwapRoute | nu
 // Default slippage by pair volatility profile.
 // Stable-stable pairs use tight tolerance; volatile pairs need more room.
 function defaultSlippagePct(route: DlmmSwapRoute): number {
-  const stable = [USDCX_TOKEN, AEUSDC_TOKEN, USDH_TOKEN];
-  const bothStable = stable.includes(route.xToken) && stable.includes(route.yToken);
+  const bothStable = STABLE_CONTRACTS.has(route.xToken) && STABLE_CONTRACTS.has(route.yToken);
   return bothStable ? 0.5 : 3;
 }
 
@@ -1285,7 +1467,112 @@ function buildDlmmSwapInstruction(
   };
 }
 
-function buildDeployInstructions(protocol: Protocol, amount: number, token: string, scout: ScoutResult, poolId: string = "dlmm_1"): ExecuteInstruction[] {
+// The paired active-bin deposit for `amount` (atomic) of `token`: the other side
+// is sized to the same USD value at the wallet's prices, capped at its balance,
+// not the whole balance. Without a price on either side the other side is 0:
+// only `amount` goes in (only reachable with --allow-one-sided).
+// Atomic amounts for the bins; whole-token amounts and USD for hodlmmHeldSides.
+export function hodlmmPairedDeposit(pool: PoolDef, token: string, amount: number, x: TokenBalance, y: TokenBalance, px?: PairPrices) {
+  const xScale = Math.pow(10, TOKENS[pool.tokenX]?.decimals ?? 6);
+  const yScale = Math.pow(10, TOKENS[pool.tokenY]?.decimals ?? 6);
+  // Unit prices from scout.prices when given: the balance usd is rounded to
+  // cents, which skews usd/amount for small balances.
+  const xPx = px ? px.x : x.amount > 0 ? x.usd / x.amount : 0;
+  const yPx = px ? px.y : y.amount > 0 ? y.usd / y.amount : 0;
+  const xBalAtomic = Math.floor(x.amount * xScale);
+  const yBalAtomic = Math.floor(y.amount * yScale);
+  let xAtomic: number, yAtomic: number;
+  if (token === pool.tokenX) {
+    xAtomic = amount;
+    yAtomic = xPx > 0 && yPx > 0 ? Math.min(yBalAtomic, Math.floor((amount / xScale) * xPx / yPx * yScale)) : 0;
+  } else {
+    yAtomic = amount;
+    xAtomic = xPx > 0 && yPx > 0 ? Math.min(xBalAtomic, Math.floor((amount / yScale) * yPx / xPx * xScale)) : 0;
+  }
+  const xAmt = xAtomic / xScale, yAmt = yAtomic / yScale;
+  return { xAtomic, yAtomic, xAmt, yAmt, xUsd: xAmt * xPx, yUsd: yAmt * yPx };
+}
+
+// Does the builder put a HODLMM deposit into `pool` at the active bin? Yes when
+// the wallet holds both of its tokens (hodlmmHeldSides, any ratio: a lopsided
+// wallet goes in with --allow-one-sided). Otherwise the deposit sits in bins on
+// one side of it and earns no fees until the price moves in. One rule for the
+// builder and for the YTG gates of deploy and migrate (depositUsd).
+export function hodlmmActiveBinDeposit(pool: PoolDef, scout: Pick<ScoutResult, "balances" | "prices">): boolean {
+  const balances = scout.balances as unknown as Record<string, TokenBalance>;
+  const { hasX, hasY } = hodlmmHeldSides(
+    balances[pool.tokenX] ?? { amount: 0, usd: 0 }, balances[pool.tokenY] ?? { amount: 0, usd: 0 },
+    pairPrices(scout.prices, pool.tokenX, pool.tokenY),
+  );
+  return hasX && hasY;
+}
+
+// Can a HODLMM deposit of `token` into `poolId` be built from this wallet?
+// Returns the refusal reason, or null. Checked by deploy and by migrate (before
+// the withdraw is planned), and by buildDeployInstructions itself. Held sides use
+// hodlmmHeldSides, the same rule as the scan, so a wallet the scan shows as
+// swap_first (one side, dust on the other, or very lopsided) is refused here
+// unless the caller passes --allow-one-sided. With `amount`, a paired wallet is
+// also checked on what the deposit itself puts in (hodlmmPairedDeposit): an
+// --amount that is dust, or one the other side can't match, is refused too.
+export function hodlmmDeployRefusal(token: string, scout: Pick<ScoutResult, "balances" | "prices">, poolId: string, allowOneSided = false, amount?: number): string | null {
+  const pool = HODLMM_POOLS.find(p => `dlmm_${p.id}` === poolId);
+  if (!pool) {
+    return `Unknown HODLMM pool ${poolId}. Known pools: ${HODLMM_POOLS.map(p => `dlmm_${p.id}`).join(", ")}.`;
+  }
+  if (token !== pool.tokenX && token !== pool.tokenY) {
+    return `HODLMM pool ${poolId} (${pool.name}) accepts ${pool.tokenX.toUpperCase()} or ${pool.tokenY.toUpperCase()} only (got ${token}). Acquire ${pool.tokenX}/${pool.tokenY} first or choose a different --pool-id.`;
+  }
+  const balances = scout.balances as unknown as Record<string, TokenBalance>;
+  const x = balances[pool.tokenX] ?? { amount: 0, usd: 0 };
+  const y = balances[pool.tokenY] ?? { amount: 0, usd: 0 };
+  const xSym = TOKENS[pool.tokenX]?.symbol ?? pool.tokenX;
+  const ySym = TOKENS[pool.tokenY]?.symbol ?? pool.tokenY;
+  const px = pairPrices(scout.prices, pool.tokenX, pool.tokenY);
+  const { hasX, hasY, paired, unpriced } = hodlmmHeldSides(x, y, px);
+
+  if (!hasX && !hasY) {
+    return `HODLMM deploy to ${poolId} (${pool.name}) requires ${xSym} and/or ${ySym} worth at least $${HODLMM_DUST_USD} in wallet — neither held.`;
+  }
+  if (paired) {
+    if (amount === undefined || allowOneSided) return null;
+    const d = hodlmmPairedDeposit(pool, token, amount, x, y, px);
+    if (hodlmmHeldSides({ amount: d.xAmt, usd: d.xUsd }, { amount: d.yAmt, usd: d.yUsd }, px).paired) return null;
+    const [tSym, cSym] = token === pool.tokenX ? [xSym, ySym] : [ySym, xSym];
+    return `HODLMM ${pool.name}: the deposit would be ~$${round(d.xUsd, 2)} ${xSym} + ~$${round(d.yUsd, 2)} ${ySym} at the active bin (--amount of ${tSym}, matched with ${cSym} from the wallet). Each side needs at least $${HODLMM_DUST_USD}, and the smaller side at least ${HODLMM_MIN_SIDE_RATIO * 100}% of the larger. Change --amount, or use --allow-one-sided to deposit it anyway.`;
+  }
+
+  if (!(hasX && hasY)) {
+    const held = hasX ? xSym : ySym;
+    const missing = hasX ? ySym : xSym;
+    if (!allowOneSided) {
+      // A one-sided deposit can only go to bins away from the active bin (see
+      // the X/Y bin invariants in buildDeployInstructions), which earn no fees
+      // until the price moves into them.
+      return `HODLMM ${pool.name}: wallet holds ${held} but no ${missing} (under $${HODLMM_DUST_USD} counts as none). A ${held}-only deposit lands outside the active bin and earns no fees until the price moves into it. Swap about half of the ${held} into ${missing} on Bitflow first, then deploy both. Use --allow-one-sided to place the one-sided deposit anyway.`;
+    }
+    const tokenHeld = token === pool.tokenX ? hasX : hasY;
+    if (!tokenHeld) {
+      return `HODLMM ${pool.name}: --token ${token} is not held (under $${HODLMM_DUST_USD}); a one-sided deposit can only use the ${held} side. Deploy --token ${hasX ? pool.tokenX : pool.tokenY} instead.`;
+    }
+    return null;
+  }
+
+  // Both held, but a side has no price (feed down), or the smaller side is under
+  // HODLMM_MIN_SIDE_RATIO of the larger.
+  if (!allowOneSided && unpriced) {
+    const noPrice = [lacksPrice(x, px?.x) ? xSym : null, lacksPrice(y, px?.y) ? ySym : null].filter(Boolean).join(" and ");
+    return `HODLMM ${pool.name}: wallet holds ${xSym} and ${ySym}, but the price feed returned no USD value for ${noPrice}, so the dust and ${HODLMM_MIN_SIDE_RATIO * 100}% side rules can't be checked. Re-run after prices recover, or use --allow-one-sided to deposit only the --amount of ${token} (nothing is matched from the other side without a price).`;
+  }
+  if (!allowOneSided) {
+    const xIsBig = x.usd >= y.usd;
+    const swapUsd = round((Math.max(x.usd, y.usd) - Math.min(x.usd, y.usd)) / 2, 2);
+    return `HODLMM ${pool.name}: wallet holds $${round(x.usd, 2)} ${xSym} and $${round(y.usd, 2)} ${ySym}. The smaller side is under ${HODLMM_MIN_SIDE_RATIO * 100}% of the larger, so a paired deposit is mostly one-sided. Swap ~$${swapUsd} of the ${xIsBig ? xSym : ySym} into ${xIsBig ? ySym : xSym} on Bitflow first, then deploy both. Use --allow-one-sided to deposit the balances as they are.`;
+  }
+  return null;
+}
+
+export function buildDeployInstructions(protocol: Protocol, amount: number, token: string, scout: ScoutResult, poolId: string = "dlmm_1", allowOneSided = false): ExecuteInstruction[] {
   const instructions: ExecuteInstruction[] = [];
   const wallet = scout.wallet;
 
@@ -1426,56 +1713,40 @@ function buildDeployInstructions(protocol: Protocol, amount: number, token: stri
       // Parametric on --pool-id (mirrors the rebalance path pattern). Resolves the
       // pool definition from HODLMM_POOLS and generalises bin construction to use
       // the chosen pool's tokenX/tokenY instead of the prior sbtc/usdcx hardcode.
-      // Refuses if the caller's --token does not match either of the pool's tokens
-      // (safety floor — prevents silent no-op deposits when the token is unrelated
-      // to the pool).
-      const pool = HODLMM_POOLS.find(p => `dlmm_${p.id}` === poolId);
-      if (!pool) {
-        instructions.push({
-          tool: "info",
-          params: {},
-          description: `Unknown HODLMM pool ${poolId}. Known pools: ${HODLMM_POOLS.map(p => `dlmm_${p.id}`).join(", ")}.`,
-        });
+      // Refuses (an info step here; deploy and migrate check hodlmmDeployRefusal
+      // first and return status "refused") for an unknown pool, a token the pool
+      // doesn't take, nothing held, or a one-sided/lopsided wallet without
+      // --allow-one-sided.
+      const refusal = hodlmmDeployRefusal(token, scout, poolId, allowOneSided, amount);
+      if (refusal) {
+        instructions.push({ tool: "info", params: {}, description: refusal });
         break;
       }
-      if (token !== pool.tokenX && token !== pool.tokenY) {
-        instructions.push({
-          tool: "info",
-          params: {},
-          description: `HODLMM pool ${poolId} (${pool.name}) accepts ${pool.tokenX.toUpperCase()} or ${pool.tokenY.toUpperCase()} only (got ${token}). Acquire ${pool.tokenX}/${pool.tokenY} first or choose a different --pool-id.`,
-        });
-        break;
-      }
+      const pool = HODLMM_POOLS.find(p => `dlmm_${p.id}` === poolId)!;
 
       // Read atomic balances of the pool's two tokens from scout. `scout.balances`
       // is typed with fixed keys, so we cast through Record<string, …> to index by
-      // the pool's token-symbol strings.
-      const balances = scout.balances as unknown as Record<string, { amount: number; usd: number }>;
+      // the pool's token-symbol strings. Which sides count as held is the scan's
+      // dust rule (hodlmmHeldSides), not "atomic > 0".
+      const balances = scout.balances as unknown as Record<string, TokenBalance>;
       const xMeta = TOKENS[pool.tokenX];
       const yMeta = TOKENS[pool.tokenY];
       const xBalAtomic = Math.floor((balances[pool.tokenX]?.amount ?? 0) * Math.pow(10, xMeta?.decimals ?? 6));
       const yBalAtomic = Math.floor((balances[pool.tokenY]?.amount ?? 0) * Math.pow(10, yMeta?.decimals ?? 6));
-      const hasX = xBalAtomic > 0;
-      const hasY = yBalAtomic > 0;
-
-      if (!hasX && !hasY) {
-        instructions.push({
-          tool: "info",
-          params: {},
-          description: `HODLMM deploy to ${poolId} (${pool.name}) requires ${pool.tokenX.toUpperCase()} and/or ${pool.tokenY.toUpperCase()} in wallet — neither present.`,
-        });
-        break;
-      }
+      const px = pairPrices(scout.prices, pool.tokenX, pool.tokenY);
+      const { hasX } = hodlmmHeldSides(
+        balances[pool.tokenX] ?? { amount: 0, usd: 0 }, balances[pool.tokenY] ?? { amount: 0, usd: 0 }, px,
+      );
 
       const bins: Array<{ activeBinOffset: number; xAmount: string; yAmount: string }> = [];
 
-      if (hasX && hasY) {
+      if (hodlmmActiveBinDeposit(pool, scout)) {
         // Both tokens at active bin: dlmm-core allows both nonzero at bin-id == active-bin-id.
         // `amount` is interpreted as the chosen --token's atomic amount; the counter-token
-        // pairs the full available balance.
-        const xAmt = token === pool.tokenX ? amount : xBalAtomic;
-        const yAmt = token === pool.tokenY ? amount : yBalAtomic;
-        bins.push({ activeBinOffset: 0, xAmount: String(xAmt), yAmount: String(yAmt) });
+        // is sized to match it in USD, capped at its balance (hodlmmPairedDeposit).
+        const d = hodlmmPairedDeposit(pool, token, amount,
+          balances[pool.tokenX] ?? { amount: 0, usd: 0 }, balances[pool.tokenY] ?? { amount: 0, usd: 0 }, px);
+        bins.push({ activeBinOffset: 0, xAmount: String(d.xAtomic), yAmount: String(d.yAtomic) });
       } else if (hasX) {
         // X-only deposit. Per dlmm-core-v-1-1 invariant (lines 1672-1674):
         //   (asserts! (or (>= bin-id active-bin-id) (is-eq x-amount u0)) ERR_INVALID_X_AMOUNT)
@@ -1623,6 +1894,279 @@ function buildEmergencyInstructions(scout: ScoutResult): ExecuteInstruction[] {
   return instructions;
 }
 
+// -- Deploy / migrate plans (Executor step of the pipeline) ---------------------
+// A refusal here becomes status "refused" with refusal_reasons, the same shape
+// as the PoR and Guardian refusals, so a caller checking status never mistakes
+// a refused deposit for a done one.
+export type ExecutionPlan =
+  | { status: "ok"; instructions: ExecuteInstruction[]; description: string }
+  | { status: "refused"; refusal_reasons: string[] }
+  | { status: "error"; error: string };
+
+// Wallet balances once a migrate's withdraw from `from` has landed. Zest returns
+// the supplied sBTC; Granite at least `lp_shares` atomic aeUSDC (the redeem's
+// post-condition floor). Hermetica pays USDh only after the 7-day cooldown, so
+// it adds nothing a same-run deposit could use.
+export function withdrawnBalances(from: Protocol, scout: Pick<ScoutResult, "balances" | "positions" | "prices">): WalletBalances {
+  const add = (b: TokenBalance, amount: number, price: number): TokenBalance =>
+    ({ amount: b.amount + amount, usd: b.usd + amount * (price > 0 ? price : 0) });
+  const b = scout.balances;
+  if (from === "zest") {
+    const supplied = scout.positions?.zest?.supply_amount ?? 0;
+    if (supplied > 0) return { ...b, sbtc: add(b.sbtc, supplied, scout.prices?.sbtc ?? 0) };
+  }
+  if (from === "granite") {
+    const aeusdc = Number(scout.positions?.granite?.lp_shares ?? "0") / 1e6;
+    if (aeusdc > 0) return { ...b, aeusdc: add(b.aeusdc, aeusdc, scout.prices?.aeusdc ?? 0) };
+  }
+  return b;
+}
+
+// "Insufficient ..." when `amount` (atomic) of `token` exceeds the balance, else null.
+function insufficientBalance(token: string, amount: number, balances: WalletBalances): string | null {
+  const tokenKey = token as keyof WalletBalances;
+  if (!balances[tokenKey]) return null;
+  const decimals = TOKENS[tokenKey]?.decimals ? Math.pow(10, TOKENS[tokenKey].decimals) : 1e6;
+  const walletUnits = Math.floor(balances[tokenKey].amount * decimals);
+  return amount > walletUnits ? `Insufficient ${token} balance: have ${walletUnits}, requested ${amount}` : null;
+}
+
+// USD value of `amount` (atomic) of `token` at scout.prices (0 without a price).
+function tokenUsd(token: string, amount: number, prices: TokenPrices | undefined): number {
+  const price = (prices as unknown as Record<string, number | undefined> | undefined)?.[token] ?? 0;
+  const decimals = TOKENS[token]?.decimals ?? 6;
+  return price > 0 ? (amount / Math.pow(10, decimals)) * price : 0;
+}
+
+// USD a deposit of `amount` (atomic) of `token` puts into `to`, and how much of
+// it earns the target APY. HODLMM: both sides of the paired deposit
+// (hodlmmPairedDeposit, the same sizing the builder uses). A deposit the
+// builder places outside the active bin (one side held, --allow-one-sided; see
+// hodlmmActiveBinDeposit) earns nothing until the price moves into it, so it
+// earns $0. Both 0 without a price.
+export function depositUsd(to: Protocol, token: string, amount: number, scout: Pick<ScoutResult, "balances" | "prices">, poolId: string): { usd: number; earningUsd: number } {
+  if (to === "hodlmm") {
+    const pool = HODLMM_POOLS.find(p => `dlmm_${p.id}` === poolId);
+    if (!pool || (token !== pool.tokenX && token !== pool.tokenY)) return { usd: 0, earningUsd: 0 };
+    const balances = scout.balances as unknown as Record<string, TokenBalance>;
+    const px = pairPrices(scout.prices, pool.tokenX, pool.tokenY);
+    // --amount itself must be priced; an unpriced other side just adds nothing.
+    if (!px || !((token === pool.tokenX ? px.x : px.y) > 0)) return { usd: 0, earningUsd: 0 };
+    const d = hodlmmPairedDeposit(pool, token, amount, balances[pool.tokenX] ?? { amount: 0, usd: 0 }, balances[pool.tokenY] ?? { amount: 0, usd: 0 }, px);
+    const usd = d.xUsd + d.yUsd;
+    return { usd, earningUsd: hodlmmActiveBinDeposit(pool, scout) ? usd : 0 };
+  }
+  const usd = tokenUsd(token, amount, scout.prices);
+  return { usd, earningUsd: usd };
+}
+
+// STX gas for the withdraw a migrate plans before its deposit, per transaction
+// at the same estimates the scan uses for entering each protocol. Hermetica is
+// two: the unstake now and the claim after the cooldown. HODLMM is one
+// withdraw per pool with a position.
+export function withdrawGasStx(from: Protocol, scout: Pick<ScoutResult, "positions">): number {
+  switch (from) {
+    case "zest": return 0.03;
+    case "hermetica": return 0.02 * 2;
+    case "granite": return 0.05;
+    case "hodlmm": return 0.05 * Math.max(1, scout.positions?.hodlmm?.pools?.length ?? 0);
+  }
+  return 0;
+}
+
+// What the migrate's withdraw takes out of `from` and the yield it stops
+// earning. The withdraw takes the whole position (Zest "max", all Granite
+// shares, all sUSDh, all HODLMM bins), whatever --amount is, so the YTG gate
+// charges this against the target yield: a small --amount out of a large
+// position idles the rest.
+//
+// Unknown is never $0. Each source is one of:
+//   read OK, nothing held              -> $0 lost
+//   held, value and APY known (> 0)    -> charged
+//   read failed (field missing)        -> refusal: a position may be there
+//   held, but no price / no estimate   -> refusal
+//   held, APY reads 0, rate reads OK   -> $0 lost (Zest/Granite with
+//                                         apy_read_failed false: a real 0%)
+//   held, APY reads 0, otherwise       -> refusal: a failed rate read also
+//                                         reads 0, so 0 is not known
+//   HODLMM pool held, out of range     -> $0 lost: its bins earn no fees
+//   HODLMM pool held with no scan row  -> refusal, as the deploy gate does
+// --force skips the whole gate, these included.
+export function migrateSourceYield(
+  from: Protocol, scout: Pick<ScoutResult, "balances" | "positions" | "prices" | "options">,
+): { usd: number; yield7d: number } | { refusal: string } {
+  const pos = scout.positions as Partial<ScoutResult["positions"]> | undefined;
+  const px = (scout.prices ?? {}) as Partial<TokenPrices>;
+  const none = { usd: 0, yield7d: 0 };
+  const unknown = (why: string) => ({ refusal: `the yield the withdraw gives up is unknown: ${why}` });
+  const charge = (name: string, usd: number, apy: number | undefined, zeroIsReal = false) => {
+    if (apy === 0 && zeroIsReal) return { usd, yield7d: 0 };
+    if (!(usd > 0)) return unknown(`no USD price for the ${name} position`);
+    if (!(apy !== undefined && apy > 0)) return unknown(`${name} APY reads ${apy ?? "nothing"} (a failed rate read also reads 0)`);
+    return { usd, yield7d: dailyUsd(usd, apy) * 7 };
+  };
+  switch (from) {
+    case "zest": {
+      const z = pos?.zest;
+      if (!z || z.supply_apy_pct === undefined) return unknown("the Zest position could not be read");
+      const amt = z.supply_amount ?? 0;
+      if (!(amt > 0)) return none;
+      return charge("Zest", amt * (px.sbtc ?? 0), z.supply_apy_pct, z.apy_read_failed === false);
+    }
+    case "granite": {
+      const g = pos?.granite;
+      if (!g || g.lp_shares === undefined) return unknown("the Granite position could not be read");
+      // Shares valued 1:1 in aeUSDC, the redeem's post-condition floor; accrued
+      // interest makes the real value higher, so this under-charges slightly.
+      const amt = Number(g.lp_shares) / 1e6;
+      if (!(amt > 0)) return none;
+      return charge("Granite", amt * (px.aeusdc ?? 0), g.supply_apy_pct, g.apy_read_failed === false);
+    }
+    case "hermetica": {
+      const s = scout.balances?.susdh;
+      if (!s || !(s.amount > 0)) return none;
+      const h = pos?.hermetica;
+      // sUSDh is worth exchange_rate USDh each.
+      const rate = h?.exchange_rate ?? 0;
+      const usd = rate > 0 && (px.usdh ?? 0) > 0 ? s.amount * rate * px.usdh! : 0;
+      return charge("Hermetica", usd, h?.apy_estimate_pct);
+    }
+    case "hodlmm": {
+      const h = pos?.hodlmm;
+      if (!h) return unknown("the HODLMM positions could not be read");
+      let usd = 0, yield7d = 0;
+      for (const p of h.pools) {
+        if (p.estimated_value_usd === null) return unknown(`no value estimate for HODLMM ${p.name}`);
+        if (p.in_range === false) { usd += p.estimated_value_usd; continue; }
+        const row = findDeployGateOption(scout.options ?? [], "hodlmm", `dlmm_${p.pool_id}`);
+        if (!row) return unknown(`no scan row (APR) for HODLMM ${p.name}`);
+        const c = charge(`HODLMM ${p.name}`, p.estimated_value_usd, row.apy_pct);
+        if ("refusal" in c) return c;
+        usd += c.usd; yield7d += c.yield7d;
+      }
+      return { usd, yield7d };
+    }
+  }
+  return none;
+}
+
+// Migrate from HODLMM: the scan has only a USD estimate of the bins, so --amount
+// is bounded in USD: no more than the token already in the wallet plus
+// everything the withdraw can return. Catches gross overshoots before the
+// withdraw; the exact token split is only known once the bins are redeemed.
+// Only pools that hold `token` count, and each counts at its whole value (the
+// split between its two tokens is unknown until redeemed), so this is an upper
+// bound. Skipped when a price, or the estimate of one of those pools, is missing.
+export function hodlmmMigrateOvershoot(token: string, amount: number, scout: Pick<ScoutResult, "balances" | "positions" | "prices">): string | null {
+  const wantUsd = tokenUsd(token, amount, scout.prices);
+  const pools = (scout.positions?.hodlmm?.pools ?? []).filter(p => {
+    const def = HODLMM_POOLS.find(d => d.id === p.pool_id);
+    return def !== undefined && (def.tokenX === token || def.tokenY === token);
+  });
+  if (!(wantUsd > 0) || pools.some(p => p.estimated_value_usd === null)) return null;
+  const binsUsd = pools.reduce((s, p) => s + (p.estimated_value_usd ?? 0), 0);
+  const walletUsd = (scout.balances as unknown as Record<string, TokenBalance>)[token]?.usd ?? 0;
+  if (wantUsd <= walletUsd + binsUsd) return null;
+  return `--amount of ${token} is ~$${round(wantUsd, 2)}, more than the ${token} in the wallet ($${round(walletUsd, 2)}) plus the HODLMM positions in pools with ${token} ($${round(binsUsd, 2)})`;
+}
+
+// opts are the CLI options (commander camelCases --pool-id / --allow-one-sided).
+export function planDeploy(opts: Record<string, string>, scout: ScoutResult): ExecutionPlan {
+  const protocol = opts.protocol as Protocol;
+  const token = opts.token ?? inferToken(protocol);
+  const amount = parseInt(opts.amount ?? "0", 10);
+  const poolId = opts.poolId ?? "dlmm_1";
+  const allowOneSided = Boolean(opts.allowOneSided);
+
+  // 0% APY and YTG gates (--force), on the row for this pool (HODLMM) or protocol
+  const gate = deployGateRefusal(scout.options, protocol, poolId, Boolean(opts.force));
+  if (gate) return { status: "refused", refusal_reasons: [gate] };
+
+  // Balance check: refuse if requested amount exceeds wallet balance
+  const short = insufficientBalance(token, amount, scout.balances);
+  if (short) return { status: "error", error: short };
+
+  // HODLMM deposit that can't be built as a paired active-bin deposit (--allow-one-sided)
+  if (protocol === "hodlmm") {
+    const refusal = hodlmmDeployRefusal(token, scout, poolId, allowOneSided, amount);
+    if (refusal) return { status: "refused", refusal_reasons: [refusal] };
+    // YTG (--force) for a deposit outside the active bin: the row is sized as if
+    // the swap in its note were done, but --allow-one-sided skips the swap and
+    // these bins earn $0, as migrate counts them (depositUsd).
+    const pool = HODLMM_POOLS.find(p => `dlmm_${p.id}` === poolId)!;
+    if (!opts.force && !hodlmmActiveBinDeposit(pool, scout)) {
+      return { status: "refused", refusal_reasons: [`YTG gate: a one-sided deposit lands outside the active bin and earns $0 until the price moves into it, so 7d yield ($0) < 3x gas cost. Swap first for a paired deposit, or use --force to override.`] };
+    }
+  }
+
+  return {
+    status: "ok",
+    instructions: buildDeployInstructions(protocol, amount, token, scout, poolId, allowOneSided),
+    description: `Deploy ${amount} ${token} to ${protocol}${protocol === "hodlmm" ? ` (${poolId})` : ""}`,
+  };
+}
+
+export function planMigrate(opts: Record<string, string>, scout: ScoutResult): ExecutionPlan {
+  // Input (including --amount > 0) already validated in Step 0 of the pipeline
+  const from = opts.from as Protocol;
+  const to = opts.to as Protocol;
+  const token = opts.token ?? inferToken(to);
+  const amount = parseInt(opts.amount!, 10);
+  const poolId = opts.poolId ?? "dlmm_1";
+  const allowOneSided = Boolean(opts.allowOneSided);
+  const notStarted = (r: string) => `Migrate not started (nothing withdrawn from ${from}): ${r}`;
+
+  // The wallet as it will be after the withdraw (withdrawnBalances). Every check
+  // below sees it, so zest -> hodlmm with the sBTC in Zest and USDCx in the
+  // wallet is a paired deposit. All checks run before any withdraw is planned.
+  const after = { ...scout, balances: withdrawnBalances(from, scout) };
+  const refuse = (r: string): ExecutionPlan => ({ status: "refused", refusal_reasons: [notStarted(r)] });
+
+  // 1. Same 0% APY / no-scan-data gates as deploy (--force).
+  const gate = deployGateRefusal(scout.options, to, poolId, Boolean(opts.force), "skip");
+  if (gate) return refuse(gate);
+
+  // 2. --amount against the wallet after the withdraw, as deploy checks it
+  // against the wallet now. Otherwise the withdraw lands and the deposit fails
+  // on chain. From HODLMM the scan has only a USD estimate of the bins, not the
+  // token amounts the withdraw returns, so the check is a USD bound instead.
+  const short = from === "hodlmm"
+    ? hodlmmMigrateOvershoot(token, amount, scout)
+    : insufficientBalance(token, amount, after.balances);
+  if (short) return refuse(short);
+
+  // 3. The HODLMM deposit can be built (sides, --allow-one-sided). Otherwise the
+  // plan withdraws and then refuses the deposit, leaving the capital idle.
+  if (to === "hodlmm") {
+    const refusal = hodlmmDeployRefusal(token, after, poolId, allowOneSided, amount);
+    if (refusal) return refuse(refusal);
+  }
+
+  // 4. YTG (--force), last: the net 7-day change of the move against the
+  // withdraw plus deposit gas (migrateYtgRefusal).
+  if (!opts.force) {
+    const source = migrateSourceYield(from, scout);
+    const dep = depositUsd(to, token, amount, after, poolId);
+    const ytg = migrateYtgRefusal(scout.options, to, poolId, "refusal" in source ? source : {
+      usd: dep.usd,
+      earningUsd: dep.earningUsd,
+      extraGasStx: withdrawGasStx(from, scout),
+      stxPrice: scout.prices?.stx ?? 0,
+      sourceYield7d: source.yield7d,
+    });
+    if (ytg) return refuse(ytg);
+  }
+
+  return {
+    status: "ok",
+    instructions: [
+      ...buildWithdrawInstructions(from, scout),
+      ...buildDeployInstructions(to, amount, token, to === "hodlmm" ? after : scout, poolId, allowOneSided),
+    ],
+    description: `Migrate from ${from} to ${to}`,
+  };
+}
+
 // =============================================================================
 // ==  SAFETY PIPELINE
 // =============================================================================
@@ -1761,35 +2305,15 @@ async function _runPipeline(wallet: string, command: string, opts: Record<string
   let description = "";
 
   switch (command) {
-    case "deploy": {
+    case "deploy":
+    case "migrate": {
       // Input already validated in Step 0 above
-      const protocol = opts.protocol as Protocol;
-      const token = opts.token ?? inferToken(protocol);
-      const amount = parseInt(opts.amount ?? "0", 10);
-
-      // Check 0% APY
-      const targetOpt = scout.options.find(o => o.protocol.toLowerCase() === protocol);
-      if (targetOpt && targetOpt.apy_pct === 0 && !opts.force) {
-        return { status: "refused", command, scout, reserve, guardian, refusal_reasons: [`${protocol} APY is 0%. Use --force to override.`] };
+      const plan = command === "deploy" ? planDeploy(opts, scout) : planMigrate(opts, scout);
+      if (plan.status === "refused") {
+        return { status: "refused", command, scout, reserve, guardian, refusal_reasons: plan.refusal_reasons };
       }
-
-      // YTG profit gate: 7d yield must exceed 3x gas cost
-      if (targetOpt && !targetOpt.ytg_profitable && !opts.force) {
-        return { status: "refused", command, scout, reserve, guardian, refusal_reasons: [`YTG gate: 7d yield ($${round(targetOpt.daily_usd * 7, 4)}) < 3x gas cost. Ratio: ${targetOpt.ytg_ratio}x. Use --force to override.`] };
-      }
-
-      // Balance check: refuse if requested amount exceeds wallet balance
-      const tokenKey = token as keyof WalletBalances;
-      if (scout.balances[tokenKey]) {
-        const decimals = TOKENS[tokenKey]?.decimals ? Math.pow(10, TOKENS[tokenKey].decimals) : 1e6;
-        const walletUnits = Math.floor(scout.balances[tokenKey].amount * decimals);
-        if (amount > walletUnits) {
-          return { status: "error", command, error: `Insufficient ${token} balance: have ${walletUnits}, requested ${amount}` };
-        }
-      }
-
-      instructions = buildDeployInstructions(protocol, amount, token, scout, ((opts as Record<string, string>).poolId ?? "dlmm_1"));
-      description = `Deploy ${amount} ${token} to ${protocol}${protocol === "hodlmm" ? ` (${((opts as Record<string, string>).poolId ?? "dlmm_1")})` : ""}`;
+      if (plan.status === "error") return { status: "error", command, error: plan.error };
+      ({ instructions, description } = plan);
       break;
     }
 
@@ -1822,18 +2346,6 @@ async function _runPipeline(wallet: string, command: string, opts: Record<string
       });
 
       description = `Rebalance ${pool.name}: withdraw + re-add around bin ${pool.active_bin}`;
-      break;
-    }
-
-    case "migrate": {
-      // Input (including --amount > 0) already validated in Step 0 above
-      const from = opts.from as Protocol;
-      const to = opts.to as Protocol;
-      instructions.push(...buildWithdrawInstructions(from, scout));
-      const token = opts.token ?? inferToken(to);
-      const amount = parseInt(opts.amount!, 10);
-      instructions.push(...buildDeployInstructions(to, amount, token, scout, ((opts as Record<string, string>).poolId ?? "dlmm_1")));
-      description = `Migrate from ${from} to ${to}`;
       break;
     }
 
@@ -2203,7 +2715,8 @@ program
   .requiredOption("--amount <value>", "Amount in smallest unit (sats for sBTC, micro for stablecoins)")
   .option("--token <symbol>", "Token to deploy (default: inferred from protocol)")
   .option("--pool-id <id>", "HODLMM pool ID for protocol=hodlmm (default: dlmm_1). Ignored for other protocols.", "dlmm_1")
-  .option("--force", "Override 0% APY refusal")
+  .option("--force", "Override the 0% APY, YTG and no-scan-data refusals")
+  .option("--allow-one-sided", "HODLMM only: deposit even when one side is missing, dust (under $1) or under 10% of the other (one side goes outside the active bin)")
   .option("--confirm", "Execute the transaction (without this flag, outputs a dry-run preview)")
   .action(async (opts: Record<string, string>) => {
     const result = await runPipeline(opts.wallet, "deploy", opts);
@@ -2270,8 +2783,10 @@ program
   .requiredOption("--from <protocol>", "Source protocol: zest, hermetica, granite, hodlmm")
   .requiredOption("--to <protocol>", "Target protocol: zest, hermetica, granite, hodlmm")
   .option("--token <symbol>", "Token to deploy into target (default: inferred)")
-  .option("--amount <value>", "Amount in smallest unit (default: all)")
+  .option("--amount <value>", "Amount of --token to deposit, in its smallest unit (required)")
   .option("--pool-id <id>", "HODLMM pool ID when --to=hodlmm (default: dlmm_1). Ignored otherwise.", "dlmm_1")
+  .option("--force", "Override the 0% APY, YTG and no-scan-data refusals (YTG includes what the withdrawn position stops earning)")
+  .option("--allow-one-sided", "When --to=hodlmm: deposit even when one side is missing, dust (under $1) or under 10% of the other")
   .option("--confirm", "Execute the transaction (without this flag, outputs a dry-run preview)")
   .action(async (opts: Record<string, string>) => {
     const result = await runPipeline(opts.wallet, "migrate", opts);

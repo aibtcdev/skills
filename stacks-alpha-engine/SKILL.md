@@ -15,7 +15,7 @@ metadata:
 
 ## What it does
 
-Cross-protocol yield executor covering **all 4 major Stacks DeFi protocols** — Zest v2, Hermetica, Granite, and HODLMM (Bitflow DLMM). Scans 6 tokens (sBTC, STX, USDCx, USDh, sUSDh, aeUSDC) across the wallet, reads positions and live yields from all 4 protocols, maps yield opportunities into 3 tiers (deploy now / swap first / acquire to unlock) with **YTG (Yield-to-Gas) profitability ratios**, verifies sBTC reserve integrity via BIP-341 P2TR derivation, checks 5 market safety gates + YTG profit gate, then executes deploy/withdraw/rebalance/migrate/emergency operations. Every write runs a mandatory safety pipeline: Scout -> Reserve -> Guardian -> YTG -> Executor. No bypasses.
+Cross-protocol yield executor covering **all 4 major Stacks DeFi protocols** — Zest v2, Hermetica, Granite, and HODLMM (Bitflow DLMM). Scans 6 tokens (sBTC, STX, USDCx, USDh, sUSDh, aeUSDC) across the wallet, reads positions and live yields from all 4 protocols, maps yield opportunities into 3 tiers (deploy now / swap first / acquire to unlock) with **YTG (Yield-to-Gas) profitability ratios**, verifies sBTC reserve integrity via BIP-341 P2TR derivation, checks 5 market safety gates + YTG profit gate, then executes deploy/withdraw/rebalance/migrate/emergency operations. Every write runs a mandatory safety pipeline: Scout -> Reserve -> Guardian -> YTG -> Executor, with only the explicit overrides listed under Override flags (`--force`, `--allow-one-sided`). For `deploy` the YTG step reads the scan row; for `migrate` it weighs the net 7-day change (target yield on `--amount` minus what the whole withdrawn position stops earning) against the withdraw plus deposit gas.
 
 **Protocol coverage:**
 
@@ -136,11 +136,12 @@ layer enforce the same safety invariants.
 1. **`--confirm` dry-run gate** — every write command returns a preview without `--confirm`. No transaction is emitted until the agent explicitly opts in.
 2. **Guardian (5 gates)** — pool-vs-market divergence <=0.5%, 24h volume >=$10K, gas <=50 STX, 4h rebalance cooldown, price source availability. Relay health is checked at the MCP runtime layer. Any gate failure blocks the write.
 3. **PoR (Proof of Reserve)** — sBTC reserve ratio check. YELLOW (99.5-99.9%) blocks all writes. RED (<99.5%) triggers emergency withdrawal recommendation.
-4. **YTG profit gate** — blocks deploys where 7-day projected yield < 3x gas cost.
+4. **YTG profit gate** — blocks deploys where 7-day projected yield < 3x gas cost, and migrates where the net 7-day change (target yield on `--amount` minus the withdrawn position's yield; the withdraw takes the whole position) < 3x the withdraw plus deposit gas.
 5. **Crypto self-test** — bech32m vectors + P2TR derivation must pass before any operation, including reads.
 
 ### Additional safety notes
 
+- Override flags are separate: `deploy`/`migrate --force` overrides the 0% APY, YTG (on `migrate`, the net 7-day change of `--amount` in the target minus the whole withdrawn position's yield, against the withdraw plus deposit gas, because the scan rows are sized before the withdraw) and no-scan-data refusals only. `deploy`/`migrate --allow-one-sided` lets a HODLMM deposit go ahead when one side is missing, under $1, or under 10% of the other (that side lands outside the active bin and earns no fees until the price moves into it). With only one of the pool's tokens held, the YTG gate counts that deposit as earning $0, so it also needs `--force`. Refused deposits return `status: "refused"`; a refused `migrate` withdraws nothing.
 - Swap slippage budget (min-received on DLMM swaps): stable→stable 0.5%, volatile 3%. Configurable per-call. Independent of the guardian divergence gate.
 - Hermetica unstake has 7-day cooldown — engine warns and provides claim instructions.
 - Granite LP accepts **aeUSDC only** (not sBTC). Engine correctly routes aeUSDC to Granite.
